@@ -1,0 +1,95 @@
+package com.fms.parentalcontrol.parent.feature.auth
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.fms.parentalcontrol.core.ui.components.CupertinoPrimaryButton
+import com.fms.parentalcontrol.core.ui.components.CupertinoTextButton
+import com.fms.parentalcontrol.core.ui.components.CupertinoTextField
+import com.fms.parentalcontrol.core.ui.theme.AppTheme
+import com.fms.parentalcontrol.core.ui.theme.Spacing
+
+@Composable
+fun AuthScreen(
+    modifier: Modifier = Modifier,
+    viewModel: AuthViewModel = hiltViewModel(),
+) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .systemBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = Spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(Spacing.md, Alignment.CenterVertically),
+    ) {
+        Text(
+            text = if (state.isSignUp) "Create Account" else "Welcome Back",
+            style = MaterialTheme.typography.displayLarge,
+        )
+        Text(
+            text = "Guardian keeps your family's devices safe.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = AppTheme.colors.secondaryLabel,
+        )
+
+        CupertinoTextField(
+            value = state.email,
+            onValueChange = viewModel::onEmailChange,
+            placeholder = "Email",
+            keyboardType = KeyboardType.Email,
+        )
+        CupertinoTextField(
+            value = state.password,
+            onValueChange = viewModel::onPasswordChange,
+            placeholder = "Password",
+            keyboardType = KeyboardType.Password,
+            isPassword = true,
+        )
+
+        if (state.errorMessage != null) {
+            Text(
+                text = state.errorMessage!!,
+                color = AppTheme.colors.destructive,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+
+        CupertinoPrimaryButton(
+            text = if (state.isSubmitting) {
+                "Please wait…"
+            } else if (state.isSignUp) {
+                "Sign Up"
+            } else {
+                "Sign In"
+            },
+            onClick = viewModel::submit,
+            enabled = state.canSubmit,
+            modifier = Modifier.padding(top = Spacing.sm),
+        )
+
+        CupertinoTextButton(
+            text = if (state.isSignUp) {
+                "Already have an account? Sign In"
+            } else {
+                "New here? Create an account"
+            },
+            onClick = viewModel::toggleMode,
+        )
+    }
+}

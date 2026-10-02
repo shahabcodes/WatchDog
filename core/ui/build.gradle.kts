@@ -1,0 +1,13 @@
+plugins {
+    id("fms.android.library")
+    id("fms.android.compose")
+}
+
+android {
+    namespace = "com.fms.parentalcontrol.core.ui"
+}
+
+dependencies {
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.coil.compose)
+}

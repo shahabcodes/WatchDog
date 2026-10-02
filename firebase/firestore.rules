@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // A user may read/write only their own profile document.
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Child subtree. Full parent/child authorization is finalized in step 3
+    // (pairing) and step 5 (geofences); these are safe starting rules.
+    match /children/{childId} {
+      // A linked parent (uid present in linkedParents) may read the child doc.
+      allow read: if request.auth != null
+                  && request.auth.uid in resource.data.linkedParents;
+
+      // The child device (its own anonymous uid == childId) may write its doc.
+      allow write: if request.auth != null && request.auth.uid == childId;
+
+      match /{document=**} {
+        allow read: if request.auth != null
+                    && get(/databases/$(database)/documents/children/$(childId)).data.linkedParents
+                       .hasAny([request.auth.uid]);
+        allow write: if request.auth != null && request.auth.uid == childId;
+      }
+    }
+  }
+}

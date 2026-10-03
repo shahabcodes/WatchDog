@@ -71,7 +71,7 @@ jobs:
 
       # ----- Releases (so the APKs show up under the repo's Releases tab) -----
       - name: Collect APKs for release
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -79,7 +79,7 @@ jobs:
           cp child-app/build/outputs/apk/debug/*.apk  dist/watchdog-child-debug.apk
 
       - name: Publish rolling "latest" pre-release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest

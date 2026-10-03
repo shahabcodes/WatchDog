@@ -28,8 +28,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeViewModel: ThemeViewModel = hiltViewModel()
             val themeMode by themeViewModel.themeMode.collectAsStateWithLifecycle()
+            val accentPalette by themeViewModel.accentPalette.collectAsStateWithLifecycle()
 
-            AppTheme(themeMode = themeMode) {
+            AppTheme(themeMode = themeMode, accentPalette = accentPalette) {
                 ChildAppRoot()
             }
         }

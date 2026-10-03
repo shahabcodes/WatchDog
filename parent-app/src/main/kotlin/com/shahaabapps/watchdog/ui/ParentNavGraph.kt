@@ -9,10 +9,12 @@ import androidx.navigation.navArgument
 import com.shahaabapps.core.model.UserProfile
 import com.shahaabapps.watchdog.feature.dashboard.DashboardScreen
 import com.shahaabapps.watchdog.feature.rules.ChildDetailScreen
+import com.shahaabapps.watchdog.feature.settings.SettingsScreen
 
 private object Routes {
     const val DASHBOARD = "dashboard"
     const val CHILD_DETAIL = "child/{childId}"
+    const val SETTINGS = "settings"
     fun childDetail(childId: String) = "child/$childId"
 }
 
@@ -24,6 +26,7 @@ fun ParentNavGraph(profile: UserProfile) {
             DashboardScreen(
                 profile = profile,
                 onChildClick = { childId -> navController.navigate(Routes.childDetail(childId)) },
+                onSettings = { navController.navigate(Routes.SETTINGS) },
             )
         }
         composable(
@@ -32,6 +35,9 @@ fun ParentNavGraph(profile: UserProfile) {
         ) {
             // childId is read from SavedStateHandle inside ChildDetailViewModel.
             ChildDetailScreen()
+        }
+        composable(Routes.SETTINGS) {
+            SettingsScreen(onBack = { navController.popBackStack() })
         }
     }
 }

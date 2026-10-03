@@ -6,75 +6,73 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.Color
 
-/** User-selectable theme preference, persisted by each app. */
+/** User-selectable light/dark preference. */
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
-private val LightColorScheme = lightColorScheme(
-    primary = CupertinoPalette.BlueLight,
-    onPrimary = CupertinoPalette.LabelDark,
-    secondary = CupertinoPalette.GreenLight,
-    error = CupertinoPalette.RedLight,
-    background = CupertinoPalette.GroupedBackgroundLight,
-    onBackground = CupertinoPalette.LabelLight,
-    surface = CupertinoPalette.CardLight,
-    onSurface = CupertinoPalette.LabelLight,
-    surfaceVariant = CupertinoPalette.SecondaryBackgroundLight,
+private fun lightColors(accent: Color) = lightColorScheme(
+    primary = accent,
+    onPrimary = Color.White,
+    secondary = accent,
+    error = Palette.BlockedLight,
+    background = Palette.BackgroundLight,
+    onBackground = Palette.LabelLight,
+    surface = Palette.SurfaceLight,
+    onSurface = Palette.LabelLight,
+    surfaceVariant = Palette.SurfaceVariantLight,
+    outline = Palette.OutlineLight,
 )
 
-private val DarkColorScheme = darkColorScheme(
-    primary = CupertinoPalette.BlueDark,
-    onPrimary = CupertinoPalette.LabelDark,
-    secondary = CupertinoPalette.GreenDark,
-    error = CupertinoPalette.RedDark,
-    background = CupertinoPalette.GroupedBackgroundDark,
-    onBackground = CupertinoPalette.LabelDark,
-    surface = CupertinoPalette.CardDark,
-    onSurface = CupertinoPalette.LabelDark,
-    surfaceVariant = CupertinoPalette.SecondaryBackgroundDark,
+private fun darkColors(accent: Color) = darkColorScheme(
+    primary = accent,
+    onPrimary = Color(0xFF0B1F16),
+    secondary = accent,
+    error = Palette.BlockedDark,
+    background = Palette.BackgroundDark,
+    onBackground = Palette.LabelDark,
+    surface = Palette.SurfaceDark,
+    onSurface = Palette.LabelDark,
+    surfaceVariant = Palette.SurfaceVariantDark,
+    outline = Palette.OutlineDark,
 )
 
-private val LightCupertinoColors = CupertinoColors(
-    groupedBackground = CupertinoPalette.GroupedBackgroundLight,
-    card = CupertinoPalette.CardLight,
-    secondaryLabel = CupertinoPalette.SecondaryLabelLight,
-    separator = CupertinoPalette.SeparatorLight,
-    accent = CupertinoPalette.BlueLight,
-    destructive = CupertinoPalette.RedLight,
-    success = CupertinoPalette.GreenLight,
-)
-
-private val DarkCupertinoColors = CupertinoColors(
-    groupedBackground = CupertinoPalette.GroupedBackgroundDark,
-    card = CupertinoPalette.CardDark,
-    secondaryLabel = CupertinoPalette.SecondaryLabelDark,
-    separator = CupertinoPalette.SeparatorDark,
-    accent = CupertinoPalette.BlueDark,
-    destructive = CupertinoPalette.RedDark,
-    success = CupertinoPalette.GreenDark,
+private fun cupertinoColors(dark: Boolean, palette: AccentPalette) = CupertinoColors(
+    groupedBackground = if (dark) Palette.BackgroundDark else Palette.BackgroundLight,
+    card = if (dark) Palette.SurfaceDark else Palette.SurfaceLight,
+    secondaryLabel = if (dark) Palette.SecondaryLabelDark else Palette.SecondaryLabelLight,
+    separator = if (dark) Palette.SeparatorDark else Palette.SeparatorLight,
+    accent = if (dark) palette.accentDark else palette.accentLight,
+    gradient = palette.gradient,
+    destructive = if (dark) Palette.BlockedDark else Palette.BlockedLight,
+    success = if (dark) Palette.SuccessDark else Palette.SuccessLight,
+    blocked = if (dark) Palette.BlockedDark else Palette.BlockedLight,
+    blockedBackground = if (dark) Palette.BlockedBgDark else Palette.BlockedBgLight,
+    allowed = if (dark) Palette.AllowedDark else Palette.AllowedLight,
+    allowedBackground = if (dark) Palette.AllowedBgDark else Palette.AllowedBgLight,
+    warn = if (dark) Palette.WarnDark else Palette.WarnLight,
 )
 
 /**
- * Root theme shared by both apps. Provides a Material3 scheme mapped to the
- * Cupertino palette plus the iOS-specific [CupertinoColors] via composition local.
+ * Root theme: Material3 scheme keyed to the chosen [accentPalette], plus the
+ * app's [CupertinoColors]. Both apps wrap their content in this.
  */
 @Composable
 fun AppTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
+    accentPalette: AccentPalette = AccentPalette.MEADOW,
     content: @Composable () -> Unit,
 ) {
-    val darkTheme = when (themeMode) {
+    val dark = when (themeMode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
+    val accent = if (dark) accentPalette.accentDark else accentPalette.accentLight
 
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
-    val cupertinoColors = if (darkTheme) DarkCupertinoColors else LightCupertinoColors
-
-    CompositionLocalProvider(LocalCupertinoColors provides cupertinoColors) {
+    CompositionLocalProvider(LocalCupertinoColors provides cupertinoColors(dark, accentPalette)) {
         MaterialTheme(
-            colorScheme = colorScheme,
+            colorScheme = if (dark) darkColors(accent) else lightColors(accent),
             typography = CupertinoTypography,
             content = content,
         )

@@ -3,6 +3,7 @@ package com.shahaabapps.watchdog.feature.dashboard
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -33,11 +35,13 @@ import com.shahaabapps.core.model.UserProfile
 import com.shahaabapps.core.ui.components.Avatar
 import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.components.CupertinoPrimaryButton
-import com.shahaabapps.core.ui.components.CupertinoScaffold
 import com.shahaabapps.core.ui.components.CupertinoTextButton
+import com.shahaabapps.core.ui.components.Hero
+import com.shahaabapps.core.ui.components.HeroIconButton
 import com.shahaabapps.core.ui.components.StatusChip
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
+import androidx.compose.ui.graphics.Color
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.Dispatchers
@@ -48,6 +52,7 @@ import kotlinx.coroutines.withContext
 fun DashboardScreen(
     profile: UserProfile,
     onChildClick: (String) -> Unit,
+    onSettings: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
@@ -89,12 +94,25 @@ fun DashboardScreen(
         )
     }
 
-    CupertinoScaffold(title = "Hi, ${profile.name}", modifier = modifier) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(AppTheme.colors.groupedBackground)
+            .verticalScroll(rememberScrollState()),
+    ) {
+        Hero(
+            title = "Hi, ${profile.name}",
+            subtitle = "Your family at a glance",
+            actions = {
+                HeroIconButton(onClick = onSettings) {
+                    Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = Color.White)
+                }
+            },
+        )
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = Spacing.lg),
+                .fillMaxWidth()
+                .padding(Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
             when (val state = linkState) {

@@ -3,43 +3,68 @@ package com.shahaabapps.core.ui.theme
 import androidx.compose.ui.graphics.Color
 
 /**
- * iOS (Cupertino) system palette. Values mirror Apple's Human Interface
- * guidelines for system colors in light and dark appearance.
+ * Palette inspired by the Browse Safe design system: a refined brand accent,
+ * soft neutral surfaces, and semantic status families with tinted backgrounds.
  */
-internal object CupertinoPalette {
-    // System blue (primary accent)
-    val BlueLight = Color(0xFF007AFF)
-    val BlueDark = Color(0xFF0A84FF)
+internal object Palette {
+    // Neutral surfaces (light)
+    val BackgroundLight = Color(0xFFF7F9F8)
+    val SurfaceLight = Color(0xFFFFFFFF)
+    val SurfaceVariantLight = Color(0xFFEDF3EF)
+    val OutlineLight = Color(0x22000000)
+    val LabelLight = Color(0xFF1A1C1E)
+    val SecondaryLabelLight = Color(0xFF5A6660)
+    val SeparatorLight = Color(0x14000000)
 
-    val GreenLight = Color(0xFF34C759)
-    val GreenDark = Color(0xFF30D158)
+    // Neutral surfaces (dark)
+    val BackgroundDark = Color(0xFF111412)
+    val SurfaceDark = Color(0xFF1A1E1B)
+    val SurfaceVariantDark = Color(0xFF262B27)
+    val OutlineDark = Color(0x33FFFFFF)
+    val LabelDark = Color(0xFFE3E6E3)
+    val SecondaryLabelDark = Color(0xFF9AA69F)
+    val SeparatorDark = Color(0x22FFFFFF)
 
-    val RedLight = Color(0xFFFF3B30)
-    val RedDark = Color(0xFFFF453A)
+    // Semantic (palette-independent)
+    val BlockedLight = Color(0xFFC1362B)
+    val BlockedBgLight = Color(0xFFFBEAE8)
+    val BlockedDark = Color(0xFFF28B82)
+    val BlockedBgDark = Color(0xFF3A1D1A)
 
-    val OrangeLight = Color(0xFFFF9500)
-    val OrangeDark = Color(0xFFFF9F0A)
+    val AllowedLight = Color(0xFF1E8E5A)
+    val AllowedBgLight = Color(0xFFE4F1EA)
+    val AllowedDark = Color(0xFF7FD1A3)
+    val AllowedBgDark = Color(0xFF17301F)
 
-    // Backgrounds — grouped (settings-style) surfaces
-    val SystemBackgroundLight = Color(0xFFFFFFFF)
-    val SystemBackgroundDark = Color(0xFF000000)
+    val WarnLight = Color(0xFFC77700)
+    val WarnDark = Color(0xFFFBC02D)
 
-    val SecondaryBackgroundLight = Color(0xFFF2F2F7)
-    val SecondaryBackgroundDark = Color(0xFF1C1C1E)
+    val SuccessLight = Color(0xFF1E8E5A)
+    val SuccessDark = Color(0xFF7FD1A3)
+}
 
-    val GroupedBackgroundLight = Color(0xFFF2F2F7)
-    val GroupedBackgroundDark = Color(0xFF000000)
-
-    val CardLight = Color(0xFFFFFFFF)
-    val CardDark = Color(0xFF1C1C1E)
-
-    // Labels
-    val LabelLight = Color(0xFF000000)
-    val LabelDark = Color(0xFFFFFFFF)
-
-    val SecondaryLabelLight = Color(0x993C3C43) // 60% opacity
-    val SecondaryLabelDark = Color(0x99EBEBF5)
-
-    val SeparatorLight = Color(0x5C3C3C43)
-    val SeparatorDark = Color(0x5CEBEBF5)
+/**
+ * A selectable accent palette (brand color + hero gradient), independent of
+ * light/dark mode — mirrors Browse Safe's Meadow / Blossom / Ocean themes.
+ */
+enum class AccentPalette(
+    val accentLight: Color,
+    val accentDark: Color,
+    val gradient: List<Color>,
+) {
+    MEADOW(
+        accentLight = Color(0xFF1E8E5A),
+        accentDark = Color(0xFF7FD1A3),
+        gradient = listOf(Color(0xFF14B8A6), Color(0xFF12A57E), Color(0xFF1E8E5A)),
+    ),
+    BLOSSOM(
+        accentLight = Color(0xFFE5588E),
+        accentDark = Color(0xFFF48FB1),
+        gradient = listOf(Color(0xFFFF8FB6), Color(0xFFE5588E), Color(0xFFC13C72)),
+    ),
+    OCEAN(
+        accentLight = Color(0xFF2E6BE6),
+        accentDark = Color(0xFF6FA0FF),
+        gradient = listOf(Color(0xFF3B6FF6), Color(0xFF5B63F7), Color(0xFF7C4DFF)),
+    ),
 }

@@ -5,24 +5,23 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
 /**
- * Brand gradients used on hero areas and primary actions for a modern look.
+ * Brand gradients. The accent gradient follows the current [AccentPalette]
+ * (Meadow / Blossom / Ocean); avatar gradients add per-name variety.
  */
 object Brand {
-    val GradientStart = Color(0xFF0A84FF) // iOS blue
-    val GradientEnd = Color(0xFF5E5CE6)   // iOS indigo
-
     val accentGradient: Brush
-        @Composable get() = Brush.linearGradient(listOf(GradientStart, GradientEnd))
+        @Composable get() = AppTheme.colors.heroBrush
 
     @Composable
     fun avatarGradient(seed: Int): Brush {
         val palettes = listOf(
-            listOf(Color(0xFF0A84FF), Color(0xFF5E5CE6)),
-            listOf(Color(0xFF34C759), Color(0xFF30B0C7)),
+            listOf(Color(0xFF14B8A6), Color(0xFF1E8E5A)),
+            listOf(Color(0xFF3B6FF6), Color(0xFF7C4DFF)),
+            listOf(Color(0xFFFF8FB6), Color(0xFFC13C72)),
             listOf(Color(0xFFFF9500), Color(0xFFFF375F)),
             listOf(Color(0xFFBF5AF2), Color(0xFF0A84FF)),
-            listOf(Color(0xFFFF2D55), Color(0xFFFF9500)),
         )
-        return Brush.linearGradient(palettes[(seed % palettes.size + palettes.size) % palettes.size])
+        val index = (seed % palettes.size + palettes.size) % palettes.size
+        return Brush.linearGradient(palettes[index])
     }
 }

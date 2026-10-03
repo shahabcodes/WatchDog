@@ -15,6 +15,10 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                 apply("org.jetbrains.kotlin.android")
             }
 
+            // Shared debug keystore so every build (local or CI) signs with the same
+            // key — otherwise updates fail with "App not installed" (signature mismatch).
+            val sharedDebugKeystore = rootProject.file("keystore/debug.keystore")
+
             extensions.configure<ApplicationExtension> {
                 configureKotlinAndroid(this)
                 defaultConfig {
@@ -23,6 +27,14 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                     versionCode = System.getenv("APP_VERSION_CODE")?.toIntOrNull() ?: 1
                     versionName = System.getenv("APP_VERSION_NAME") ?: "0.1.0"
                     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+                }
+                if (sharedDebugKeystore.exists()) {
+                    signingConfigs.getByName("debug") {
+                        storeFile = sharedDebugKeystore
+                        storePassword = "android"
+                        keyAlias = "androiddebugkey"
+                        keyPassword = "android"
+                    }
                 }
                 buildTypes {
                     release {

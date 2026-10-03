@@ -17,3 +17,6 @@ local.properties
 *.jks
 *.keystore
 keystore.properties
+# ...except the shared DEBUG keystore, committed so all builds share one signature.
+# (Standard debug credentials — never used for release/production signing.)
+!keystore/debug.keystore

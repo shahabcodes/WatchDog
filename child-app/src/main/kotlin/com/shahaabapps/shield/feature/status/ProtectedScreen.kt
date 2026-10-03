@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.shahaabapps.core.model.ChildAccount
+import com.shahaabapps.shield.enforcement.EnforcementSetupCard
 import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.components.CupertinoScaffold
 import com.shahaabapps.core.ui.components.StatusChip
@@ -88,6 +89,8 @@ fun ProtectedScreen(
                     )
                 }
             }
+
+            EnforcementSetupCard()
         }
     }
 }

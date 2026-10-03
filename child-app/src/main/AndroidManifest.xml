@@ -1,10 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Additional permissions (usage access, location, foreground services)
-         are added in later steps alongside the services that need them. -->
+    <!-- Usage Access is a special permission the user grants in Settings; declaring
+         it lets Shield appear in the Usage Access list. -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
 
     <!-- Allows listing the device's launchable apps (to report to the parent)
          without the broad QUERY_ALL_PACKAGES permission. -->
@@ -33,5 +37,28 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Full-screen block overlay shown when a limited/blocked app is opened. -->
+        <activity
+            android:name=".enforcement.BlockActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:theme="@style/Theme.ChildApp" />
+
+        <!-- Accessibility service that detects the foreground app and enforces rules. -->
+        <service
+            android:name=".enforcement.EnforcementService"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/enforcement_accessibility_config" />
+        </service>
     </application>
 </manifest>

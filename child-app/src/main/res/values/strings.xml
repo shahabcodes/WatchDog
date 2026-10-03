@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Shield</string>
+    <string name="accessibility_description">Shield uses this to see which app is open so it can apply the time limits and blocks set by a parent. It does not read screen content.</string>
 </resources>

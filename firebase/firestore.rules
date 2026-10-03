@@ -23,6 +23,23 @@ service cloud.firestore {
                     && resource.data.pairingActive == true
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['linkedParents']);
 
+      // App usage rules: a linked parent or the child may read/write.
+      match /appRules/{packageName} {
+        allow read, write: if request.auth != null && (
+          request.auth.uid == childId ||
+          request.auth.uid in get(/databases/$(database)/documents/children/$(childId)).data.linkedParents
+        );
+      }
+
+      // App inventory: the child writes it; a linked parent (or the child) reads it.
+      match /inventory/{docId} {
+        allow read: if request.auth != null && (
+          request.auth.uid == childId ||
+          request.auth.uid in get(/databases/$(database)/documents/children/$(childId)).data.linkedParents
+        );
+        allow write: if request.auth != null && request.auth.uid == childId;
+      }
+
       match /{document=**} {
         allow read: if request.auth != null
                     && request.auth.uid in get(/databases/$(database)/documents/children/$(childId)).data.linkedParents;

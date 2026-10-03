@@ -6,6 +6,15 @@
     <!-- Additional permissions (usage access, location, foreground services)
          are added in later steps alongside the services that need them. -->
 
+    <!-- Allows listing the device's launchable apps (to report to the parent)
+         without the broad QUERY_ALL_PACKAGES permission. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:name=".ChildApplication"
         android:allowBackup="false"

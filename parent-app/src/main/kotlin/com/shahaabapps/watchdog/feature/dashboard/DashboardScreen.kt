@@ -39,6 +39,7 @@ import com.journeyapps.barcodescanner.ScanOptions
 @Composable
 fun DashboardScreen(
     profile: UserProfile,
+    onChildClick: (String) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
@@ -81,7 +82,7 @@ fun DashboardScreen(
                     style = MaterialTheme.typography.titleMedium,
                     color = AppTheme.colors.secondaryLabel,
                 )
-                children.forEach { child -> ChildRow(child) }
+                children.forEach { child -> ChildRow(child, onClick = { onChildClick(child.childId) }) }
             }
 
             CupertinoPrimaryButton(
@@ -94,8 +95,8 @@ fun DashboardScreen(
 }
 
 @Composable
-private fun ChildRow(child: ChildAccount) {
-    CupertinoCard {
+private fun ChildRow(child: ChildAccount, onClick: () -> Unit) {
+    CupertinoCard(onClick = onClick) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Avatar(name = child.profile.name, photoUrl = child.profile.photoUrl, size = 48.dp)
             Column(

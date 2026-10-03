@@ -14,12 +14,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.shahaabapps.core.model.ChildAccount
 import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.components.CupertinoScaffold
@@ -32,7 +34,10 @@ import com.shahaabapps.core.ui.theme.Spacing
 fun ProtectedScreen(
     child: ChildAccount,
     modifier: Modifier = Modifier,
+    viewModel: ProtectedViewModel = hiltViewModel(),
 ) {
+    LaunchedEffect(child.childId) { viewModel.reportInstalledApps() }
+
     CupertinoScaffold(title = "Shield", modifier = modifier) {
         Column(
             modifier = Modifier

@@ -15,10 +15,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.watchdog.feature.auth.AuthScreen
-import com.shahaabapps.watchdog.feature.dashboard.DashboardScreen
 import com.shahaabapps.watchdog.feature.profile.ProfileSetupScreen
 import com.shahaabapps.watchdog.ui.ParentAppState
 import com.shahaabapps.watchdog.ui.ParentAppViewModel
+import com.shahaabapps.watchdog.ui.ParentNavGraph
 import com.shahaabapps.watchdog.ui.ThemeViewModel
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -48,7 +48,7 @@ private fun ParentAppRoot(
         ParentAppState.Loading -> LoadingScreen()
         ParentAppState.SignedOut -> AuthScreen()
         is ParentAppState.NeedsProfile -> ProfileSetupScreen(onSaved = { /* state reacts automatically */ })
-        is ParentAppState.Ready -> DashboardScreen(profile = current.profile)
+        is ParentAppState.Ready -> ParentNavGraph(profile = current.profile)
     }
 }
 

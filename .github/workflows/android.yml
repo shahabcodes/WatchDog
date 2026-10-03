@@ -78,6 +78,12 @@ jobs:
           cp parent-app/build/outputs/apk/debug/*.apk dist/watchdog-parent-debug.apk
           cp child-app/build/outputs/apk/debug/*.apk  dist/watchdog-child-debug.apk
 
+      - name: Reset "latest" release so its date reflects this build
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release delete latest --repo "${{ github.repository }}" --yes --cleanup-tag || true
+
       - name: Publish rolling "latest" pre-release
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2

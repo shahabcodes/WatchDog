@@ -2,6 +2,8 @@ package com.fms.parentalcontrol.core.firebase.di
 
 import com.fms.parentalcontrol.core.firebase.auth.AuthRepository
 import com.fms.parentalcontrol.core.firebase.auth.FirebaseAuthRepository
+import com.fms.parentalcontrol.core.firebase.child.ChildRepository
+import com.fms.parentalcontrol.core.firebase.child.FirebaseChildRepository
 import com.fms.parentalcontrol.core.firebase.profile.FirebaseProfileRepository
 import com.fms.parentalcontrol.core.firebase.profile.ProfileRepository
 import com.google.firebase.Firebase
@@ -46,4 +48,8 @@ interface FirebaseBindsModule {
     @Binds
     @Singleton
     fun bindProfileRepository(impl: FirebaseProfileRepository): ProfileRepository
+
+    @Binds
+    @Singleton
+    fun bindChildRepository(impl: FirebaseChildRepository): ChildRepository
 }

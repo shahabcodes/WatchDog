@@ -30,6 +30,7 @@ coil = "2.7.0"
 camerax = "1.4.1"
 mlkitBarcode = "17.3.0"
 zxing = "3.5.3"
+zxingEmbedded = "4.3.0"
 
 # Maps + location (used from step 5 onward)
 mapsCompose = "6.4.1"
@@ -97,6 +98,7 @@ androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycl
 androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
 mlkit-barcode-scanning = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "mlkitBarcode" }
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
+zxing-android-embedded = { group = "com.journeyapps", name = "zxing-android-embedded", version.ref = "zxingEmbedded" }
 
 # --- Maps + location ---
 maps-compose = { group = "com.google.maps.android", name = "maps-compose", version.ref = "mapsCompose" }

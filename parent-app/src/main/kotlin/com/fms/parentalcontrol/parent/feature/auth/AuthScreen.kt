@@ -1,18 +1,27 @@
 package com.fms.parentalcontrol.parent.feature.auth
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -21,6 +30,7 @@ import com.fms.parentalcontrol.core.ui.components.CupertinoPrimaryButton
 import com.fms.parentalcontrol.core.ui.components.CupertinoTextButton
 import com.fms.parentalcontrol.core.ui.components.CupertinoTextField
 import com.fms.parentalcontrol.core.ui.theme.AppTheme
+import com.fms.parentalcontrol.core.ui.theme.Brand
 import com.fms.parentalcontrol.core.ui.theme.Spacing
 
 @Composable
@@ -37,13 +47,28 @@ fun AuthScreen(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.md, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(Brand.accentGradient),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Shield,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(40.dp),
+            )
+        }
         Text(
-            text = if (state.isSignUp) "Create Account" else "Welcome Back",
-            style = MaterialTheme.typography.displayLarge,
+            text = if (state.isSignUp) "Create Account" else "Welcome to Watch Dog",
+            style = MaterialTheme.typography.headlineLarge,
         )
         Text(
-            text = "Guardian keeps your family's devices safe.",
+            text = "Keep your family's devices safe.",
             style = MaterialTheme.typography.bodyMedium,
             color = AppTheme.colors.secondaryLabel,
         )

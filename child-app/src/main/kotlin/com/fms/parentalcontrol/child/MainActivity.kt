@@ -4,19 +4,18 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.fms.parentalcontrol.child.feature.pairing.PairingPlaceholderScreen
+import com.fms.parentalcontrol.child.feature.pairing.PairingScreen
 import com.fms.parentalcontrol.child.feature.profile.ProfileSetupScreen
+import com.fms.parentalcontrol.child.feature.status.ProtectedScreen
 import com.fms.parentalcontrol.child.ui.ChildAppState
 import com.fms.parentalcontrol.child.ui.ChildAppViewModel
+import com.fms.parentalcontrol.child.ui.ErrorScreen
+import com.fms.parentalcontrol.child.ui.LoadingScreen
 import com.fms.parentalcontrol.child.ui.ThemeViewModel
 import com.fms.parentalcontrol.core.ui.theme.AppTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -44,15 +43,10 @@ private fun ChildAppRoot(
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     when (val current = state) {
-        ChildAppState.Loading -> LoadingScreen()
+        ChildAppState.Loading -> LoadingScreen(Modifier)
+        is ChildAppState.Error -> ErrorScreen(message = current.message, onRetry = viewModel::retry)
         is ChildAppState.NeedsProfile -> ProfileSetupScreen(onSaved = { /* state reacts automatically */ })
-        is ChildAppState.Ready -> PairingPlaceholderScreen(profile = current.profile)
-    }
-}
-
-@Composable
-private fun LoadingScreen() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator()
+        is ChildAppState.Pairing -> PairingScreen(child = current.child)
+        is ChildAppState.Protected -> ProtectedScreen(child = current.child)
     }
 }

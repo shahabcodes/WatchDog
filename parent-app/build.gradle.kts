@@ -27,6 +27,9 @@ dependencies {
     implementation(libs.hilt.navigation.compose)
     implementation(libs.coil.compose)
 
+    // QR scanning (parent scans the child's pairing code)
+    implementation(libs.zxing.android.embedded)
+
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)

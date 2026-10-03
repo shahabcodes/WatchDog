@@ -2,13 +2,17 @@ package com.fms.parentalcontrol.child.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.fms.parentalcontrol.core.common.AppResult
 import com.fms.parentalcontrol.core.firebase.auth.AuthRepository
-import com.fms.parentalcontrol.core.firebase.profile.ProfileRepository
-import com.fms.parentalcontrol.core.model.UserProfile
+import com.fms.parentalcontrol.core.firebase.child.ChildRepository
+import com.fms.parentalcontrol.core.model.ChildAccount
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -18,41 +22,61 @@ import javax.inject.Inject
 
 sealed interface ChildAppState {
     data object Loading : ChildAppState
-    data class NeedsProfile(val userId: String) : ChildAppState
-    data class Ready(val profile: UserProfile) : ChildAppState
+    data class Error(val message: String) : ChildAppState
+    data class NeedsProfile(val childId: String) : ChildAppState
+    data class Pairing(val child: ChildAccount) : ChildAppState
+    data class Protected(val child: ChildAccount) : ChildAppState
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ChildAppViewModel @Inject constructor(
     private val authRepository: AuthRepository,
-    profileRepository: ProfileRepository,
+    private val childRepository: ChildRepository,
 ) : ViewModel() {
 
+    private val authError = MutableStateFlow<String?>(null)
+
     init {
-        // The child device authenticates anonymously; no sign-in UI is shown.
-        if (authRepository.currentUserIdOrNull() == null) {
-            viewModelScope.launch { authRepository.signInAnonymously() }
+        ensureSignedIn()
+    }
+
+    private fun ensureSignedIn() {
+        if (authRepository.currentUserIdOrNull() != null) return
+        viewModelScope.launch {
+            when (val result = authRepository.signInAnonymously()) {
+                is AppResult.Success -> authError.value = null
+                is AppResult.Failure -> authError.value =
+                    "Couldn't connect. Check your internet and Firebase setup, then retry."
+            }
         }
     }
 
-    val state: StateFlow<ChildAppState> = authRepository.currentUserId
-        .flatMapLatest { userId ->
-            if (userId == null) {
-                flowOf(ChildAppState.Loading)
-            } else {
-                profileRepository.observeProfile(userId).map { profile ->
-                    if (profile == null || profile.name.isBlank()) {
-                        ChildAppState.NeedsProfile(userId)
-                    } else {
-                        ChildAppState.Ready(profile)
-                    }
+    fun retry() {
+        authError.value = null
+        ensureSignedIn()
+    }
+
+    val state: StateFlow<ChildAppState> =
+        combine(authRepository.currentUserId, authError) { uid, error -> uid to error }
+            .flatMapLatest { (uid, error) ->
+                when {
+                    uid != null -> childRepository.observeChild(uid)
+                        .map { child -> mapChildState(uid, child) }
+                        .catch { emit(ChildAppState.Error("Couldn't load your profile. Retry.")) }
+                    error != null -> flowOf(ChildAppState.Error(error))
+                    else -> flowOf(ChildAppState.Loading)
                 }
             }
-        }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = ChildAppState.Loading,
-        )
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000),
+                initialValue = ChildAppState.Loading,
+            )
+
+    private fun mapChildState(childId: String, child: ChildAccount?): ChildAppState = when {
+        child == null || child.profile.name.isBlank() -> ChildAppState.NeedsProfile(childId)
+        child.isLinked -> ChildAppState.Protected(child)
+        else -> ChildAppState.Pairing(child)
+    }
 }

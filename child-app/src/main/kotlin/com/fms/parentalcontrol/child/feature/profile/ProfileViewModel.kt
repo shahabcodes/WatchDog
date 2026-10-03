@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fms.parentalcontrol.core.common.AppResult
 import com.fms.parentalcontrol.core.firebase.auth.AuthRepository
+import com.fms.parentalcontrol.core.firebase.child.ChildRepository
 import com.fms.parentalcontrol.core.firebase.profile.ProfileRepository
 import com.fms.parentalcontrol.core.model.UserProfile
 import com.fms.parentalcontrol.core.model.UserRole
@@ -30,6 +31,7 @@ data class ProfileUiState(
 class ProfileViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val profileRepository: ProfileRepository,
+    private val childRepository: ChildRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ProfileUiState())
@@ -67,7 +69,7 @@ class ProfileViewModel @Inject constructor(
                 dateOfBirthMillis = state.dateOfBirthMillis,
                 role = UserRole.CHILD,
             )
-            when (val result = profileRepository.saveProfile(profile)) {
+            when (val result = childRepository.saveChildProfile(userId, profile)) {
                 is AppResult.Success -> {
                     _uiState.update { it.copy(isSaving = false) }
                     onSaved()

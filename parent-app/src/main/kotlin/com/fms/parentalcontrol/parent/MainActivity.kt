@@ -15,7 +15,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fms.parentalcontrol.core.ui.theme.AppTheme
 import com.fms.parentalcontrol.parent.feature.auth.AuthScreen
-import com.fms.parentalcontrol.parent.feature.home.HomeScreen
+import com.fms.parentalcontrol.parent.feature.dashboard.DashboardScreen
 import com.fms.parentalcontrol.parent.feature.profile.ProfileSetupScreen
 import com.fms.parentalcontrol.parent.ui.ParentAppState
 import com.fms.parentalcontrol.parent.ui.ParentAppViewModel
@@ -48,7 +48,7 @@ private fun ParentAppRoot(
         ParentAppState.Loading -> LoadingScreen()
         ParentAppState.SignedOut -> AuthScreen()
         is ParentAppState.NeedsProfile -> ProfileSetupScreen(onSaved = { /* state reacts automatically */ })
-        is ParentAppState.Ready -> HomeScreen(profile = current.profile)
+        is ParentAppState.Ready -> DashboardScreen(profile = current.profile)
     }
 }
 

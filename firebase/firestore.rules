@@ -7,20 +7,25 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Child subtree. Full parent/child authorization is finalized in step 3
-    // (pairing) and step 5 (geofences); these are safe starting rules.
+    // Child account documents.
     match /children/{childId} {
-      // A linked parent (uid present in linkedParents) may read the child doc.
-      allow read: if request.auth != null
-                  && request.auth.uid in resource.data.linkedParents;
+      // Any signed-in user may read a child doc. This is needed so a parent can
+      // verify a scanned pairing code before linking. Tighten in production by
+      // moving linking to a Cloud Function (then restrict reads to linkedParents).
+      allow read: if request.auth != null;
 
-      // The child device (its own anonymous uid == childId) may write its doc.
-      allow write: if request.auth != null && request.auth.uid == childId;
+      // The child device owns its document.
+      allow create, update, delete: if request.auth != null && request.auth.uid == childId;
+
+      // A signed-in parent may link themselves while pairing is active, and may
+      // ONLY change the linkedParents field.
+      allow update: if request.auth != null
+                    && resource.data.pairingActive == true
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['linkedParents']);
 
       match /{document=**} {
         allow read: if request.auth != null
-                    && get(/databases/$(database)/documents/children/$(childId)).data.linkedParents
-                       .hasAny([request.auth.uid]);
+                    && request.auth.uid in get(/databases/$(database)/documents/children/$(childId)).data.linkedParents;
         allow write: if request.auth != null && request.auth.uid == childId;
       }
     }

@@ -77,6 +77,12 @@
             android:exported="false"
             android:foregroundServiceType="location" />
 
+        <!-- Captures the screen for remote screenshots. -->
+        <service
+            android:name=".screenshot.ScreenCaptureService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
         <!-- Receives geofence enter/exit transitions. -->
         <receiver
             android:name=".location.GeofenceBroadcastReceiver"

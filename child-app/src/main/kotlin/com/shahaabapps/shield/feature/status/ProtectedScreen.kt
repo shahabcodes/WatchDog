@@ -41,6 +41,7 @@ import com.shahaabapps.core.ui.theme.Spacing
 import com.shahaabapps.shield.enforcement.EnforcementSetupCard
 import com.shahaabapps.shield.feature.settings.SettingsScreen
 import com.shahaabapps.shield.location.LocationSetupCard
+import com.shahaabapps.shield.screenshot.ScreenshotSetupCard
 
 @Composable
 fun ProtectedScreen(
@@ -124,6 +125,7 @@ fun ProtectedScreen(
 
             EnforcementSetupCard()
             LocationSetupCard()
+            ScreenshotSetupCard()
         }
     }
 }

@@ -43,6 +43,8 @@ private val LIMIT_OPTIONS = listOf(null, 15, 30, 60, 120, 180)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChildDetailScreen(
+    onOpenGeofences: () -> Unit,
+    onRequestScreenshot: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ChildDetailViewModel = hiltViewModel(),
 ) {
@@ -50,23 +52,43 @@ fun ChildDetailScreen(
     var editing by remember { mutableStateOf<AppRuleRow?>(null) }
 
     CupertinoScaffold(title = state.childName.ifBlank { "Child" }, modifier = modifier) {
-        if (state.rows.isEmpty()) {
-            EmptyInventory()
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = Spacing.lg),
-                verticalArrangement = Arrangement.spacedBy(Spacing.sm),
-            ) {
-                item {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = Spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+        ) {
+            item {
+                CupertinoCard(onClick = onOpenGeofences) {
+                    Text("Places & geofences", style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        text = "Tap an app to set a daily limit or block it.",
-                        style = MaterialTheme.typography.bodyMedium,
+                        "Get alerts when they enter or leave a place",
+                        style = MaterialTheme.typography.bodySmall,
                         color = AppTheme.colors.secondaryLabel,
-                        modifier = Modifier.padding(vertical = Spacing.sm),
                     )
                 }
+            }
+            item {
+                CupertinoCard(onClick = onRequestScreenshot) {
+                    Text("Request a screenshot", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "See what's on the screen right now",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AppTheme.colors.secondaryLabel,
+                    )
+                }
+            }
+            item {
+                Text(
+                    text = "APPS — tap to set a daily limit or block",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.secondaryLabel,
+                    modifier = Modifier.padding(top = Spacing.md, bottom = Spacing.sm),
+                )
+            }
+            if (state.rows.isEmpty()) {
+                item { InventoryHint() }
+            } else {
                 items(state.rows, key = { it.app.packageName }) { row ->
                     CupertinoCard(onClick = { editing = row }) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -178,18 +200,14 @@ private fun RuleEditor(
 }
 
 @Composable
-private fun EmptyInventory() {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(Spacing.xl),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(text = "Waiting for app list", style = MaterialTheme.typography.headlineMedium)
+private fun InventoryHint() {
+    CupertinoCard {
+        Text(text = "Waiting for app list", style = MaterialTheme.typography.bodyLarge)
         Text(
-            text = "Open Shield on the child's phone once it's connected — its apps will appear here.",
+            text = "Open Shield on the child's phone — its apps will appear here.",
             style = MaterialTheme.typography.bodyMedium,
             color = AppTheme.colors.secondaryLabel,
-            modifier = Modifier.padding(top = Spacing.sm),
+            modifier = Modifier.padding(top = Spacing.xs),
         )
     }
 }

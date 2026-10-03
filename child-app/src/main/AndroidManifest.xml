@@ -70,5 +70,25 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/enforcement_accessibility_config" />
         </service>
+
+        <!-- Keeps geofences registered. -->
+        <service
+            android:name=".location.GeofenceSyncService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
+        <!-- Receives geofence enter/exit transitions. -->
+        <receiver
+            android:name=".location.GeofenceBroadcastReceiver"
+            android:exported="false" />
+
+        <!-- Restarts geofence syncing after reboot. -->
+        <receiver
+            android:name=".location.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

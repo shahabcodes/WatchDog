@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -133,7 +135,7 @@ fun CupertinoListRow(
 @Composable
 fun CupertinoDisclosure(modifier: Modifier = Modifier) {
     Icon(
-        imageVector = androidx.compose.material.icons.Icons.AutoMirrored.Filled.KeyboardArrowRight,
+        imageVector = Icons.Filled.KeyboardArrowRight,
         contentDescription = null,
         tint = AppTheme.colors.secondaryLabel,
         modifier = modifier,

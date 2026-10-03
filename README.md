@@ -36,8 +36,8 @@ child-app                Child app: anonymous auth + profile setup + pairing stu
 ## Firebase setup
 
 1. In the Firebase console create two Android apps:
-   - `com.fms.parentalcontrol.parent`
-   - `com.fms.parentalcontrol.child`
+   - `com.shahaabapps.watchdog`
+   - `com.shahaabapps.shield`
 2. Download each `google-services.json` and place them at:
    - `parent-app/google-services.json`
    - `child-app/google-services.json`

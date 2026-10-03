@@ -7,10 +7,10 @@ plugins {
 }
 
 android {
-    namespace = "com.fms.parentalcontrol.parent"
+    namespace = "com.shahaabapps.watchdog"
 
     defaultConfig {
-        applicationId = "com.fms.parentalcontrol.parent"
+        applicationId = "com.shahaabapps.watchdog"
     }
 }
 

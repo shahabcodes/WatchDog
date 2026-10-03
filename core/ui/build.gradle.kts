@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.fms.parentalcontrol.core.ui"
+    namespace = "com.shahaabapps.core.ui"
 }
 
 dependencies {

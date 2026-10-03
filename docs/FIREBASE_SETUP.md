@@ -11,8 +11,8 @@ Add **two** Android apps under Project settings → Your apps:
 
 | App | Package name | Put the file in |
 |-----|--------------|-----------------|
-| Watch Dog (parent) | `com.fms.parentalcontrol.parent` | `parent-app/google-services.json` |
-| Shield (child)     | `com.fms.parentalcontrol.child`  | `child-app/google-services.json`  |
+| Watch Dog (parent) | `com.shahaabapps.watchdog` | `parent-app/google-services.json` |
+| Shield (child)     | `com.shahaabapps.shield`  | `child-app/google-services.json`  |
 
 Download each `google-services.json` and drop it in the folder shown. These files are
 git-ignored — each developer/machine supplies their own.

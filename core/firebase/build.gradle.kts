@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.fms.parentalcontrol.core.firebase"
+    namespace = "com.shahaabapps.core.firebase"
 }
 
 dependencies {

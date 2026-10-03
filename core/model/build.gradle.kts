@@ -3,5 +3,5 @@ plugins {
 }
 
 android {
-    namespace = "com.fms.parentalcontrol.core.model"
+    namespace = "com.shahaabapps.core.model"
 }

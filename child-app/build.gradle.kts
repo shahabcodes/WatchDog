@@ -7,10 +7,10 @@ plugins {
 }
 
 android {
-    namespace = "com.fms.parentalcontrol.child"
+    namespace = "com.shahaabapps.shield"
 
     defaultConfig {
-        applicationId = "com.fms.parentalcontrol.child"
+        applicationId = "com.shahaabapps.shield"
     }
 }
 

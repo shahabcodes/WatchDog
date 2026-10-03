@@ -2,7 +2,7 @@ plugins {
     `kotlin-dsl`
 }
 
-group = "com.fms.parentalcontrol.buildlogic"
+group = "com.shahaabapps.buildlogic"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17

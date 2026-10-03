@@ -1,6 +1,8 @@
 package com.shahaabapps.watchdog.feature.dashboard
 
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,8 +20,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -30,11 +34,15 @@ import com.shahaabapps.core.ui.components.Avatar
 import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.components.CupertinoPrimaryButton
 import com.shahaabapps.core.ui.components.CupertinoScaffold
+import com.shahaabapps.core.ui.components.CupertinoTextButton
 import com.shahaabapps.core.ui.components.StatusChip
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun DashboardScreen(
@@ -46,8 +54,24 @@ fun DashboardScreen(
     val children by viewModel.children.collectAsStateWithLifecycle()
     val linkState by viewModel.linkState.collectAsStateWithLifecycle()
 
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
     val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
         viewModel.onQrScanned(result.contents)
+    }
+
+    val imagePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val contents = withContext(Dispatchers.IO) {
+                    QrImageDecoder.decodeFromUri(context, uri)
+                }
+                if (contents != null) viewModel.onQrScanned(contents) else viewModel.onImageDecodeFailed()
+            }
+        }
     }
 
     fun launchScanner() {
@@ -57,6 +81,12 @@ fun DashboardScreen(
             .setBeepEnabled(false)
             .setOrientationLocked(false)
         scanLauncher.launch(options)
+    }
+
+    fun pickFromGallery() {
+        imagePicker.launch(
+            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+        )
     }
 
     CupertinoScaffold(title = "Hi, ${profile.name}", modifier = modifier) {
@@ -86,9 +116,13 @@ fun DashboardScreen(
             }
 
             CupertinoPrimaryButton(
-                text = "Add a child",
+                text = "Scan child's QR",
                 onClick = { launchScanner() },
                 modifier = Modifier.padding(top = Spacing.sm),
+            )
+            CupertinoTextButton(
+                text = "Choose QR from gallery",
+                onClick = { pickFromGallery() },
             )
         }
     }

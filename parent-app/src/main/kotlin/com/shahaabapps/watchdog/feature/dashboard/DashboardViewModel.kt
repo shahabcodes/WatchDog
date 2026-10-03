@@ -57,6 +57,10 @@ class DashboardViewModel @Inject constructor(
 
     fun onManualCode(childId: String, code: String) = linkWith(childId, code.trim())
 
+    fun onImageDecodeFailed() {
+        _linkState.value = LinkState.Error("No QR code found in that image.")
+    }
+
     private fun linkWith(childId: String, code: String) {
         val parentId = authRepository.currentUserIdOrNull() ?: return
         _linkState.value = LinkState.Linking

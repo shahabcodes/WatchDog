@@ -30,6 +30,9 @@ dependencies {
     // QR generation (child shows its pairing code)
     implementation(libs.zxing.core)
 
+    // Location + geofencing
+    implementation(libs.play.services.location)
+
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)

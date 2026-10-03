@@ -18,6 +18,8 @@ jobs:
       # Build-number-based app version; the Gradle convention plugin reads these.
       APP_VERSION_NAME: 0.1.${{ github.run_number }}
       APP_VERSION_CODE: ${{ github.run_number }}
+      # Google Maps key (empty if the secret isn't set — map tiles just won't load).
+      MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

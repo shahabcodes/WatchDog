@@ -6,8 +6,12 @@ import com.shahaabapps.core.firebase.child.ChildRepository
 import com.shahaabapps.core.firebase.child.FirebaseChildRepository
 import com.shahaabapps.core.firebase.profile.FirebaseProfileRepository
 import com.shahaabapps.core.firebase.profile.ProfileRepository
+import com.shahaabapps.core.firebase.geofence.FirebaseGeofenceRepository
+import com.shahaabapps.core.firebase.geofence.GeofenceRepository
 import com.shahaabapps.core.firebase.rules.AppRulesRepository
 import com.shahaabapps.core.firebase.rules.FirebaseAppRulesRepository
+import com.shahaabapps.core.firebase.screenshot.FirebaseScreenshotRepository
+import com.shahaabapps.core.firebase.screenshot.ScreenshotRepository
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.auth
@@ -58,4 +62,12 @@ interface FirebaseBindsModule {
     @Binds
     @Singleton
     fun bindAppRulesRepository(impl: FirebaseAppRulesRepository): AppRulesRepository
+
+    @Binds
+    @Singleton
+    fun bindGeofenceRepository(impl: FirebaseGeofenceRepository): GeofenceRepository
+
+    @Binds
+    @Singleton
+    fun bindScreenshotRepository(impl: FirebaseScreenshotRepository): ScreenshotRepository
 }

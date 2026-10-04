@@ -4,15 +4,17 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.shahaabapps.core.firebase.child.ChildRepository
+import com.shahaabapps.core.firebase.device.DeviceRepository
 import com.shahaabapps.core.firebase.rules.AppRulesRepository
 import com.shahaabapps.core.model.AppRule
+import com.shahaabapps.core.model.ChildLocation
 import com.shahaabapps.core.model.InstalledApp
 import com.shahaabapps.core.model.TimeWindow
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -32,6 +34,7 @@ class ChildDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val appRulesRepository: AppRulesRepository,
     private val childRepository: ChildRepository,
+    private val deviceRepository: DeviceRepository,
 ) : ViewModel() {
 
     val childId: String = checkNotNull(savedStateHandle[ARG_CHILD_ID])
@@ -52,6 +55,13 @@ class ChildDetailViewModel @Inject constructor(
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = ChildDetailUiState(),
     )
+
+    val childLocation: StateFlow<ChildLocation?> = deviceRepository.observeLocation(childId)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun ringDevice(message: String) {
+        viewModelScope.launch { deviceRepository.sendRing(childId, message) }
+    }
 
     fun saveRule(
         app: InstalledApp,

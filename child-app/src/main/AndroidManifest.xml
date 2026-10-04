@@ -58,6 +58,17 @@
             android:taskAffinity=""
             android:theme="@style/Theme.ChildApp" />
 
+        <!-- Full-screen alarm shown when the parent rings the device. -->
+        <activity
+            android:name=".location.RingActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:showOnLockScreen="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.ChildApp"
+            android:turnScreenOn="true" />
+
         <!-- Accessibility service that detects the foreground app and enforces rules. -->
         <service
             android:name=".enforcement.EnforcementService"

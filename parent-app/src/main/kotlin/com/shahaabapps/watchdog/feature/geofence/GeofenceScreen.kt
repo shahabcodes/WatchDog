@@ -19,7 +19,6 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Pentagon
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Place
@@ -34,6 +33,9 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -42,6 +44,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -74,8 +77,10 @@ import com.shahaabapps.core.model.GeofenceEvent
 import com.shahaabapps.core.model.GeofenceShape
 import com.shahaabapps.core.model.GeofenceTransition
 import com.shahaabapps.core.model.GeofenceTrigger
+import com.shahaabapps.core.ui.components.ConfirmDialog
 import com.shahaabapps.core.ui.components.CupertinoPrimaryButton
 import com.shahaabapps.core.ui.components.CupertinoTextField
+import kotlinx.coroutines.launch
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
 
@@ -99,7 +104,24 @@ fun GeofenceScreen(
     var showCircleSheet by remember { mutableStateOf(false) }
     var showAreaSheet by remember { mutableStateOf(false) }
     var showList by remember { mutableStateOf(false) }
-    var showRingSheet by remember { mutableStateOf(false) }
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    fun removePoint(index: Int) {
+        if (index !in area.indices) return
+        val removed = area[index]
+        area = area.filterIndexed { i, _ -> i != index }
+        scope.launch {
+            val result = snackbarHostState.showSnackbar(
+                message = "Point removed",
+                actionLabel = "Undo",
+                withDismissAction = true,
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                area = area.toMutableList().apply { add(index.coerceAtMost(size), removed) }
+            }
+        }
+    }
 
     val initialCenter = childLocation?.let { LatLng(it.latitude, it.longitude) }
         ?: geofences.firstOrNull()?.let { LatLng(it.latitude, it.longitude) }
@@ -266,11 +288,11 @@ fun GeofenceScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.weight(1f).padding(start = Spacing.sm),
                     )
-                    IconButton(onClick = { area = area.dropLast(1) }) {
-                        Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Undo")
+                    IconButton(onClick = { removePoint(area.lastIndex) }) {
+                        Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Undo last point")
                     }
                     IconButton(onClick = { area = emptyList() }) {
-                        Icon(Icons.Filled.DeleteSweep, contentDescription = "Clear")
+                        Icon(Icons.Filled.DeleteSweep, contentDescription = "Clear all")
                     }
                     ExtendedFloatingActionButton(
                         onClick = { showAreaSheet = true },
@@ -292,16 +314,11 @@ fun GeofenceScreen(
             )
         }
 
-        // Ring device FAB
-        ExtendedFloatingActionButton(
-            onClick = { showRingSheet = true },
-            icon = { Icon(Icons.Filled.NotificationsActive, contentDescription = null) },
-            text = { Text("Ring") },
-            containerColor = LIVE_BLUE,
-            contentColor = Color.White,
+        SnackbarHost(
+            hostState = snackbarHostState,
             modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(Spacing.lg),
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 88.dp),
         )
     }
 
@@ -344,18 +361,6 @@ fun GeofenceScreen(
         }
     }
 
-    // Ring device sheet
-    if (showRingSheet) {
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ModalBottomSheet(onDismissRequest = { showRingSheet = false }, sheetState = sheetState) {
-            RingEditor(
-                onRing = { message ->
-                    viewModel.ringDevice(message)
-                    showRingSheet = false
-                },
-            )
-        }
-    }
 }
 
 @OptIn(MapsComposeExperimentalApi::class)
@@ -380,28 +385,6 @@ private fun ChildMarker(position: LatLng) {
         ) {
             Icon(Icons.Filled.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
         }
-    }
-}
-
-@Composable
-private fun RingEditor(onRing: (message: String) -> Unit) {
-    var message by remember { mutableStateOf("") }
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl),
-        verticalArrangement = Arrangement.spacedBy(Spacing.md),
-    ) {
-        Text("Ring device", style = MaterialTheme.typography.headlineMedium)
-        Text(
-            "Plays a loud alarm on the child's phone and shows your message, even if the phone is on silent. They can snooze or dismiss it.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = AppTheme.colors.secondaryLabel,
-        )
-        CupertinoTextField(
-            value = message,
-            onValueChange = { message = it },
-            placeholder = "Message (e.g. Call me now)",
-        )
-        CupertinoPrimaryButton(text = "Ring now", onClick = { onRing(message) })
     }
 }
 
@@ -505,6 +488,16 @@ private fun PlacesList(
     events: List<GeofenceEvent>,
     onDelete: (String) -> Unit,
 ) {
+    var pendingDelete by remember { mutableStateOf<Geofence?>(null) }
+    pendingDelete?.let { target ->
+        ConfirmDialog(
+            title = "Delete \"${target.name}\"?",
+            message = "This place and its alerts will be removed for this child.",
+            confirmText = "Delete",
+            onConfirm = { onDelete(target.id); pendingDelete = null },
+            onDismiss = { pendingDelete = null },
+        )
+    }
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl)) {
         Text("Places & areas", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = Spacing.sm))
         if (geofences.isEmpty()) {
@@ -530,7 +523,7 @@ private fun PlacesList(
                                 color = AppTheme.colors.secondaryLabel,
                             )
                         }
-                        IconButton(onClick = { onDelete(g.id) }) {
+                        IconButton(onClick = { pendingDelete = g }) {
                             Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = AppTheme.colors.destructive)
                         }
                     }

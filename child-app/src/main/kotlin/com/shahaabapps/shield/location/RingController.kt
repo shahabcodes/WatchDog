@@ -15,7 +15,6 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import androidx.core.app.NotificationCompat
-import com.shahaabapps.shield.MainActivity
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -38,6 +37,9 @@ class RingController @Inject constructor(
         showNotification(message)
         startAlarm()
         cancelSnoozeAlarm()
+        // Try to bring the full-screen alarm up directly (works when allowed);
+        // otherwise the notification's full-screen intent handles it.
+        runCatching { context.startActivity(RingActivity.intent(context, message)) }
     }
 
     /** Stop the alarm now, then ring again after [SNOOZE_MINUTES] minutes. */
@@ -123,7 +125,7 @@ class RingController @Inject constructor(
         val fullScreen = PendingIntent.getActivity(
             context,
             0,
-            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            RingActivity.intent(context, message),
             pendingFlags(),
         )
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)

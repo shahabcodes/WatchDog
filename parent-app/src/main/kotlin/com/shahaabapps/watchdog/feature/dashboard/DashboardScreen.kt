@@ -4,6 +4,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -151,7 +153,22 @@ fun DashboardScreen(
 private fun ChildRow(child: ChildAccount, onClick: () -> Unit) {
     CupertinoCard(onClick = onClick) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Avatar(name = child.profile.name, photoUrl = child.profile.photoUrl, size = 48.dp)
+            Box {
+                Avatar(name = child.profile.name, photoUrl = child.profile.photoUrl, size = 52.dp)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(15.dp)
+                        .clip(CircleShape)
+                        .background(AppTheme.colors.card)
+                        .padding(2.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (child.device.online) AppTheme.colors.success
+                            else AppTheme.colors.secondaryLabel,
+                        ),
+                )
+            }
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -160,7 +177,7 @@ private fun ChildRow(child: ChildAccount, onClick: () -> Unit) {
             ) {
                 Text(
                     text = child.profile.name.ifBlank { "Child" },
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = MaterialTheme.typography.titleMedium,
                 )
                 StatusChip(
                     text = if (child.device.online) "Online" else "Offline",

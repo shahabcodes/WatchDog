@@ -1,7 +1,9 @@
 package com.shahaabapps.watchdog.feature.rules
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -9,15 +11,19 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,6 +38,7 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -39,12 +46,25 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.google.android.gms.maps.GoogleMapOptions
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
+import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.LatLng
+import com.google.maps.android.compose.GoogleMap
+import com.google.maps.android.compose.MapUiSettings
+import com.google.maps.android.compose.Marker
+import com.google.maps.android.compose.rememberCameraPositionState
+import com.google.maps.android.compose.rememberMarkerState
 import com.shahaabapps.core.model.AppRule
+import com.shahaabapps.core.model.ChildLocation
 import com.shahaabapps.core.model.TimeWindow
+import com.shahaabapps.core.ui.components.ConfirmDialog
 import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.components.CupertinoDisclosure
 import com.shahaabapps.core.ui.components.CupertinoListRow
@@ -52,7 +72,10 @@ import com.shahaabapps.core.ui.components.CupertinoPrimaryButton
 import com.shahaabapps.core.ui.components.CupertinoScaffold
 import com.shahaabapps.core.ui.components.CupertinoSwitch
 import com.shahaabapps.core.ui.components.CupertinoTextButton
+import com.shahaabapps.core.ui.components.CupertinoTextField
+import com.shahaabapps.core.ui.components.IconBadge
 import com.shahaabapps.core.ui.components.StatusChip
+import androidx.compose.ui.graphics.vector.ImageVector
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
 
@@ -67,7 +90,9 @@ fun ChildDetailScreen(
     viewModel: ChildDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val childLocation by viewModel.childLocation.collectAsStateWithLifecycle()
     var editing by remember { mutableStateOf<AppRuleRow?>(null) }
+    var showRingSheet by remember { mutableStateOf(false) }
 
     CupertinoScaffold(title = state.childName.ifBlank { "Child" }, modifier = modifier) {
         LazyColumn(
@@ -77,36 +102,30 @@ fun ChildDetailScreen(
             verticalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
             item {
-                CupertinoCard(onClick = onOpenGeofences) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Place, contentDescription = null, tint = AppTheme.colors.accent)
-                        Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
-                            Text("Places & geofences", style = MaterialTheme.typography.bodyLarge)
-                            Text(
-                                "Alerts when they enter or leave a place",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = AppTheme.colors.secondaryLabel,
-                            )
-                        }
-                        CupertinoDisclosure()
-                    }
-                }
+                LocationCard(
+                    location = childLocation,
+                    childName = state.childName,
+                    onOpenMap = onOpenGeofences,
+                    onRing = { showRingSheet = true },
+                )
             }
             item {
-                CupertinoCard(onClick = onOpenUsage) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.BarChart, contentDescription = null, tint = AppTheme.colors.accent)
-                        Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
-                            Text("Screen time", style = MaterialTheme.typography.bodyLarge)
-                            Text(
-                                "See today's app usage",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = AppTheme.colors.secondaryLabel,
-                            )
-                        }
-                        CupertinoDisclosure()
-                    }
-                }
+                NavCard(
+                    icon = Icons.Filled.Place,
+                    tint = Color(0xFF2F7DF6),
+                    title = "Places & geofences",
+                    subtitle = "Alerts when they enter or leave a place",
+                    onClick = onOpenGeofences,
+                )
+            }
+            item {
+                NavCard(
+                    icon = Icons.Filled.BarChart,
+                    tint = Color(0xFFAF52DE),
+                    title = "Screen time",
+                    subtitle = "See today's app usage",
+                    onClick = onOpenUsage,
+                )
             }
             item {
                 Text(
@@ -167,6 +186,172 @@ fun ChildDetailScreen(
             )
         }
     }
+
+    if (showRingSheet) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(onDismissRequest = { showRingSheet = false }, sheetState = sheetState) {
+            RingEditor(
+                onRing = { message ->
+                    viewModel.ringDevice(message)
+                    showRingSheet = false
+                },
+            )
+        }
+    }
+}
+
+private val LIVE_BLUE = Color(0xFF2F7DF6)
+
+@Composable
+private fun NavCard(
+    icon: ImageVector,
+    tint: Color,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    CupertinoCard(onClick = onClick) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconBadge(icon = icon, tint = tint)
+            Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
+                Text(title, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.secondaryLabel,
+                )
+            }
+            CupertinoDisclosure()
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LocationCard(
+    location: ChildLocation?,
+    childName: String,
+    onOpenMap: () -> Unit,
+    onRing: () -> Unit,
+) {
+    CupertinoCard {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Place, contentDescription = null, tint = LIVE_BLUE)
+                Column(modifier = Modifier.weight(1f).padding(start = Spacing.sm)) {
+                    Text("Live location", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        text = location?.let { "Updated ${relativeTime(it.timestampMillis)}" }
+                            ?: "Waiting for location…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AppTheme.colors.secondaryLabel,
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(170.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(AppTheme.colors.separator)
+                    .clickable(onClick = onOpenMap),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (location != null) {
+                    val pos = LatLng(location.latitude, location.longitude)
+                    val cameraState = rememberCameraPositionState {
+                        position = CameraPosition.fromLatLngZoom(pos, 15f)
+                    }
+                    LaunchedEffect(pos) {
+                        cameraState.position = CameraPosition.fromLatLngZoom(pos, 15f)
+                    }
+                    GoogleMap(
+                        modifier = Modifier.fillMaxSize(),
+                        cameraPositionState = cameraState,
+                        googleMapOptionsFactory = { GoogleMapOptions().liteMode(true) },
+                        uiSettings = MapUiSettings(
+                            zoomControlsEnabled = false,
+                            scrollGesturesEnabled = false,
+                            zoomGesturesEnabled = false,
+                            compassEnabled = false,
+                            mapToolbarEnabled = false,
+                        ),
+                    ) {
+                        Marker(
+                            state = rememberMarkerState(position = pos),
+                            icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE),
+                            title = childName.ifBlank { "Child" },
+                        )
+                    }
+                    // Transparent overlay so a tap opens our full map, not Google Maps.
+                    Box(modifier = Modifier.matchParentSize().clickable(onClick = onOpenMap))
+                } else {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Filled.LocationOff,
+                            contentDescription = null,
+                            tint = AppTheme.colors.secondaryLabel,
+                            modifier = Modifier.size(32.dp),
+                        )
+                        Text(
+                            "No location yet",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = AppTheme.colors.secondaryLabel,
+                            modifier = Modifier.padding(top = Spacing.xs),
+                        )
+                    }
+                }
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                CupertinoPrimaryButton(
+                    text = "Ring device",
+                    onClick = onRing,
+                    modifier = Modifier.weight(1f),
+                )
+                CupertinoTextButton(
+                    text = "Open map",
+                    onClick = onOpenMap,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+private fun relativeTime(millis: Long): String {
+    if (millis <= 0) return "just now"
+    val diff = System.currentTimeMillis() - millis
+    val mins = diff / 60_000
+    return when {
+        mins < 1 -> "just now"
+        mins < 60 -> "$mins min ago"
+        mins < 1440 -> "${mins / 60} h ago"
+        else -> "${mins / 1440} d ago"
+    }
+}
+
+@Composable
+private fun RingEditor(onRing: (message: String) -> Unit) {
+    var message by remember { mutableStateOf("") }
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl),
+        verticalArrangement = Arrangement.spacedBy(Spacing.md),
+    ) {
+        Text("Ring device", style = MaterialTheme.typography.headlineMedium)
+        Text(
+            "Plays a loud alarm on the child's phone and shows your message, even if the phone is on silent. They can stop it with the volume or power button.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = AppTheme.colors.secondaryLabel,
+        )
+        CupertinoTextField(
+            value = message,
+            onValueChange = { message = it },
+            placeholder = "Message (e.g. Call me now)",
+        )
+        CupertinoPrimaryButton(text = "Ring now", onClick = { onRing(message) })
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -185,6 +370,7 @@ private fun RuleEditor(
     }
     // (window index, isStart) currently being edited in the time picker.
     var editing by remember { mutableStateOf<Pair<Int, Boolean>?>(null) }
+    var confirmRemove by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -279,8 +465,18 @@ private fun RuleEditor(
             },
         )
         if (row.rule != null) {
-            CupertinoTextButton(text = "Remove rule", onClick = onRemove, destructive = true)
+            CupertinoTextButton(text = "Remove rule", onClick = { confirmRemove = true }, destructive = true)
         }
+    }
+
+    if (confirmRemove) {
+        ConfirmDialog(
+            title = "Remove rule?",
+            message = "This clears the limit and schedule for ${row.app.label.ifBlank { "this app" }}.",
+            confirmText = "Remove",
+            onConfirm = { confirmRemove = false; onRemove() },
+            onDismiss = { confirmRemove = false },
+        )
     }
 
     val editingWindow = editing

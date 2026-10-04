@@ -50,12 +50,18 @@ import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.Circle
 import com.google.maps.android.compose.GoogleMap
+import com.google.maps.android.compose.GoogleMapComposable
 import com.google.maps.android.compose.MapUiSettings
-import com.google.maps.android.compose.Marker
+import com.google.maps.android.compose.MapsComposeExperimentalApi
+import com.google.maps.android.compose.MarkerComposable
 import com.google.maps.android.compose.Polygon
 import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberMarkerState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import com.shahaabapps.core.model.GeoPoint
 import com.shahaabapps.core.model.Geofence
 import com.shahaabapps.core.model.GeofenceEvent
@@ -125,17 +131,14 @@ fun GeofenceScreen(
                         strokeWidth = 4f,
                     )
                 }
-                Marker(
-                    state = rememberMarkerState(position = LatLng(g.latitude, g.longitude)),
-                    title = g.name,
-                )
+                PlaceMarker(position = LatLng(g.latitude, g.longitude), title = g.name, accent = accent)
             }
 
             // In-progress drawing
             if (mode == DrawMode.PIN) {
-                pending?.let { Marker(state = rememberMarkerState(position = it), title = "New place") }
+                pending?.let { PlaceMarker(position = it, title = "New place", accent = accent) }
             } else {
-                area.forEach { pt -> Marker(state = rememberMarkerState(position = pt)) }
+                area.forEachIndexed { i, pt -> VertexMarker(key = i, position = pt, accent = accent) }
                 when {
                     area.size >= 3 -> Polygon(
                         points = area,
@@ -287,6 +290,51 @@ fun GeofenceScreen(
                 onDelete = { viewModel.deleteGeofence(it) },
             )
         }
+    }
+}
+
+@OptIn(MapsComposeExperimentalApi::class)
+@Composable
+@GoogleMapComposable
+private fun PlaceMarker(position: LatLng, title: String, accent: Color) {
+    MarkerComposable(
+        position,
+        state = rememberMarkerState(position = position),
+        title = title,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(Color.White)
+                .padding(3.dp)
+                .clip(CircleShape)
+                .background(accent),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Filled.Place, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+@OptIn(MapsComposeExperimentalApi::class)
+@Composable
+@GoogleMapComposable
+private fun VertexMarker(key: Int, position: LatLng, accent: Color) {
+    MarkerComposable(
+        key, position,
+        state = rememberMarkerState(position = position),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(18.dp)
+                .clip(CircleShape)
+                .background(Color.White)
+                .border(1.dp, accent, CircleShape)
+                .padding(4.dp)
+                .clip(CircleShape)
+                .background(accent),
+        )
     }
 }
 

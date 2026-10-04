@@ -1,10 +1,12 @@
 package com.shahaabapps.watchdog.feature.rules
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -13,12 +15,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -173,12 +178,11 @@ private fun RuleEditor(
 ) {
     var blocked by remember { mutableStateOf(row.rule?.blocked ?: false) }
     var limit by remember { mutableStateOf(row.rule?.dailyLimitMinutes) }
-    val existingWindow = row.rule?.schedule?.firstOrNull()
-    var scheduleEnabled by remember { mutableStateOf(existingWindow != null) }
-    var startMin by remember { mutableIntStateOf(existingWindow?.startMinuteOfDay ?: 7 * 60) }
-    var endMin by remember { mutableIntStateOf(existingWindow?.endMinuteOfDay ?: 21 * 60) }
-    var editingStart by remember { mutableStateOf(false) }
-    var editingEnd by remember { mutableStateOf(false) }
+    var windows by remember {
+        mutableStateOf(row.rule?.schedule?.map { it.startMinuteOfDay to it.endMinuteOfDay } ?: emptyList())
+    }
+    // (window index, isStart) currently being edited in the time picker.
+    var editing by remember { mutableStateOf<Pair<Int, Boolean>?>(null) }
 
     Column(
         modifier = Modifier
@@ -218,29 +222,43 @@ private fun RuleEditor(
             }
 
             Text("Allowed hours", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "The app works only during these times. Add as many windows as you like; leave empty to allow all day.",
+                style = MaterialTheme.typography.bodySmall,
+                color = AppTheme.colors.secondaryLabel,
+            )
             CupertinoCard {
                 Column {
-                    CupertinoListRow(
-                        title = "Only during set hours",
-                        subtitle = "Blocked outside this window",
-                        showDivider = scheduleEnabled,
-                        trailing = {
-                            CupertinoSwitch(checked = scheduleEnabled, onCheckedChange = { scheduleEnabled = it })
-                        },
-                    )
-                    if (scheduleEnabled) {
-                        CupertinoListRow(
-                            title = "From",
-                            onClick = { editingStart = true },
-                            trailing = { Text(formatMinutes(startMin), color = AppTheme.colors.accent) },
-                        )
-                        CupertinoListRow(
-                            title = "To",
-                            showDivider = false,
-                            onClick = { editingEnd = true },
-                            trailing = { Text(formatMinutes(endMin), color = AppTheme.colors.accent) },
-                        )
+                    windows.forEachIndexed { i, window ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        ) {
+                            Text(
+                                formatMinutes(window.first),
+                                color = AppTheme.colors.accent,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.clickable { editing = i to true }.padding(horizontal = 6.dp, vertical = 4.dp),
+                            )
+                            Text(" – ", color = AppTheme.colors.secondaryLabel)
+                            Text(
+                                formatMinutes(window.second),
+                                color = AppTheme.colors.accent,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.clickable { editing = i to false }.padding(horizontal = 6.dp, vertical = 4.dp),
+                            )
+                            Spacer(modifier = Modifier.weight(1f))
+                            IconButton(onClick = { windows = windows.filterIndexed { idx, _ -> idx != i } }) {
+                                Icon(Icons.Filled.Close, contentDescription = "Remove", tint = AppTheme.colors.secondaryLabel)
+                            }
+                        }
                     }
+                    CupertinoListRow(
+                        title = "Add hours",
+                        leadingIcon = Icons.Filled.Add,
+                        showDivider = false,
+                        onClick = { windows = windows + (8 * 60 to 11 * 60) },
+                    )
                 }
             }
         }
@@ -248,10 +266,12 @@ private fun RuleEditor(
         CupertinoPrimaryButton(
             text = "Save",
             onClick = {
-                val schedule = if (!blocked && scheduleEnabled) {
-                    listOf(TimeWindow(startMin, endMin, setOf(1, 2, 3, 4, 5, 6, 7)))
-                } else {
+                val schedule = if (blocked) {
                     emptyList()
+                } else {
+                    windows
+                        .filter { it.first != it.second }
+                        .map { TimeWindow(it.first, it.second, setOf(1, 2, 3, 4, 5, 6, 7)) }
                 }
                 onSave(if (blocked) null else limit, blocked, schedule)
             },
@@ -261,11 +281,18 @@ private fun RuleEditor(
         }
     }
 
-    if (editingStart) {
-        TimePickerSheet(initialMinutes = startMin, onDismiss = { editingStart = false }) { startMin = it; editingStart = false }
-    }
-    if (editingEnd) {
-        TimePickerSheet(initialMinutes = endMin, onDismiss = { editingEnd = false }) { endMin = it; editingEnd = false }
+    val editingWindow = editing
+    if (editingWindow != null) {
+        val (index, isStart) = editingWindow
+        val initial = if (isStart) windows[index].first else windows[index].second
+        TimePickerSheet(initialMinutes = initial, onDismiss = { editing = null }) { picked ->
+            windows = windows.mapIndexed { idx, w ->
+                if (idx != index) w
+                else if (isStart) picked to w.second
+                else w.first to picked
+            }
+            editing = null
+        }
     }
 }
 

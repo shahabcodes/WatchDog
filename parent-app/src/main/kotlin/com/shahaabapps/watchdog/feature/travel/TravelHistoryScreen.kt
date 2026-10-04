@@ -43,7 +43,6 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberMarkerState
 import com.shahaabapps.watchdog.feature.geofence.PlaceIcons
@@ -145,7 +144,6 @@ fun TravelHistoryScreen(
 private fun TravelMap(items: List<TravelStopItem>, accent: Color) {
     // Chronological order (the list is newest-first).
     val chronological = items.reversed()
-    val points = chronological.map { LatLng(it.stop.latitude, it.stop.longitude) }
     val center = LatLng(
         items.map { it.stop.latitude }.average(),
         items.map { it.stop.longitude }.average(),
@@ -176,11 +174,11 @@ private fun TravelMap(items: List<TravelStopItem>, accent: Color) {
                     mapToolbarEnabled = false,
                 ),
             ) {
+                // We only record stops (places stayed 5+ min), not the continuous
+                // route, so we show the stops as markers rather than drawing a
+                // straight line between them (which would cut across water/buildings).
                 val startIcon = rememberCircleMarker(AppTheme.colors.success)
                 val stopIcon = rememberCircleMarker(accent)
-                if (points.size >= 2) {
-                    Polyline(points = points, color = accent, width = 8f)
-                }
                 chronological.forEachIndexed { i, item ->
                     Marker(
                         state = rememberMarkerState(position = LatLng(item.stop.latitude, item.stop.longitude)),

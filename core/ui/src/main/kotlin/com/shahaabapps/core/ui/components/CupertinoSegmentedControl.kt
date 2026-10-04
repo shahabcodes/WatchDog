@@ -50,25 +50,24 @@ fun CupertinoSegmentedControl(
     Box(
         modifier = modifier
             .height(height)
-            .clip(RoundedCornerShape(50))
-            .background(AppTheme.colors.separator.copy(alpha = 0.6f))
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(50)),
+            .clip(RoundedCornerShape(12.dp))
+            .background(AppTheme.colors.separator.copy(alpha = 0.7f)),
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(3.dp)) {
             val segWidth = maxWidth / count
             val thumbOffset by animateDpAsState(
                 targetValue = segWidth * selectedIndex,
-                animationSpec = spring(dampingRatio = 0.8f, stiffness = 500f),
+                animationSpec = spring(dampingRatio = 0.85f, stiffness = 520f),
                 label = "segThumb",
             )
 
             // Sliding thumb
             Surface(
-                shape = RoundedCornerShape(50),
+                shape = RoundedCornerShape(9.dp),
                 color = AppTheme.colors.card,
                 tonalElevation = 2.dp,
-                shadowElevation = 3.dp,
-                border = BorderStroke(1.dp, accent.copy(alpha = 0.35f)),
+                shadowElevation = 2.dp,
+                border = BorderStroke(0.5.dp, accent.copy(alpha = 0.25f)),
                 modifier = Modifier
                     .offset(x = thumbOffset)
                     .width(segWidth)
@@ -82,7 +81,7 @@ fun CupertinoSegmentedControl(
                         modifier = Modifier
                             .width(segWidth)
                             .fillMaxHeight()
-                            .clip(RoundedCornerShape(50))
+                            .clip(RoundedCornerShape(9.dp))
                             .clickable { onSelect(i) },
                         contentAlignment = Alignment.Center,
                     ) {

@@ -14,23 +14,23 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 
 /**
- * A colorful rounded-square icon badge (Family Link style) — a tinted background
- * with the icon in its full color on top.
+ * An iOS Settings-style icon tile (matching Browse Safe): a solid rounded-square
+ * in the given color with a white glyph on top.
  */
 @Composable
 fun IconBadge(
     icon: ImageVector,
     tint: Color,
     modifier: Modifier = Modifier,
-    size: androidx.compose.ui.unit.Dp = 40.dp,
+    size: androidx.compose.ui.unit.Dp = 38.dp,
 ) {
     Box(
         modifier = modifier
             .size(size)
-            .clip(RoundedCornerShape(12.dp))
-            .background(tint.copy(alpha = 0.16f)),
+            .clip(RoundedCornerShape(8.dp))
+            .background(tint),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(size * 0.55f))
+        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(size * 0.56f))
     }
 }

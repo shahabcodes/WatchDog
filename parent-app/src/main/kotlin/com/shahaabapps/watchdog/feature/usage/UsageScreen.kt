@@ -31,6 +31,7 @@ import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.components.Hero
 import com.shahaabapps.core.ui.components.HeroIconButton
 import com.shahaabapps.core.ui.components.LoadingView
+import com.shahaabapps.core.ui.components.SectionHeader
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Brand
 import com.shahaabapps.core.ui.theme.Spacing
@@ -80,7 +81,7 @@ fun UsageScreen(
                     )
                 }
             } else {
-                Text("By app", style = MaterialTheme.typography.titleMedium, color = AppTheme.colors.secondaryLabel)
+                SectionHeader("By app")
                 state.rows.forEach { row -> UsageBar(row, maxMinutes) }
             }
         }

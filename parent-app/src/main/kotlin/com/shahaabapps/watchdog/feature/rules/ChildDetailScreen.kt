@@ -80,6 +80,7 @@ import com.shahaabapps.core.ui.components.CupertinoTextButton
 import com.shahaabapps.core.ui.components.CupertinoTextField
 import com.shahaabapps.core.ui.components.IconBadge
 import com.shahaabapps.core.ui.components.LoadingView
+import com.shahaabapps.core.ui.components.SectionHeader
 import com.shahaabapps.core.ui.components.StatusChip
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.shahaabapps.core.ui.theme.AppTheme
@@ -136,12 +137,7 @@ fun ChildDetailScreen(
                 )
             }
             item {
-                Text(
-                    text = "APPS — tap to set a daily limit or block",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.colors.secondaryLabel,
-                    modifier = Modifier.padding(top = Spacing.md, bottom = Spacing.sm),
-                )
+                SectionHeader("Apps · tap to set a limit or block")
             }
             if (state.loadingInventory && state.rows.isEmpty()) {
                 item { LoadingView(label = "Loading apps…", modifier = Modifier.padding(vertical = Spacing.lg)) }

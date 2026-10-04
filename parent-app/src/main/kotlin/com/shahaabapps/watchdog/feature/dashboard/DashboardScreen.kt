@@ -46,6 +46,7 @@ import com.shahaabapps.core.ui.components.CupertinoTextButton
 import com.shahaabapps.core.ui.components.Hero
 import com.shahaabapps.core.ui.components.HeroIconButton
 import com.shahaabapps.core.ui.components.LoadingView
+import com.shahaabapps.core.ui.components.SectionHeader
 import com.shahaabapps.core.ui.components.StatusChip
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
@@ -150,11 +151,7 @@ fun DashboardScreen(
             } else if (children.isEmpty()) {
                 EmptyState()
             } else {
-                Text(
-                    text = "Children",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = AppTheme.colors.secondaryLabel,
-                )
+                SectionHeader("Children")
                 children.forEach { child -> ChildRow(child, onClick = { onChildClick(child.childId) }) }
             }
 

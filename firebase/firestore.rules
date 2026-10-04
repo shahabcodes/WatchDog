@@ -57,14 +57,6 @@ service cloud.firestore {
         allow create: if request.auth != null && request.auth.uid == childId;
       }
 
-      // Commands (e.g. remote screenshot): parent requests, child fulfils.
-      match /commands/{cmdId} {
-        allow read, write: if request.auth != null && (
-          request.auth.uid == childId ||
-          request.auth.uid in get(/databases/$(database)/documents/children/$(childId)).data.linkedParents
-        );
-      }
-
       match /{document=**} {
         allow read: if request.auth != null
                     && request.auth.uid in get(/databases/$(database)/documents/children/$(childId)).data.linkedParents;

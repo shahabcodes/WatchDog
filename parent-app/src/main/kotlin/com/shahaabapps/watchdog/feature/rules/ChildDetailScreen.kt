@@ -44,7 +44,6 @@ private val LIMIT_OPTIONS = listOf(null, 15, 30, 60, 120, 180)
 @Composable
 fun ChildDetailScreen(
     onOpenGeofences: () -> Unit,
-    onRequestScreenshot: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ChildDetailViewModel = hiltViewModel(),
 ) {
@@ -63,16 +62,6 @@ fun ChildDetailScreen(
                     Text("Places & geofences", style = MaterialTheme.typography.bodyLarge)
                     Text(
                         "Get alerts when they enter or leave a place",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.secondaryLabel,
-                    )
-                }
-            }
-            item {
-                CupertinoCard(onClick = onRequestScreenshot) {
-                    Text("Request a screenshot", style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        "See what's on the screen right now",
                         style = MaterialTheme.typography.bodySmall,
                         color = AppTheme.colors.secondaryLabel,
                     )

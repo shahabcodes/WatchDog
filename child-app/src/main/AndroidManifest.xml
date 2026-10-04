@@ -16,8 +16,6 @@
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-    <!-- Remote screenshot -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Allows listing the device's launchable apps (to report to the parent)
@@ -76,12 +74,6 @@
             android:name=".location.GeofenceSyncService"
             android:exported="false"
             android:foregroundServiceType="location" />
-
-        <!-- Captures the screen for remote screenshots. -->
-        <service
-            android:name=".screenshot.ScreenCaptureService"
-            android:exported="false"
-            android:foregroundServiceType="mediaProjection" />
 
         <!-- Receives geofence enter/exit transitions. -->
         <receiver

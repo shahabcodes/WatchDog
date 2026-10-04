@@ -3,7 +3,9 @@ package com.shahaabapps.watchdog.feature.geofence
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.shahaabapps.core.firebase.device.DeviceRepository
 import com.shahaabapps.core.firebase.geofence.GeofenceRepository
+import com.shahaabapps.core.model.ChildLocation
 import com.shahaabapps.core.model.GeoMath
 import com.shahaabapps.core.model.GeoPoint
 import com.shahaabapps.core.model.Geofence
@@ -21,6 +23,7 @@ import javax.inject.Inject
 class GeofenceViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val geofenceRepository: GeofenceRepository,
+    private val deviceRepository: DeviceRepository,
 ) : ViewModel() {
 
     val childId: String = checkNotNull(savedStateHandle["childId"])
@@ -30,6 +33,13 @@ class GeofenceViewModel @Inject constructor(
 
     val events: StateFlow<List<GeofenceEvent>> = geofenceRepository.observeRecentEvents(childId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val childLocation: StateFlow<ChildLocation?> = deviceRepository.observeLocation(childId)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun ringDevice(message: String) {
+        viewModelScope.launch { deviceRepository.sendRing(childId, message) }
+    }
 
     fun saveGeofence(
         name: String,

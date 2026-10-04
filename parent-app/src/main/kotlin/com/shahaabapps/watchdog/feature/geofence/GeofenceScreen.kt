@@ -19,7 +19,9 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Pentagon
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -74,6 +76,7 @@ import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
 
 private val DEFAULT_CENTER = LatLng(25.2854, 51.5310) // Doha fallback
+private val LIVE_BLUE = Color(0xFF2F7DF6)
 private enum class DrawMode { PIN, AREA }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -84,6 +87,7 @@ fun GeofenceScreen(
 ) {
     val geofences by viewModel.geofences.collectAsStateWithLifecycle()
     val events by viewModel.events.collectAsStateWithLifecycle()
+    val childLocation by viewModel.childLocation.collectAsStateWithLifecycle()
 
     var mode by remember { mutableStateOf(DrawMode.PIN) }
     var pending by remember { mutableStateOf<LatLng?>(null) }
@@ -91,8 +95,10 @@ fun GeofenceScreen(
     var showCircleSheet by remember { mutableStateOf(false) }
     var showAreaSheet by remember { mutableStateOf(false) }
     var showList by remember { mutableStateOf(false) }
+    var showRingSheet by remember { mutableStateOf(false) }
 
-    val initialCenter = geofences.firstOrNull()?.let { LatLng(it.latitude, it.longitude) }
+    val initialCenter = childLocation?.let { LatLng(it.latitude, it.longitude) }
+        ?: geofences.firstOrNull()?.let { LatLng(it.latitude, it.longitude) }
         ?: events.firstOrNull()?.let { LatLng(it.latitude, it.longitude) }
         ?: DEFAULT_CENTER
     val cameraPositionState = rememberCameraPositionState {
@@ -148,6 +154,21 @@ fun GeofenceScreen(
                     )
                     area.size == 2 -> Polyline(points = area, color = accent, width = 6f)
                 }
+            }
+
+            // Child's live location
+            childLocation?.let { loc ->
+                val pos = LatLng(loc.latitude, loc.longitude)
+                if (loc.accuracyMeters > 0f) {
+                    Circle(
+                        center = pos,
+                        radius = loc.accuracyMeters.toDouble(),
+                        fillColor = LIVE_BLUE.copy(alpha = 0.12f),
+                        strokeColor = LIVE_BLUE.copy(alpha = 0.4f),
+                        strokeWidth = 2f,
+                    )
+                }
+                ChildMarker(position = pos)
             }
         }
 
@@ -251,6 +272,18 @@ fun GeofenceScreen(
                     .padding(Spacing.lg),
             )
         }
+
+        // Ring device FAB
+        ExtendedFloatingActionButton(
+            onClick = { showRingSheet = true },
+            icon = { Icon(Icons.Filled.NotificationsActive, contentDescription = null) },
+            text = { Text("Ring") },
+            containerColor = LIVE_BLUE,
+            contentColor = Color.White,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(Spacing.lg),
+        )
     }
 
     // Circle naming sheet
@@ -290,6 +323,66 @@ fun GeofenceScreen(
                 onDelete = { viewModel.deleteGeofence(it) },
             )
         }
+    }
+
+    // Ring device sheet
+    if (showRingSheet) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(onDismissRequest = { showRingSheet = false }, sheetState = sheetState) {
+            RingEditor(
+                onRing = { message ->
+                    viewModel.ringDevice(message)
+                    showRingSheet = false
+                },
+            )
+        }
+    }
+}
+
+@OptIn(MapsComposeExperimentalApi::class)
+@Composable
+@GoogleMapComposable
+private fun ChildMarker(position: LatLng) {
+    MarkerComposable(
+        "child",
+        position,
+        state = rememberMarkerState(position = position),
+        title = "Child's device",
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(Color.White)
+                .padding(3.dp)
+                .clip(CircleShape)
+                .background(LIVE_BLUE),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Filled.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun RingEditor(onRing: (message: String) -> Unit) {
+    var message by remember { mutableStateOf("") }
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl),
+        verticalArrangement = Arrangement.spacedBy(Spacing.md),
+    ) {
+        Text("Ring device", style = MaterialTheme.typography.headlineMedium)
+        Text(
+            "Plays a loud alarm on the child's phone and shows your message, even if the phone is on silent. They can snooze or dismiss it.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = AppTheme.colors.secondaryLabel,
+        )
+        CupertinoTextField(
+            value = message,
+            onValueChange = { message = it },
+            placeholder = "Message (e.g. Call me now)",
+        )
+        CupertinoPrimaryButton(text = "Ring now", onClick = { onRing(message) })
     }
 }
 

@@ -4,6 +4,8 @@ import com.shahaabapps.core.firebase.auth.AuthRepository
 import com.shahaabapps.core.firebase.auth.FirebaseAuthRepository
 import com.shahaabapps.core.firebase.child.ChildRepository
 import com.shahaabapps.core.firebase.child.FirebaseChildRepository
+import com.shahaabapps.core.firebase.device.DeviceRepository
+import com.shahaabapps.core.firebase.device.FirebaseDeviceRepository
 import com.shahaabapps.core.firebase.profile.FirebaseProfileRepository
 import com.shahaabapps.core.firebase.profile.ProfileRepository
 import com.shahaabapps.core.firebase.geofence.FirebaseGeofenceRepository
@@ -70,4 +72,8 @@ interface FirebaseBindsModule {
     @Binds
     @Singleton
     fun bindUsageRepository(impl: FirebaseUsageRepository): UsageRepository
+
+    @Binds
+    @Singleton
+    fun bindDeviceRepository(impl: FirebaseDeviceRepository): DeviceRepository
 }

@@ -1,16 +1,28 @@
 package com.shahaabapps.shield.location
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.Looper
+import androidx.core.content.ContextCompat
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import com.shahaabapps.core.firebase.auth.AuthRepository
+import com.shahaabapps.core.firebase.device.DeviceRepository
 import com.shahaabapps.core.firebase.geofence.GeofenceRepository
+import com.shahaabapps.core.model.ChildLocation
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -21,17 +33,23 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * Foreground service that keeps the child's geofences registered, re-registering
- * whenever the parent changes them.
+ * Foreground service that keeps the child's geofences registered, publishes the
+ * device's live location to the parent, and plays the "ring device" alarm.
  */
 @AndroidEntryPoint
 class GeofenceSyncService : Service() {
 
     @Inject lateinit var geofenceRepository: GeofenceRepository
+    @Inject lateinit var deviceRepository: DeviceRepository
     @Inject lateinit var authRepository: AuthRepository
     @Inject lateinit var registrar: GeofenceRegistrar
+    @Inject lateinit var ringController: RingController
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val fusedClient by lazy { LocationServices.getFusedLocationProviderClient(this) }
+    private var locationCallback: LocationCallback? = null
+    private var started = false
+    private var lastRingNonce: String? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         try {
@@ -40,15 +58,72 @@ class GeofenceSyncService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        val childId = authRepository.currentUserIdOrNull()
-        if (childId != null) {
-            scope.launch {
-                geofenceRepository.observeGeofences(childId).collectLatest { geofences ->
-                    runCatching { registrar.register(geofences) }
+
+        when (intent?.action) {
+            ACTION_RING_SNOOZE -> ringController.snooze()
+            ACTION_RING_RESUME -> ringController.start(ringController.lastMessage())
+            ACTION_RING_DISMISS -> {
+                ringController.stop()
+                val childId = authRepository.currentUserIdOrNull()
+                if (childId != null) scope.launch { runCatching { deviceRepository.clearRing(childId) } }
+            }
+            else -> startSyncing()
+        }
+        return START_STICKY
+    }
+
+    private fun startSyncing() {
+        if (started) return
+        started = true
+        val childId = authRepository.currentUserIdOrNull() ?: return
+        scope.launch {
+            geofenceRepository.observeGeofences(childId).collectLatest { geofences ->
+                runCatching { registrar.register(geofences) }
+            }
+        }
+        scope.launch {
+            deviceRepository.observeRing(childId).collectLatest { ring ->
+                when {
+                    ring == null || !ring.active -> ringController.stop()
+                    ring.nonce != lastRingNonce -> {
+                        lastRingNonce = ring.nonce
+                        ringController.start(ring.message)
+                    }
                 }
             }
         }
-        return START_STICKY
+        startLocationUpdates(childId)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun startLocationUpdates(childId: String) {
+        val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+        val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
+        if (fine != PackageManager.PERMISSION_GRANTED && coarse != PackageManager.PERMISSION_GRANTED) return
+
+        val request = LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, LOCATION_INTERVAL_MS)
+            .setMinUpdateIntervalMillis(LOCATION_FASTEST_MS)
+            .build()
+        val callback = object : LocationCallback() {
+            override fun onLocationResult(result: LocationResult) {
+                val loc = result.lastLocation ?: return
+                scope.launch {
+                    runCatching {
+                        deviceRepository.updateLocation(
+                            childId,
+                            ChildLocation(
+                                latitude = loc.latitude,
+                                longitude = loc.longitude,
+                                accuracyMeters = loc.accuracy,
+                                timestampMillis = System.currentTimeMillis(),
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+        locationCallback = callback
+        runCatching { fusedClient.requestLocationUpdates(request, callback, Looper.getMainLooper()) }
     }
 
     private fun startForegroundCompat() {
@@ -79,11 +154,18 @@ class GeofenceSyncService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        locationCallback?.let { runCatching { fusedClient.removeLocationUpdates(it) } }
         scope.cancel()
     }
 
     companion object {
         private const val NOTIFICATION_ID = 42
+        private const val LOCATION_INTERVAL_MS = 60_000L
+        private const val LOCATION_FASTEST_MS = 30_000L
+
+        const val ACTION_RING_SNOOZE = "com.shahaabapps.shield.action.RING_SNOOZE"
+        const val ACTION_RING_DISMISS = "com.shahaabapps.shield.action.RING_DISMISS"
+        const val ACTION_RING_RESUME = "com.shahaabapps.shield.action.RING_RESUME"
 
         fun start(context: Context) {
             val intent = Intent(context, GeofenceSyncService::class.java)

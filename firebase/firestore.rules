@@ -57,6 +57,16 @@ service cloud.firestore {
         allow write: if request.auth != null && request.auth.uid == childId;
       }
 
+      // Live device state (location + ring command): a linked parent or the
+      // child may read and write (child publishes location & clears rings; parent
+      // reads location & sends rings).
+      match /live/{docId} {
+        allow read, write: if request.auth != null && (
+          request.auth.uid == childId ||
+          request.auth.uid in get(/databases/$(database)/documents/children/$(childId)).data.linkedParents
+        );
+      }
+
       // Geofence events: the child reports them; a linked parent reads them.
       match /geofenceEvents/{eventId} {
         allow read: if request.auth != null && (

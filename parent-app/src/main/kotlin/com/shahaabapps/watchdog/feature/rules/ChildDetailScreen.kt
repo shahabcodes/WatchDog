@@ -179,7 +179,9 @@ private fun RuleEditor(
     var blocked by remember { mutableStateOf(row.rule?.blocked ?: false) }
     var limit by remember { mutableStateOf(row.rule?.dailyLimitMinutes) }
     var windows by remember {
-        mutableStateOf(row.rule?.schedule?.map { it.startMinuteOfDay to it.endMinuteOfDay } ?: emptyList())
+        mutableStateOf<List<Pair<Int, Int>>>(
+            row.rule?.schedule?.map { it.startMinuteOfDay to it.endMinuteOfDay } ?: emptyList(),
+        )
     }
     // (window index, isStart) currently being edited in the time picker.
     var editing by remember { mutableStateOf<Pair<Int, Boolean>?>(null) }

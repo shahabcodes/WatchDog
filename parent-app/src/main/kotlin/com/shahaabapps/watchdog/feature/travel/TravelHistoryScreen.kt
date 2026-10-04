@@ -37,12 +37,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.google.android.gms.maps.GoogleMapOptions
 import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.Dash
+import com.google.android.gms.maps.model.Gap
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.Marker
+import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberMarkerState
 import com.shahaabapps.watchdog.feature.geofence.PlaceIcons
@@ -128,22 +130,33 @@ fun TravelHistoryScreen(
         when {
             state.loading -> LoadingView(label = "Loading travel history…", modifier = Modifier.padding(top = Spacing.xl))
             state.stops.isEmpty() -> EmptyState()
-            else -> LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(Spacing.lg),
-                verticalArrangement = Arrangement.spacedBy(Spacing.sm),
-            ) {
-                item { TravelMap(items = state.stops, accent = accent) }
-                items(state.stops, key = { it.stop.id }) { item -> StopRow(item) }
+            else -> Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                TravelMap(
+                    items = state.stops,
+                    accent = accent,
+                    modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+                )
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        start = Spacing.lg,
+                        end = Spacing.lg,
+                        bottom = Spacing.lg,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+                ) {
+                    items(state.stops, key = { it.stop.id }) { item -> StopRow(item) }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun TravelMap(items: List<TravelStopItem>, accent: Color) {
+private fun TravelMap(items: List<TravelStopItem>, accent: Color, modifier: Modifier = Modifier) {
     // Chronological order (the list is newest-first).
     val chronological = items.reversed()
+    val points = chronological.map { LatLng(it.stop.latitude, it.stop.longitude) }
     val center = LatLng(
         items.map { it.stop.latitude }.average(),
         items.map { it.stop.longitude }.average(),
@@ -155,7 +168,7 @@ private fun TravelMap(items: List<TravelStopItem>, accent: Color) {
         cameraState.position = CameraPosition.fromLatLngZoom(center, 12f)
     }
 
-    CupertinoCard {
+    CupertinoCard(modifier = modifier) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -165,18 +178,27 @@ private fun TravelMap(items: List<TravelStopItem>, accent: Color) {
             GoogleMap(
                 modifier = Modifier.fillMaxSize(),
                 cameraPositionState = cameraState,
-                googleMapOptionsFactory = { GoogleMapOptions().liteMode(true) },
                 uiSettings = MapUiSettings(
                     zoomControlsEnabled = false,
-                    scrollGesturesEnabled = false,
-                    zoomGesturesEnabled = false,
+                    scrollGesturesEnabled = true,
+                    zoomGesturesEnabled = true,
+                    tiltGesturesEnabled = false,
+                    rotationGesturesEnabled = false,
                     compassEnabled = false,
                     mapToolbarEnabled = false,
                 ),
             ) {
-                // We only record stops (places stayed 5+ min), not the continuous
-                // route, so we show the stops as markers rather than drawing a
-                // straight line between them (which would cut across water/buildings).
+                // We only record stops (places stayed 5+ min), not the real route,
+                // so the connecting line is a DASHED "approximate" link between
+                // stops, not an exact path.
+                if (points.size >= 2) {
+                    Polyline(
+                        points = points,
+                        color = accent.copy(alpha = 0.7f),
+                        width = 6f,
+                        pattern = listOf(Dash(28f), Gap(18f)),
+                    )
+                }
                 val startIcon = rememberCircleMarker(AppTheme.colors.success)
                 val stopIcon = rememberCircleMarker(accent)
                 chronological.forEachIndexed { i, item ->

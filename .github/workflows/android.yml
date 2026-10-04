@@ -61,19 +61,8 @@ jobs:
       - name: Build debug APKs
         run: gradle :parent-app:assembleDebug :child-app:assembleDebug --no-daemon --stacktrace
 
-      - name: Upload parent-app APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: parent-app-debug
-          path: parent-app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-
-      - name: Upload child-app APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: child-app-debug
-          path: child-app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
+      # APKs are delivered via Releases (below), not Actions artifacts — avoids
+      # the Actions artifact storage quota.
 
       # ----- Releases (so the APKs show up under the repo's Releases tab) -----
       - name: Collect APKs for release

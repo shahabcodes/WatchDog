@@ -24,8 +24,8 @@ fun CupertinoCard(
     Surface(
         shape = Shapes.card,
         color = AppTheme.colors.card,
-        tonalElevation = 1.dp,
-        shadowElevation = 2.dp,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
         modifier = modifier
             .fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),

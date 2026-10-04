@@ -39,6 +39,7 @@ import com.shahaabapps.core.ui.theme.Spacing
 @Composable
 fun UsageScreen(
     onBack: () -> Unit,
+    embedded: Boolean = false,
     viewModel: UsageViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -49,22 +50,33 @@ fun UsageScreen(
             .fillMaxSize()
             .background(AppTheme.colors.groupedBackground)
             .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(Spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(if (embedded) Spacing.sm else Spacing.lg),
     ) {
-        Hero(
-            title = "Screen time",
-            subtitle = "Today",
-            actions = {
-                HeroIconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
-                }
-            },
-        ) {
-            Text(
-                formatDuration(state.totalMinutes),
-                style = MaterialTheme.typography.displayLarge,
-                color = Color.White,
-            )
+        if (embedded) {
+            Column(modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.md)) {
+                SectionHeader("Screen time today")
+                Text(
+                    formatDuration(state.totalMinutes),
+                    style = MaterialTheme.typography.displayLarge,
+                    color = AppTheme.colors.accent,
+                )
+            }
+        } else {
+            Hero(
+                title = "Screen time",
+                subtitle = "Today",
+                actions = {
+                    HeroIconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                    }
+                },
+            ) {
+                Text(
+                    formatDuration(state.totalMinutes),
+                    style = MaterialTheme.typography.displayLarge,
+                    color = Color.White,
+                )
+            }
         }
 
         Column(modifier = Modifier.padding(horizontal = Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {

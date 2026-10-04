@@ -20,8 +20,8 @@ import com.shahaabapps.watchdog.feature.auth.AuthScreen
 import com.shahaabapps.watchdog.feature.profile.ProfileSetupScreen
 import com.shahaabapps.watchdog.ui.ParentAppState
 import com.shahaabapps.watchdog.ui.ParentAppViewModel
-import com.shahaabapps.watchdog.ui.ParentNavGraph
 import com.shahaabapps.watchdog.ui.ThemeViewModel
+import com.shahaabapps.watchdog.ui.shell.ParentShell
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -56,7 +56,7 @@ private fun ParentAppRoot(
         ParentAppState.Loading -> LoadingScreen()
         ParentAppState.SignedOut -> AuthScreen()
         is ParentAppState.NeedsProfile -> ProfileSetupScreen(onSaved = { /* state reacts automatically */ })
-        is ParentAppState.Ready -> ParentNavGraph(profile = current.profile)
+        is ParentAppState.Ready -> ParentShell(profile = current.profile)
     }
 }
 

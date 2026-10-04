@@ -17,8 +17,8 @@ object Spacing {
 }
 
 object Shapes {
-    /** iOS grouped-card corner radius. */
-    val card = RoundedCornerShape(10.dp)
+    /** iOS grouped-card corner radius (Browse Safe uses flat 16–20dp cards). */
+    val card = RoundedCornerShape(16.dp)
     val button = RoundedCornerShape(12.dp)
-    val field = RoundedCornerShape(10.dp)
+    val field = RoundedCornerShape(14.dp)
 }

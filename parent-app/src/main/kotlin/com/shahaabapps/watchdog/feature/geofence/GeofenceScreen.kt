@@ -94,6 +94,7 @@ private enum class DrawMode { PIN, AREA }
 @Composable
 fun GeofenceScreen(
     onBack: () -> Unit,
+    showBack: Boolean = true,
     viewModel: GeofenceViewModel = hiltViewModel(),
 ) {
     val geofences by viewModel.geofences.collectAsStateWithLifecycle()
@@ -219,7 +220,7 @@ fun GeofenceScreen(
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .statusBarsPadding()
+                .then(if (showBack) Modifier.statusBarsPadding() else Modifier)
                 .padding(Spacing.md),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Spacing.sm),
@@ -235,8 +236,10 @@ fun GeofenceScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xs),
                 ) {
-                    FilledTonalIconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    if (showBack) {
+                        FilledTonalIconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
                     }
                     Text(
                         "Places",

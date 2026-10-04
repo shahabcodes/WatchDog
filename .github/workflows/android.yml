@@ -88,10 +88,30 @@ jobs:
           prerelease: true
           body: >
             Debug APKs from the latest `main` build — version ${{ env.APP_VERSION_NAME }}
-            (build ${{ github.run_number }}).
+            (build ${{ github.run_number }}). Full history: see the Releases list and
+            [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md).
           files: dist/*.apk
 
-      - name: Publish versioned release
+      # Persistent per-build release so the Releases tab keeps a full history,
+      # each with its version and auto-generated changelog of commits since the
+      # previous version.
+      - name: Publish versioned release (history)
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.APP_VERSION_NAME }}
+          name: v${{ env.APP_VERSION_NAME }}
+          prerelease: true
+          generate_release_notes: true
+          body: |
+            **Watch Dog & Shield — version ${{ env.APP_VERSION_NAME }}** (build ${{ github.run_number }}).
+
+            Curated highlights: [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)
+
+            ### Commits in this build
+          files: dist/*.apk
+
+      - name: Publish tagged release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:

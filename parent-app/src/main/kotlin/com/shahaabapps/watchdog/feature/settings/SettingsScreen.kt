@@ -10,20 +10,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.shahaabapps.core.ui.components.AboutSection
 import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.components.CupertinoListRow
 import com.shahaabapps.core.ui.components.Hero
 import com.shahaabapps.core.ui.components.HeroIconButton
 import com.shahaabapps.core.ui.components.ThemeSettingsSection
-import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
 
 @Composable
@@ -66,11 +64,10 @@ fun SettingsScreen(
             )
         }
 
-        Text(
-            text = "Watch Dog",
-            style = MaterialTheme.typography.bodySmall,
-            color = AppTheme.colors.secondaryLabel,
-            modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.md),
+        AboutSection(
+            appName = "Watch Dog",
+            tagline = "Parental controls for your family.",
+            modifier = Modifier.padding(horizontal = Spacing.lg),
         )
     }
 }

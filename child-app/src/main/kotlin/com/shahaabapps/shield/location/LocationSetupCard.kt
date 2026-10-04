@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,6 +43,18 @@ fun LocationSetupCard(modifier: Modifier = Modifier) {
     val backgroundLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { backgroundGranted = hasBackgroundLocation(context) }
+
+    // Ask for location automatically the first time setup is shown.
+    LaunchedEffect(Unit) {
+        if (!fineGranted) {
+            fineLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                ),
+            )
+        }
+    }
 
     LifecycleResumeEffect(Unit) {
         fineGranted = hasFineLocation(context)

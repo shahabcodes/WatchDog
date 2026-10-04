@@ -7,6 +7,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -33,7 +35,12 @@ class MainActivity : ComponentActivity() {
             val accentPalette by themeViewModel.accentPalette.collectAsStateWithLifecycle()
 
             AppTheme(themeMode = themeMode, accentPalette = accentPalette) {
-                ParentAppRoot()
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
+                ) {
+                    ParentAppRoot()
+                }
             }
         }
     }

@@ -87,7 +87,6 @@ import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
 
 private val DEFAULT_CENTER = LatLng(25.2854, 51.5310) // Doha fallback
-private val LIVE_BLUE = Color(0xFF2F7DF6)
 private enum class DrawMode { PIN, AREA }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -207,12 +206,12 @@ fun GeofenceScreen(
                     Circle(
                         center = pos,
                         radius = loc.accuracyMeters.toDouble(),
-                        fillColor = LIVE_BLUE.copy(alpha = 0.12f),
-                        strokeColor = LIVE_BLUE.copy(alpha = 0.4f),
+                        fillColor = accent.copy(alpha = 0.12f),
+                        strokeColor = accent.copy(alpha = 0.4f),
                         strokeWidth = 2f,
                     )
                 }
-                ChildMarker(position = pos)
+                ChildMarker(position = pos, accent = accent)
             }
         }
 
@@ -366,9 +365,10 @@ fun GeofenceScreen(
 @OptIn(MapsComposeExperimentalApi::class)
 @Composable
 @GoogleMapComposable
-private fun ChildMarker(position: LatLng) {
+private fun ChildMarker(position: LatLng, accent: Color) {
     MarkerComposable(
         "child",
+        accent,
         position,
         state = rememberMarkerState(position = position),
         title = "Child's device",
@@ -380,7 +380,7 @@ private fun ChildMarker(position: LatLng) {
                 .background(Color.White)
                 .padding(3.dp)
                 .clip(CircleShape)
-                .background(LIVE_BLUE),
+                .background(accent),
             contentAlignment = Alignment.Center,
         ) {
             Icon(Icons.Filled.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))

@@ -45,7 +45,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.android.gms.maps.GoogleMapOptions
-import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.GoogleMap
@@ -63,8 +62,7 @@ import com.shahaabapps.core.ui.components.StatTile
 import com.shahaabapps.core.ui.components.StatusChip
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
-
-private val LIVE_BLUE = Color(0xFF2F7DF6)
+import com.shahaabapps.watchdog.util.rememberCircleMarker
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -162,7 +160,7 @@ private fun LocationCard(
     CupertinoCard {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Place, contentDescription = null, tint = LIVE_BLUE)
+                Icon(Icons.Filled.Place, contentDescription = null, tint = AppTheme.colors.accent)
                 Column(modifier = Modifier.weight(1f).padding(start = Spacing.sm)) {
                     Text("Live location", style = MaterialTheme.typography.bodyLarge)
                     Text(
@@ -223,7 +221,8 @@ private fun LocationCard(
                     ) {
                         Marker(
                             state = rememberMarkerState(position = pos),
-                            icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE),
+                            icon = rememberCircleMarker(AppTheme.colors.accent),
+                            anchor = androidx.compose.ui.geometry.Offset(0.5f, 0.5f),
                             title = childName.ifBlank { "Child" },
                         )
                     }

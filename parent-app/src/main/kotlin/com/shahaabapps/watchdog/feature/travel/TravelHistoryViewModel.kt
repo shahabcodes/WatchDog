@@ -4,6 +4,9 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.shahaabapps.core.firebase.device.DeviceRepository
+import com.shahaabapps.core.firebase.geofence.GeofenceRepository
+import com.shahaabapps.core.model.GeoMath
+import com.shahaabapps.core.model.Geofence
 import com.shahaabapps.core.model.TravelStop
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,17 +41,24 @@ enum class TravelTime(val label: String, val startHour: Int, val endHour: Int) {
     }
 }
 
+/** A travel stop plus the saved place (geofence) it falls inside, if any. */
+data class TravelStopItem(
+    val stop: TravelStop,
+    val placeName: String?,
+)
+
 data class TravelHistoryUiState(
     val loading: Boolean = true,
     val range: TravelRange = TravelRange.TODAY,
     val time: TravelTime = TravelTime.ANY,
-    val stops: List<TravelStop> = emptyList(),
+    val stops: List<TravelStopItem> = emptyList(),
 )
 
 @HiltViewModel
 class TravelHistoryViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     deviceRepository: DeviceRepository,
+    geofenceRepository: GeofenceRepository,
 ) : ViewModel() {
 
     private val childId: String = checkNotNull(savedStateHandle["childId"])
@@ -57,20 +67,32 @@ class TravelHistoryViewModel @Inject constructor(
 
     val uiState: StateFlow<TravelHistoryUiState> = combine(
         deviceRepository.observeTravelHistory(childId),
+        geofenceRepository.observeGeofences(childId),
         range,
         time,
-    ) { stops, selectedRange, selectedTime ->
+    ) { stops, geofences, selectedRange, selectedTime ->
         val zone = ZoneId.systemDefault()
+        val items = stops
+            .filter { stop ->
+                inRange(stop.arrivalMillis, selectedRange) &&
+                    selectedTime.contains(Instant.ofEpochMilli(stop.arrivalMillis).atZone(zone).hour)
+            }
+            .map { stop -> TravelStopItem(stop, placeNameFor(stop.latitude, stop.longitude, geofences)) }
         TravelHistoryUiState(
             loading = false,
             range = selectedRange,
             time = selectedTime,
-            stops = stops.filter { stop ->
-                inRange(stop.arrivalMillis, selectedRange) &&
-                    selectedTime.contains(Instant.ofEpochMilli(stop.arrivalMillis).atZone(zone).hour)
-            },
+            stops = items,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TravelHistoryUiState())
+
+    /** Name of the saved place this point sits inside (nearest within its radius), or null. */
+    private fun placeNameFor(lat: Double, lon: Double, geofences: List<Geofence>): String? =
+        geofences
+            .map { it to GeoMath.distanceMeters(lat, lon, it.latitude, it.longitude) }
+            .filter { (g, d) -> d <= g.radiusMeters + 40 }
+            .minByOrNull { it.second }
+            ?.first?.name
 
     fun setRange(newRange: TravelRange) {
         range.value = newRange

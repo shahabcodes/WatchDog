@@ -38,7 +38,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.android.gms.maps.GoogleMapOptions
-import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.GoogleMap
@@ -47,7 +46,7 @@ import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberMarkerState
-import com.shahaabapps.core.model.TravelStop
+import com.shahaabapps.watchdog.util.rememberCircleMarker
 import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.components.Hero
 import com.shahaabapps.core.ui.components.HeroIconButton
@@ -134,21 +133,21 @@ fun TravelHistoryScreen(
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(Spacing.lg),
                 verticalArrangement = Arrangement.spacedBy(Spacing.sm),
             ) {
-                item { TravelMap(stops = state.stops, accent = accent) }
-                items(state.stops, key = { it.id }) { stop -> StopRow(stop) }
+                item { TravelMap(items = state.stops, accent = accent) }
+                items(state.stops, key = { it.stop.id }) { item -> StopRow(item) }
             }
         }
     }
 }
 
 @Composable
-private fun TravelMap(stops: List<TravelStop>, accent: Color) {
+private fun TravelMap(items: List<TravelStopItem>, accent: Color) {
     // Chronological order (the list is newest-first).
-    val chronological = stops.reversed()
-    val points = chronological.map { LatLng(it.latitude, it.longitude) }
+    val chronological = items.reversed()
+    val points = chronological.map { LatLng(it.stop.latitude, it.stop.longitude) }
     val center = LatLng(
-        stops.map { it.latitude }.average(),
-        stops.map { it.longitude }.average(),
+        items.map { it.stop.latitude }.average(),
+        items.map { it.stop.longitude }.average(),
     )
     val cameraState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(center, 12f)
@@ -176,20 +175,17 @@ private fun TravelMap(stops: List<TravelStop>, accent: Color) {
                     mapToolbarEnabled = false,
                 ),
             ) {
+                val startIcon = rememberCircleMarker(AppTheme.colors.success)
+                val stopIcon = rememberCircleMarker(accent)
                 if (points.size >= 2) {
                     Polyline(points = points, color = accent, width = 8f)
                 }
-                chronological.forEachIndexed { i, stop ->
+                chronological.forEachIndexed { i, item ->
                     Marker(
-                        state = rememberMarkerState(position = LatLng(stop.latitude, stop.longitude)),
-                        icon = BitmapDescriptorFactory.defaultMarker(
-                            when (i) {
-                                0 -> BitmapDescriptorFactory.HUE_GREEN
-                                chronological.lastIndex -> BitmapDescriptorFactory.HUE_RED
-                                else -> BitmapDescriptorFactory.HUE_AZURE
-                            },
-                        ),
-                        title = timeLabel(stop.arrivalMillis),
+                        state = rememberMarkerState(position = LatLng(item.stop.latitude, item.stop.longitude)),
+                        icon = if (i == 0) startIcon else stopIcon,
+                        anchor = androidx.compose.ui.geometry.Offset(0.5f, 0.5f),
+                        title = item.placeName ?: timeLabel(item.stop.arrivalMillis),
                     )
                 }
             }
@@ -198,7 +194,8 @@ private fun TravelMap(stops: List<TravelStop>, accent: Color) {
 }
 
 @Composable
-private fun StopRow(stop: TravelStop) {
+private fun StopRow(item: TravelStopItem) {
+    val stop = item.stop
     Row(modifier = Modifier.fillMaxWidth()) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -224,12 +221,12 @@ private fun StopRow(stop: TravelStop) {
         CupertinoCard(modifier = Modifier.weight(1f)) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = durationLabel(stop.durationMinutes),
+                    text = item.placeName?.let { "Stayed at $it" } ?: "Stop",
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "${timeLabel(stop.arrivalMillis)} – ${timeLabel(stop.departureMillis)}",
+                    text = "${durationShort(stop.durationMinutes)} · ${timeLabel(stop.arrivalMillis)} – ${timeLabel(stop.departureMillis)}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = AppTheme.colors.secondaryLabel,
                 )
@@ -261,13 +258,13 @@ private fun EmptyState() {
     }
 }
 
-private fun durationLabel(minutes: Long): String {
+private fun durationShort(minutes: Long): String {
     val h = minutes / 60
     val m = minutes % 60
     return when {
-        h > 0 && m > 0 -> "Stayed ${h}h ${m}m"
-        h > 0 -> "Stayed ${h}h"
-        else -> "Stayed ${m}m"
+        h > 0 && m > 0 -> "${h}h ${m}m"
+        h > 0 -> "${h}h"
+        else -> "${m}m"
     }
 }
 

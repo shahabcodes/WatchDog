@@ -87,10 +87,14 @@ class GeofenceSyncService : Service() {
 
         fun start(context: Context) {
             val intent = Intent(context, GeofenceSyncService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            // Starting a foreground service can throw (e.g. background-start
+            // restrictions on Android 12+); never let that crash the app.
+            runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
             }
         }
     }

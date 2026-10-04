@@ -48,6 +48,15 @@ service cloud.firestore {
         );
       }
 
+      // Screen-time usage: the child writes it; a linked parent reads it.
+      match /usage/{date} {
+        allow read: if request.auth != null && (
+          request.auth.uid == childId ||
+          request.auth.uid in get(/databases/$(database)/documents/children/$(childId)).data.linkedParents
+        );
+        allow write: if request.auth != null && request.auth.uid == childId;
+      }
+
       // Geofence events: the child reports them; a linked parent reads them.
       match /geofenceEvents/{eventId} {
         allow read: if request.auth != null && (

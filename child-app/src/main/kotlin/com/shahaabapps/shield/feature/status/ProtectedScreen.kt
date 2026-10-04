@@ -48,7 +48,7 @@ fun ProtectedScreen(
     modifier: Modifier = Modifier,
     viewModel: ProtectedViewModel = hiltViewModel(),
 ) {
-    LaunchedEffect(child.childId) { viewModel.reportInstalledApps() }
+    LaunchedEffect(child.childId) { viewModel.reportState() }
 
     var showSettings by remember { mutableStateOf(false) }
     if (showSettings) {

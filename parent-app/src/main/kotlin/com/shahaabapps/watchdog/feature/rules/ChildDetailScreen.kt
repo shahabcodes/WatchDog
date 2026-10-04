@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -56,6 +57,7 @@ private val LIMIT_OPTIONS = listOf(null, 15, 30, 60, 120, 180)
 @Composable
 fun ChildDetailScreen(
     onOpenGeofences: () -> Unit,
+    onOpenUsage: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ChildDetailViewModel = hiltViewModel(),
 ) {
@@ -77,6 +79,22 @@ fun ChildDetailScreen(
                             Text("Places & geofences", style = MaterialTheme.typography.bodyLarge)
                             Text(
                                 "Alerts when they enter or leave a place",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AppTheme.colors.secondaryLabel,
+                            )
+                        }
+                        CupertinoDisclosure()
+                    }
+                }
+            }
+            item {
+                CupertinoCard(onClick = onOpenUsage) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.BarChart, contentDescription = null, tint = AppTheme.colors.accent)
+                        Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
+                            Text("Screen time", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                "See today's app usage",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = AppTheme.colors.secondaryLabel,
                             )

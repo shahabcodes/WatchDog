@@ -30,6 +30,26 @@ class UsageTracker @Inject constructor(
         return (totalMillis / 60_000L).toInt()
     }
 
+    /** Today's foreground minutes per package (only those with any usage). */
+    fun todayUsageByPackage(): Map<String, Int> {
+        val manager = usageStatsManager ?: return emptyMap()
+        val start = startOfTodayMillis()
+        val now = System.currentTimeMillis()
+        val stats = runCatching {
+            manager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, now)
+        }.getOrNull().orEmpty()
+
+        val millisByPackage = HashMap<String, Long>()
+        for (s in stats) {
+            if (s.totalTimeInForeground > 0) {
+                millisByPackage[s.packageName] = (millisByPackage[s.packageName] ?: 0L) + s.totalTimeInForeground
+            }
+        }
+        return millisByPackage
+            .mapValues { (it.value / 60_000L).toInt() }
+            .filterValues { it > 0 }
+    }
+
     private fun startOfTodayMillis(): Long {
         val cal = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 0)

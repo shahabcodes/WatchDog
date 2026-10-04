@@ -2,8 +2,10 @@ package com.shahaabapps.core.firebase.geofence
 
 import com.shahaabapps.core.common.AppResult
 import com.shahaabapps.core.common.runCatchingResult
+import com.shahaabapps.core.model.GeoPoint
 import com.shahaabapps.core.model.Geofence
 import com.shahaabapps.core.model.GeofenceEvent
+import com.shahaabapps.core.model.GeofenceShape
 import com.shahaabapps.core.model.GeofenceTransition
 import com.shahaabapps.core.model.GeofenceTrigger
 import com.google.firebase.firestore.DocumentSnapshot
@@ -40,6 +42,8 @@ class FirebaseGeofenceRepository @Inject constructor(
                 "radiusMeters" to geofence.radiusMeters.toDouble(),
                 "trigger" to geofence.trigger.name,
                 "active" to geofence.active,
+                "shape" to geofence.shape.name,
+                "points" to geofence.points.map { mapOf("latitude" to it.latitude, "longitude" to it.longitude) },
             )
             doc.set(data).await()
         }
@@ -81,16 +85,29 @@ class FirebaseGeofenceRepository @Inject constructor(
     private fun events(childId: String) =
         firestore.collection(CHILDREN).document(childId).collection(EVENTS)
 
-    private fun DocumentSnapshot.toGeofence() = Geofence(
-        id = id,
-        name = getString("name") ?: "",
-        latitude = getDouble("latitude") ?: 0.0,
-        longitude = getDouble("longitude") ?: 0.0,
-        radiusMeters = (getDouble("radiusMeters") ?: 150.0).toFloat(),
-        trigger = getString("trigger")?.let { runCatching { GeofenceTrigger.valueOf(it) }.getOrNull() }
-            ?: GeofenceTrigger.ENTER_EXIT,
-        active = getBoolean("active") ?: true,
-    )
+    private fun DocumentSnapshot.toGeofence(): Geofence {
+        @Suppress("UNCHECKED_CAST")
+        val rawPoints = get("points") as? List<Map<String, Any?>> ?: emptyList()
+        val points = rawPoints.map {
+            GeoPoint(
+                latitude = (it["latitude"] as? Number)?.toDouble() ?: 0.0,
+                longitude = (it["longitude"] as? Number)?.toDouble() ?: 0.0,
+            )
+        }
+        return Geofence(
+            id = id,
+            name = getString("name") ?: "",
+            latitude = getDouble("latitude") ?: 0.0,
+            longitude = getDouble("longitude") ?: 0.0,
+            radiusMeters = (getDouble("radiusMeters") ?: 150.0).toFloat(),
+            trigger = getString("trigger")?.let { runCatching { GeofenceTrigger.valueOf(it) }.getOrNull() }
+                ?: GeofenceTrigger.ENTER_EXIT,
+            active = getBoolean("active") ?: true,
+            shape = getString("shape")?.let { runCatching { GeofenceShape.valueOf(it) }.getOrNull() }
+                ?: GeofenceShape.CIRCLE,
+            points = points,
+        )
+    }
 
     private fun DocumentSnapshot.toEvent() = GeofenceEvent(
         id = id,

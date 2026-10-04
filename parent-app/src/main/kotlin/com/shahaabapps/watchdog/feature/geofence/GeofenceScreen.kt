@@ -1,26 +1,36 @@
 package com.shahaabapps.watchdog.feature.geofence
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Pentagon
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -38,18 +48,23 @@ import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.Circle
 import com.google.maps.android.compose.GoogleMap
+import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.Marker
+import com.google.maps.android.compose.Polygon
+import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberMarkerState
+import com.shahaabapps.core.model.GeoPoint
 import com.shahaabapps.core.model.Geofence
+import com.shahaabapps.core.model.GeofenceShape
 import com.shahaabapps.core.model.GeofenceTrigger
-import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.components.CupertinoPrimaryButton
 import com.shahaabapps.core.ui.components.CupertinoTextField
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
 
-private val DEFAULT_CENTER = LatLng(25.2854, 51.5310) // Doha; falls back if no data
+private val DEFAULT_CENTER = LatLng(25.2854, 51.5310) // Doha fallback
+private enum class DrawMode { PIN, AREA }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,133 +75,298 @@ fun GeofenceScreen(
     val geofences by viewModel.geofences.collectAsStateWithLifecycle()
     val events by viewModel.events.collectAsStateWithLifecycle()
 
+    var mode by remember { mutableStateOf(DrawMode.PIN) }
+    var pending by remember { mutableStateOf<LatLng?>(null) }
+    var area by remember { mutableStateOf<List<LatLng>>(emptyList()) }
+    var showCircleSheet by remember { mutableStateOf(false) }
+    var showAreaSheet by remember { mutableStateOf(false) }
+    var showList by remember { mutableStateOf(false) }
+
     val initialCenter = geofences.firstOrNull()?.let { LatLng(it.latitude, it.longitude) }
         ?: events.firstOrNull()?.let { LatLng(it.latitude, it.longitude) }
         ?: DEFAULT_CENTER
     val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(initialCenter, 13f)
+        position = CameraPosition.fromLatLngZoom(initialCenter, 14f)
     }
 
-    var pending by remember { mutableStateOf<LatLng?>(null) }
+    val accent = AppTheme.colors.accent
 
-    Column(modifier = Modifier.fillMaxSize().background(AppTheme.colors.groupedBackground)) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(AppTheme.colors.card)
-                .padding(horizontal = Spacing.sm, vertical = Spacing.sm),
+    Box(modifier = Modifier.fillMaxSize()) {
+        GoogleMap(
+            modifier = Modifier.fillMaxSize(),
+            cameraPositionState = cameraPositionState,
+            uiSettings = MapUiSettings(zoomControlsEnabled = false, mapToolbarEnabled = false),
+            onMapClick = { latLng ->
+                when (mode) {
+                    DrawMode.PIN -> { pending = latLng; showCircleSheet = true }
+                    DrawMode.AREA -> { area = area + latLng }
+                }
+            },
         ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+            // Existing geofences
+            geofences.forEach { g ->
+                if (g.shape == GeofenceShape.POLYGON && g.points.size >= 3) {
+                    Polygon(
+                        points = g.points.map { LatLng(it.latitude, it.longitude) },
+                        fillColor = accent.copy(alpha = 0.18f),
+                        strokeColor = accent,
+                        strokeWidth = 5f,
+                    )
+                } else {
+                    Circle(
+                        center = LatLng(g.latitude, g.longitude),
+                        radius = g.radiusMeters.toDouble(),
+                        fillColor = accent.copy(alpha = 0.15f),
+                        strokeColor = accent,
+                        strokeWidth = 4f,
+                    )
+                }
+                Marker(
+                    state = rememberMarkerState(position = LatLng(g.latitude, g.longitude)),
+                    title = g.name,
+                )
             }
-            Text("Places & geofences", style = MaterialTheme.typography.titleMedium)
+
+            // In-progress drawing
+            if (mode == DrawMode.PIN) {
+                pending?.let { Marker(state = rememberMarkerState(position = it), title = "New place") }
+            } else {
+                area.forEach { pt -> Marker(state = rememberMarkerState(position = pt)) }
+                when {
+                    area.size >= 3 -> Polygon(
+                        points = area,
+                        fillColor = accent.copy(alpha = 0.22f),
+                        strokeColor = accent,
+                        strokeWidth = 5f,
+                    )
+                    area.size == 2 -> Polyline(points = area, color = accent, width = 6f)
+                }
+            }
         }
 
-        Box(modifier = Modifier.fillMaxWidth().heightIn(min = 280.dp).weight(1f)) {
-            GoogleMap(
-                modifier = Modifier.fillMaxSize(),
-                cameraPositionState = cameraPositionState,
-                onMapClick = { pending = it },
+        // Top floating controls: back + mode toggle + hint
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(Spacing.md),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+        ) {
+            Surface(
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                color = AppTheme.colors.card,
+                tonalElevation = 3.dp,
+                shadowElevation = 4.dp,
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                geofences.forEach { geofence ->
-                    val center = LatLng(geofence.latitude, geofence.longitude)
-                    Circle(
-                        center = center,
-                        radius = geofence.radiusMeters.toDouble(),
-                        strokeColor = AppTheme.colors.accent,
-                        strokeWidth = 4f,
-                        fillColor = AppTheme.colors.accent.copy(alpha = 0.15f),
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xs),
+                ) {
+                    FilledTonalIconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                    Text(
+                        "Places",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(start = Spacing.sm).weight(1f),
                     )
-                    Marker(state = rememberMarkerState(position = center), title = geofence.name)
-                }
-                pending?.let { center ->
-                    Marker(state = rememberMarkerState(position = center), title = "New place")
+                    SingleChoiceSegmentedButtonRow {
+                        SegmentedButton(
+                            selected = mode == DrawMode.PIN,
+                            onClick = { mode = DrawMode.PIN; area = emptyList() },
+                            shape = SegmentedButtonDefaults.itemShape(0, 2),
+                            icon = {},
+                        ) { Text("Pin") }
+                        SegmentedButton(
+                            selected = mode == DrawMode.AREA,
+                            onClick = { mode = DrawMode.AREA; pending = null },
+                            shape = SegmentedButtonDefaults.itemShape(1, 2),
+                            icon = {},
+                        ) { Text("Area") }
+                    }
                 }
             }
-
-            Text(
-                text = "Tap the map to drop a new place",
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(Spacing.sm)
-                    .background(Color.Black.copy(alpha = 0.45f))
-                    .padding(horizontal = Spacing.md, vertical = Spacing.xs),
+            HintPill(
+                text = if (mode == DrawMode.PIN) {
+                    "Tap the map to drop a place"
+                } else {
+                    "Tap points to outline an area (3+)"
+                },
             )
         }
 
-        if (geofences.isNotEmpty()) {
-            LazyColumn(
+        // Area drawing controls (bottom)
+        if (mode == DrawMode.AREA && area.isNotEmpty()) {
+            Surface(
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                color = AppTheme.colors.card,
+                tonalElevation = 3.dp,
+                shadowElevation = 6.dp,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 220.dp)
-                    .padding(Spacing.md),
-                verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    .align(Alignment.BottomCenter)
+                    .padding(Spacing.md)
+                    .fillMaxWidth(),
             ) {
-                items(geofences, key = { it.id }) { geofence ->
-                    GeofenceRow(geofence, onDelete = { viewModel.deleteGeofence(geofence.id) })
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    modifier = Modifier.padding(Spacing.sm),
+                ) {
+                    Text(
+                        "${area.size} point${if (area.size == 1) "" else "s"}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f).padding(start = Spacing.sm),
+                    )
+                    IconButton(onClick = { area = area.dropLast(1) }) {
+                        Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Undo")
+                    }
+                    IconButton(onClick = { area = emptyList() }) {
+                        Icon(Icons.Filled.DeleteSweep, contentDescription = "Clear")
+                    }
+                    ExtendedFloatingActionButton(
+                        onClick = { showAreaSheet = true },
+                        icon = { Icon(Icons.Filled.Check, contentDescription = null) },
+                        text = { Text("Save area") },
+                        expanded = area.size >= 3,
+                    )
                 }
             }
+        } else {
+            // Places list FAB
+            ExtendedFloatingActionButton(
+                onClick = { showList = true },
+                icon = { Icon(Icons.Filled.Place, contentDescription = null) },
+                text = { Text("Places (${geofences.size})") },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(Spacing.lg),
+            )
         }
     }
 
+    // Circle naming sheet
     val center = pending
-    if (center != null) {
+    if (showCircleSheet && center != null) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ModalBottomSheet(onDismissRequest = { pending = null }, sheetState = sheetState) {
-            GeofenceEditor(
+        ModalBottomSheet(onDismissRequest = { showCircleSheet = false; pending = null }, sheetState = sheetState) {
+            CircleEditor(
                 onSave = { name, radius, trigger ->
                     viewModel.saveGeofence(name, center.latitude, center.longitude, radius, trigger)
-                    pending = null
+                    showCircleSheet = false; pending = null
                 },
             )
         }
     }
-}
 
-@Composable
-private fun GeofenceRow(geofence: Geofence, onDelete: () -> Unit) {
-    CupertinoCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.Place, contentDescription = null, tint = AppTheme.colors.accent)
-            Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
-                Text(geofence.name, style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    "${geofence.radiusMeters.toInt()} m · ${geofence.trigger.name.lowercase().replace('_', '/')}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.colors.secondaryLabel,
-                )
-            }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = AppTheme.colors.destructive)
-            }
+    // Area naming sheet
+    if (showAreaSheet) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(onDismissRequest = { showAreaSheet = false }, sheetState = sheetState) {
+            AreaEditor(
+                onSave = { name, trigger ->
+                    viewModel.saveArea(name, area.map { GeoPoint(it.latitude, it.longitude) }, trigger)
+                    showAreaSheet = false; area = emptyList()
+                },
+            )
+        }
+    }
+
+    // Places list sheet
+    if (showList) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(onDismissRequest = { showList = false }, sheetState = sheetState) {
+            PlacesList(
+                geofences = geofences,
+                onDelete = { viewModel.deleteGeofence(it) },
+            )
         }
     }
 }
 
 @Composable
-private fun GeofenceEditor(
-    onSave: (name: String, radius: Float, trigger: GeofenceTrigger) -> Unit,
-) {
+private fun HintPill(text: String) {
+    Surface(
+        shape = androidx.compose.foundation.shape.CircleShape,
+        color = Color.Black.copy(alpha = 0.55f),
+    ) {
+        Text(
+            text = text,
+            color = Color.White,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(horizontal = Spacing.md, vertical = 6.dp),
+        )
+    }
+}
+
+@Composable
+private fun CircleEditor(onSave: (name: String, radius: Float, trigger: GeofenceTrigger) -> Unit) {
     var name by remember { mutableStateOf("") }
     var radius by remember { mutableStateOf(150f) }
-
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = Spacing.lg)
-            .padding(bottom = Spacing.xl),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
         Text("New place", style = MaterialTheme.typography.headlineMedium)
         CupertinoTextField(value = name, onValueChange = { name = it }, placeholder = "Name (e.g. School)")
         Text("Radius: ${radius.toInt()} m", style = MaterialTheme.typography.bodyMedium)
         Slider(value = radius, onValueChange = { radius = it }, valueRange = 50f..1000f)
-        CupertinoPrimaryButton(
-            text = "Save place",
-            onClick = { onSave(name, radius, GeofenceTrigger.ENTER_EXIT) },
+        CupertinoPrimaryButton(text = "Save place", onClick = { onSave(name, radius, GeofenceTrigger.ENTER_EXIT) })
+    }
+}
+
+@Composable
+private fun AreaEditor(onSave: (name: String, trigger: GeofenceTrigger) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl),
+        verticalArrangement = Arrangement.spacedBy(Spacing.md),
+    ) {
+        Text("New area", style = MaterialTheme.typography.headlineMedium)
+        Text(
+            "Alerts trigger around this area.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = AppTheme.colors.secondaryLabel,
         )
+        CupertinoTextField(value = name, onValueChange = { name = it }, placeholder = "Name (e.g. Neighborhood)")
+        CupertinoPrimaryButton(text = "Save area", onClick = { onSave(name, GeofenceTrigger.ENTER_EXIT) })
+    }
+}
+
+@Composable
+private fun PlacesList(geofences: List<Geofence>, onDelete: (String) -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl)) {
+        Text("Places & areas", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = Spacing.sm))
+        if (geofences.isEmpty()) {
+            Text("None yet — tap the map to add one.", color = AppTheme.colors.secondaryLabel)
+        } else {
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 320.dp),
+                verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+            ) {
+                items(geofences, key = { it.id }) { g ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            if (g.shape == GeofenceShape.POLYGON) Icons.Filled.Pentagon else Icons.Filled.Place,
+                            contentDescription = null,
+                            tint = AppTheme.colors.accent,
+                        )
+                        Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
+                            Text(g.name, style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                if (g.shape == GeofenceShape.POLYGON) "Area · ${g.points.size} points"
+                                else "${g.radiusMeters.toInt()} m radius",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AppTheme.colors.secondaryLabel,
+                            )
+                        }
+                        IconButton(onClick = { onDelete(g.id) }) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = AppTheme.colors.destructive)
+                        }
+                    }
+                }
+            }
+        }
     }
 }

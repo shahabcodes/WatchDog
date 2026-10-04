@@ -4,8 +4,11 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.shahaabapps.core.firebase.geofence.GeofenceRepository
+import com.shahaabapps.core.model.GeoMath
+import com.shahaabapps.core.model.GeoPoint
 import com.shahaabapps.core.model.Geofence
 import com.shahaabapps.core.model.GeofenceEvent
+import com.shahaabapps.core.model.GeofenceShape
 import com.shahaabapps.core.model.GeofenceTrigger
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -50,7 +53,33 @@ class GeofenceViewModel @Inject constructor(
         }
     }
 
+    /** Saves a free-form drawn area; its bounding circle is used for triggering. */
+    fun saveArea(
+        name: String,
+        points: List<GeoPoint>,
+        trigger: GeofenceTrigger,
+    ) {
+        if (points.size < 3) return
+        val (centerLat, centerLon, radius) = GeoMath.boundingCircle(points)
+        viewModelScope.launch {
+            geofenceRepository.saveGeofence(
+                childId,
+                Geofence(
+                    name = name.ifBlank { "Area" },
+                    latitude = centerLat,
+                    longitude = centerLon,
+                    radiusMeters = radius,
+                    trigger = trigger,
+                    active = true,
+                    shape = GeofenceShape.POLYGON,
+                    points = points,
+                ),
+            )
+        }
+    }
+
     fun deleteGeofence(geofenceId: String) {
         viewModelScope.launch { geofenceRepository.deleteGeofence(childId, geofenceId) }
     }
 }
+

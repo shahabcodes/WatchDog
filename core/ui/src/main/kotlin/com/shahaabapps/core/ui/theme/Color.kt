@@ -67,4 +67,11 @@ enum class AccentPalette(
         accentDark = Color(0xFF6FA0FF),
         gradient = listOf(Color(0xFF3B6FF6), Color(0xFF5B63F7), Color(0xFF7C4DFF)),
     ),
+
+    /** Qatar flag maroon — mirrors Browse Safe's Qatar country theme (#8A1538). */
+    QATAR(
+        accentLight = Color(0xFF8A1538),
+        accentDark = Color(0xFFE08BA3),
+        gradient = listOf(Color(0xFFA81E47), Color(0xFF8A1538), Color(0xFF6E102C)),
+    ),
 }

@@ -34,12 +34,17 @@ class GeofenceSyncService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForegroundCompat()
+        try {
+            startForegroundCompat()
+        } catch (t: Throwable) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
         val childId = authRepository.currentUserIdOrNull()
         if (childId != null) {
             scope.launch {
                 geofenceRepository.observeGeofences(childId).collectLatest { geofences ->
-                    registrar.register(geofences)
+                    runCatching { registrar.register(geofences) }
                 }
             }
         }

@@ -25,7 +25,7 @@ class FirebaseChildRepository @Inject constructor(
         val registration = childrenCollection.document(childId)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    close(error)
+                    trySend(null)
                     return@addSnapshotListener
                 }
                 trySend(snapshot?.takeIf { it.exists() }?.toChildAccount())
@@ -62,7 +62,7 @@ class FirebaseChildRepository @Inject constructor(
             .whereArrayContains(FIELD_LINKED_PARENTS, parentId)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    close(error)
+                    trySend(emptyList())
                     return@addSnapshotListener
                 }
                 trySend(snapshot?.documents?.mapNotNull { it.toChildAccount() } ?: emptyList())

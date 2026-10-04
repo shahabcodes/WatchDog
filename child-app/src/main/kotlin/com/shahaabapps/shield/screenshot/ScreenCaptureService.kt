@@ -54,25 +54,30 @@ class ScreenCaptureService : Service() {
     private var density = 0
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForegroundCompat()
-        val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, 0) ?: 0
-        val data = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent?.getParcelableExtra(EXTRA_DATA, Intent::class.java)
-        } else {
-            @Suppress("DEPRECATION") intent?.getParcelableExtra(EXTRA_DATA)
-        }
-        if (resultCode == 0 || data == null) {
-            stopSelf(); return START_NOT_STICKY
-        }
+        try {
+            startForegroundCompat()
+            val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, 0) ?: 0
+            val data = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent?.getParcelableExtra(EXTRA_DATA, Intent::class.java)
+            } else {
+                @Suppress("DEPRECATION") intent?.getParcelableExtra(EXTRA_DATA)
+            }
+            if (resultCode == 0 || data == null) {
+                stopSelf(); return START_NOT_STICKY
+            }
 
-        val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        projection = mpm.getMediaProjection(resultCode, data).also {
-            it.registerCallback(object : MediaProjection.Callback() {
-                override fun onStop() { teardown() }
-            }, null)
+            val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            projection = mpm.getMediaProjection(resultCode, data).also {
+                it.registerCallback(object : MediaProjection.Callback() {
+                    override fun onStop() { teardown() }
+                }, null)
+            }
+            setupCapture()
+            listenForRequests()
+        } catch (t: Throwable) {
+            stopSelf()
+            return START_NOT_STICKY
         }
-        setupCapture()
-        listenForRequests()
         return START_STICKY
     }
 

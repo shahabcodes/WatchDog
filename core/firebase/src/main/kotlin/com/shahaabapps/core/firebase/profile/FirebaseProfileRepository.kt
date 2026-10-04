@@ -26,7 +26,7 @@ class FirebaseProfileRepository @Inject constructor(
             .document(userId)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    close(error)
+                    trySend(null)
                     return@addSnapshotListener
                 }
                 trySend(snapshot?.takeIf { it.exists() }?.toUserProfile(userId))

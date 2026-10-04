@@ -21,7 +21,7 @@ class FirebaseAppRulesRepository @Inject constructor(
         val registration = appRulesCollection(childId)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    close(error)
+                    trySend(emptyList())
                     return@addSnapshotListener
                 }
                 trySend(snapshot?.documents?.map { it.toAppRule() } ?: emptyList())
@@ -75,7 +75,7 @@ class FirebaseAppRulesRepository @Inject constructor(
             .document(DOC_INSTALLED)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    close(error)
+                    trySend(emptyList())
                     return@addSnapshotListener
                 }
                 @Suppress("UNCHECKED_CAST")

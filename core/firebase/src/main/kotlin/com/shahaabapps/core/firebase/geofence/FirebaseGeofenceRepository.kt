@@ -22,7 +22,7 @@ class FirebaseGeofenceRepository @Inject constructor(
     override fun observeGeofences(childId: String): Flow<List<Geofence>> = callbackFlow {
         val registration = geofences(childId).addSnapshotListener { snapshot, error ->
             if (error != null) {
-                close(error); return@addSnapshotListener
+                trySend(emptyList()); return@addSnapshotListener
             }
             trySend(snapshot?.documents?.map { it.toGeofence() } ?: emptyList())
         }
@@ -68,7 +68,7 @@ class FirebaseGeofenceRepository @Inject constructor(
                 .limit(limit)
                 .addSnapshotListener { snapshot, error ->
                     if (error != null) {
-                        close(error); return@addSnapshotListener
+                        trySend(emptyList()); return@addSnapshotListener
                     }
                     trySend(snapshot?.documents?.map { it.toEvent() } ?: emptyList())
                 }

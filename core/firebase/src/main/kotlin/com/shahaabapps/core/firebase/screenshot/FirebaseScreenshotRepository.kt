@@ -34,27 +34,29 @@ class FirebaseScreenshotRepository @Inject constructor(
             val registration = commands(childId).document(commandId)
                 .addSnapshotListener { snapshot, error ->
                     if (error != null) {
-                        close(error); return@addSnapshotListener
+                        trySend(null); return@addSnapshotListener
                     }
                     trySend(snapshot?.takeIf { it.exists() }?.toCommand())
                 }
             awaitClose { registration.remove() }
         }
 
+    // Single-field orderBy only (no composite index needed); the collection holds
+    // only screenshot commands today.
     override fun observeLatest(childId: String): Flow<ScreenshotCommand?> = callbackFlow {
         val registration = commands(childId)
-            .whereEqualTo("type", TYPE_SCREENSHOT)
             .orderBy("requestedAtMillis", Query.Direction.DESCENDING)
             .limit(1)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    close(error); return@addSnapshotListener
+                    trySend(null); return@addSnapshotListener
                 }
                 trySend(snapshot?.documents?.firstOrNull()?.toCommand())
             }
         awaitClose { registration.remove() }
     }
 
+    // Two equality filters only (no composite index needed).
     override fun observePendingRequests(childId: String): Flow<List<ScreenshotCommand>> =
         callbackFlow {
             val registration = commands(childId)
@@ -62,7 +64,7 @@ class FirebaseScreenshotRepository @Inject constructor(
                 .whereEqualTo("status", ScreenshotStatus.REQUESTED.name)
                 .addSnapshotListener { snapshot, error ->
                     if (error != null) {
-                        close(error); return@addSnapshotListener
+                        trySend(emptyList()); return@addSnapshotListener
                     }
                     trySend(snapshot?.documents?.map { it.toCommand() } ?: emptyList())
                 }

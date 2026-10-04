@@ -10,14 +10,24 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Place
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -28,7 +38,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shahaabapps.core.model.AppRule
+import com.shahaabapps.core.model.TimeWindow
 import com.shahaabapps.core.ui.components.CupertinoCard
+import com.shahaabapps.core.ui.components.CupertinoDisclosure
 import com.shahaabapps.core.ui.components.CupertinoListRow
 import com.shahaabapps.core.ui.components.CupertinoPrimaryButton
 import com.shahaabapps.core.ui.components.CupertinoScaffold
@@ -59,12 +71,18 @@ fun ChildDetailScreen(
         ) {
             item {
                 CupertinoCard(onClick = onOpenGeofences) {
-                    Text("Places & geofences", style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        "Get alerts when they enter or leave a place",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.secondaryLabel,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Place, contentDescription = null, tint = AppTheme.colors.accent)
+                        Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
+                            Text("Places & geofences", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                "Alerts when they enter or leave a place",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AppTheme.colors.secondaryLabel,
+                            )
+                        }
+                        CupertinoDisclosure()
+                    }
                 }
             }
             item {
@@ -115,8 +133,8 @@ fun ChildDetailScreen(
         ) {
             RuleEditor(
                 row = current,
-                onSave = { limit, blocked ->
-                    viewModel.saveRule(current.app, limit, blocked, current.rule)
+                onSave = { limit, blocked, schedule ->
+                    viewModel.saveRule(current.app, limit, blocked, schedule)
                     editing = null
                 },
                 onRemove = {
@@ -132,15 +150,22 @@ fun ChildDetailScreen(
 @Composable
 private fun RuleEditor(
     row: AppRuleRow,
-    onSave: (dailyLimitMinutes: Int?, blocked: Boolean) -> Unit,
+    onSave: (dailyLimitMinutes: Int?, blocked: Boolean, schedule: List<TimeWindow>) -> Unit,
     onRemove: () -> Unit,
 ) {
     var blocked by remember { mutableStateOf(row.rule?.blocked ?: false) }
     var limit by remember { mutableStateOf(row.rule?.dailyLimitMinutes) }
+    val existingWindow = row.rule?.schedule?.firstOrNull()
+    var scheduleEnabled by remember { mutableStateOf(existingWindow != null) }
+    var startMin by remember { mutableIntStateOf(existingWindow?.startMinuteOfDay ?: 7 * 60) }
+    var endMin by remember { mutableIntStateOf(existingWindow?.endMinuteOfDay ?: 21 * 60) }
+    var editingStart by remember { mutableStateOf(false) }
+    var editingEnd by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = Spacing.lg)
             .padding(bottom = Spacing.xl),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
@@ -162,10 +187,7 @@ private fun RuleEditor(
         }
 
         if (!blocked) {
-            Text(
-                text = "Daily limit",
-                style = MaterialTheme.typography.titleMedium,
-            )
+            Text("Daily limit", style = MaterialTheme.typography.titleMedium)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 LIMIT_OPTIONS.forEach { option ->
                     FilterChip(
@@ -176,16 +198,93 @@ private fun RuleEditor(
                     )
                 }
             }
+
+            Text("Allowed hours", style = MaterialTheme.typography.titleMedium)
+            CupertinoCard {
+                Column {
+                    CupertinoListRow(
+                        title = "Only during set hours",
+                        subtitle = "Blocked outside this window",
+                        showDivider = scheduleEnabled,
+                        trailing = {
+                            CupertinoSwitch(checked = scheduleEnabled, onCheckedChange = { scheduleEnabled = it })
+                        },
+                    )
+                    if (scheduleEnabled) {
+                        CupertinoListRow(
+                            title = "From",
+                            onClick = { editingStart = true },
+                            trailing = { Text(formatMinutes(startMin), color = AppTheme.colors.accent) },
+                        )
+                        CupertinoListRow(
+                            title = "To",
+                            showDivider = false,
+                            onClick = { editingEnd = true },
+                            trailing = { Text(formatMinutes(endMin), color = AppTheme.colors.accent) },
+                        )
+                    }
+                }
+            }
         }
 
         CupertinoPrimaryButton(
             text = "Save",
-            onClick = { onSave(if (blocked) null else limit, blocked) },
+            onClick = {
+                val schedule = if (!blocked && scheduleEnabled) {
+                    listOf(TimeWindow(startMin, endMin, setOf(1, 2, 3, 4, 5, 6, 7)))
+                } else {
+                    emptyList()
+                }
+                onSave(if (blocked) null else limit, blocked, schedule)
+            },
         )
         if (row.rule != null) {
             CupertinoTextButton(text = "Remove rule", onClick = onRemove, destructive = true)
         }
     }
+
+    if (editingStart) {
+        TimePickerSheet(initialMinutes = startMin, onDismiss = { editingStart = false }) { startMin = it; editingStart = false }
+    }
+    if (editingEnd) {
+        TimePickerSheet(initialMinutes = endMin, onDismiss = { editingEnd = false }) { endMin = it; editingEnd = false }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimePickerSheet(
+    initialMinutes: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (minutes: Int) -> Unit,
+) {
+    val state = rememberTimePickerState(
+        initialHour = initialMinutes / 60,
+        initialMinute = initialMinutes % 60,
+        is24Hour = false,
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = { onConfirm(state.hour * 60 + state.minute) }) { Text("OK") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                TimePicker(state = state)
+            }
+        },
+    )
+}
+
+private fun formatMinutes(min: Int): String {
+    val h = min / 60
+    val m = min % 60
+    val ampm = if (h < 12) "AM" else "PM"
+    val h12 = when {
+        h == 0 -> 12
+        h > 12 -> h - 12
+        else -> h
+    }
+    return "%d:%02d %s".format(h12, m, ampm)
 }
 
 @Composable

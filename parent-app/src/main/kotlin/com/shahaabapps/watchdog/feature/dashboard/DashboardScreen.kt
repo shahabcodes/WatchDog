@@ -34,6 +34,7 @@ import com.shahaabapps.core.model.ChildAccount
 import com.shahaabapps.core.model.UserProfile
 import com.shahaabapps.core.ui.components.Avatar
 import com.shahaabapps.core.ui.components.CupertinoCard
+import com.shahaabapps.core.ui.components.CupertinoDisclosure
 import com.shahaabapps.core.ui.components.CupertinoPrimaryButton
 import com.shahaabapps.core.ui.components.CupertinoTextButton
 import com.shahaabapps.core.ui.components.Hero
@@ -166,6 +167,7 @@ private fun ChildRow(child: ChildAccount, onClick: () -> Unit) {
                     color = if (child.device.online) AppTheme.colors.success else AppTheme.colors.secondaryLabel,
                 )
             }
+            CupertinoDisclosure()
         }
     }
 }

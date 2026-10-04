@@ -7,6 +7,7 @@ import com.shahaabapps.core.firebase.child.ChildRepository
 import com.shahaabapps.core.firebase.rules.AppRulesRepository
 import com.shahaabapps.core.model.AppRule
 import com.shahaabapps.core.model.InstalledApp
+import com.shahaabapps.core.model.TimeWindow
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -52,14 +53,19 @@ class ChildDetailViewModel @Inject constructor(
         initialValue = ChildDetailUiState(),
     )
 
-    fun saveRule(app: InstalledApp, dailyLimitMinutes: Int?, blocked: Boolean, existing: AppRule?) {
+    fun saveRule(
+        app: InstalledApp,
+        dailyLimitMinutes: Int?,
+        blocked: Boolean,
+        schedule: List<TimeWindow>,
+    ) {
         viewModelScope.launch {
             val rule = AppRule(
                 packageName = app.packageName,
                 appLabel = app.label,
                 dailyLimitMinutes = dailyLimitMinutes,
                 blocked = blocked,
-                schedule = existing?.schedule ?: emptyList(),
+                schedule = schedule,
             )
             appRulesRepository.saveAppRule(childId, rule)
         }

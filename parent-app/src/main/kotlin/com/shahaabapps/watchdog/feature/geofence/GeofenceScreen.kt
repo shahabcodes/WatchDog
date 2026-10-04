@@ -13,6 +13,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Login
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
@@ -56,7 +58,9 @@ import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberMarkerState
 import com.shahaabapps.core.model.GeoPoint
 import com.shahaabapps.core.model.Geofence
+import com.shahaabapps.core.model.GeofenceEvent
 import com.shahaabapps.core.model.GeofenceShape
+import com.shahaabapps.core.model.GeofenceTransition
 import com.shahaabapps.core.model.GeofenceTrigger
 import com.shahaabapps.core.ui.components.CupertinoPrimaryButton
 import com.shahaabapps.core.ui.components.CupertinoTextField
@@ -279,6 +283,7 @@ fun GeofenceScreen(
         ModalBottomSheet(onDismissRequest = { showList = false }, sheetState = sheetState) {
             PlacesList(
                 geofences = geofences,
+                events = events,
                 onDelete = { viewModel.deleteGeofence(it) },
             )
         }
@@ -335,14 +340,18 @@ private fun AreaEditor(onSave: (name: String, trigger: GeofenceTrigger) -> Unit)
 }
 
 @Composable
-private fun PlacesList(geofences: List<Geofence>, onDelete: (String) -> Unit) {
+private fun PlacesList(
+    geofences: List<Geofence>,
+    events: List<GeofenceEvent>,
+    onDelete: (String) -> Unit,
+) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl)) {
         Text("Places & areas", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = Spacing.sm))
         if (geofences.isEmpty()) {
             Text("None yet — tap the map to add one.", color = AppTheme.colors.secondaryLabel)
         } else {
             LazyColumn(
-                modifier = Modifier.heightIn(max = 320.dp),
+                modifier = Modifier.heightIn(max = 220.dp),
                 verticalArrangement = Arrangement.spacedBy(Spacing.sm),
             ) {
                 items(geofences, key = { it.id }) { g ->
@@ -368,5 +377,52 @@ private fun PlacesList(geofences: List<Geofence>, onDelete: (String) -> Unit) {
                 }
             }
         }
+
+        if (events.isNotEmpty()) {
+            Text(
+                "Recent activity",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(top = Spacing.md, bottom = Spacing.sm),
+            )
+            val names = geofences.associate { it.id to it.name }
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 180.dp),
+                verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+            ) {
+                items(events, key = { it.id }) { e ->
+                    val entered = e.transition == GeofenceTransition.ENTER
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            if (entered) Icons.AutoMirrored.Filled.Login else Icons.AutoMirrored.Filled.Logout,
+                            contentDescription = null,
+                            tint = if (entered) AppTheme.colors.success else AppTheme.colors.warn,
+                        )
+                        Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
+                            Text(
+                                "${if (entered) "Arrived at" else "Left"} ${names[e.geofenceId] ?: e.geofenceName.ifBlank { "a place" }}",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Text(
+                                relativeTime(e.timestampMillis),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AppTheme.colors.secondaryLabel,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun relativeTime(millis: Long): String {
+    if (millis <= 0) return ""
+    val diff = System.currentTimeMillis() - millis
+    val mins = diff / 60_000
+    return when {
+        mins < 1 -> "just now"
+        mins < 60 -> "$mins min ago"
+        mins < 1440 -> "${mins / 60} h ago"
+        else -> "${mins / 1440} d ago"
     }
 }

@@ -24,8 +24,13 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOff
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -74,6 +79,7 @@ import com.shahaabapps.core.ui.components.CupertinoSwitch
 import com.shahaabapps.core.ui.components.CupertinoTextButton
 import com.shahaabapps.core.ui.components.CupertinoTextField
 import com.shahaabapps.core.ui.components.IconBadge
+import com.shahaabapps.core.ui.components.LoadingView
 import com.shahaabapps.core.ui.components.StatusChip
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.shahaabapps.core.ui.theme.AppTheme
@@ -86,6 +92,7 @@ private val LIMIT_OPTIONS = listOf(null, 15, 30, 60, 120, 180)
 fun ChildDetailScreen(
     onOpenGeofences: () -> Unit,
     onOpenUsage: () -> Unit,
+    onOpenTravel: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ChildDetailViewModel = hiltViewModel(),
 ) {
@@ -107,6 +114,7 @@ fun ChildDetailScreen(
                     childName = state.childName,
                     onOpenMap = onOpenGeofences,
                     onRing = { showRingSheet = true },
+                    onOpenTravel = onOpenTravel,
                 )
             }
             item {
@@ -135,7 +143,9 @@ fun ChildDetailScreen(
                     modifier = Modifier.padding(top = Spacing.md, bottom = Spacing.sm),
                 )
             }
-            if (state.rows.isEmpty()) {
+            if (state.loadingInventory && state.rows.isEmpty()) {
+                item { LoadingView(label = "Loading apps…", modifier = Modifier.padding(vertical = Spacing.lg)) }
+            } else if (state.rows.isEmpty()) {
                 item { InventoryHint() }
             } else {
                 items(state.rows, key = { it.app.packageName }) { row ->
@@ -233,6 +243,7 @@ private fun LocationCard(
     childName: String,
     onOpenMap: () -> Unit,
     onRing: () -> Unit,
+    onOpenTravel: () -> Unit,
 ) {
     CupertinoCard {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
@@ -246,6 +257,24 @@ private fun LocationCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = AppTheme.colors.secondaryLabel,
                     )
+                }
+                var menuOpen by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(onClick = { menuOpen = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "More", tint = AppTheme.colors.secondaryLabel)
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Travel history") },
+                            onClick = { menuOpen = false; onOpenTravel() },
+                            leadingIcon = { Icon(Icons.Filled.Timeline, contentDescription = null) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Open map") },
+                            onClick = { menuOpen = false; onOpenMap() },
+                            leadingIcon = { Icon(Icons.Filled.Map, contentDescription = null) },
+                        )
+                    }
                 }
             }
 

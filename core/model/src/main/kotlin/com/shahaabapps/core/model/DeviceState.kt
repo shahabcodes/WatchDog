@@ -21,3 +21,18 @@ data class RingCommand(
     val nonce: String = "",
     val requestedAtMillis: Long = 0L,
 )
+
+/**
+ * A place where the child stayed for a meaningful amount of time (a "stop" in
+ * their travel history). Recorded on-device when the child stays within a small
+ * radius for at least a few minutes.
+ */
+data class TravelStop(
+    val id: String = "",
+    val latitude: Double = 0.0,
+    val longitude: Double = 0.0,
+    val arrivalMillis: Long = 0L,
+    val departureMillis: Long = 0L,
+) {
+    val durationMinutes: Long get() = ((departureMillis - arrivalMillis) / 60_000L).coerceAtLeast(0)
+}

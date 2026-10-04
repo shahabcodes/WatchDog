@@ -2,10 +2,12 @@ package com.shahaabapps.core.firebase.device
 
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
 import com.shahaabapps.core.common.AppResult
 import com.shahaabapps.core.common.runCatchingResult
 import com.shahaabapps.core.model.ChildLocation
 import com.shahaabapps.core.model.RingCommand
+import com.shahaabapps.core.model.TravelStop
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -64,8 +66,45 @@ class FirebaseDeviceRepository @Inject constructor(
         awaitClose { registration.remove() }
     }
 
+    override suspend fun addTravelStop(childId: String, stop: TravelStop): AppResult<Unit> =
+        runCatchingResult {
+            val data = mapOf(
+                "latitude" to stop.latitude,
+                "longitude" to stop.longitude,
+                "arrivalMillis" to stop.arrivalMillis,
+                "departureMillis" to stop.departureMillis,
+            )
+            travelHistory(childId).add(data).await()
+            Unit
+        }
+
+    override fun observeTravelHistory(childId: String, limit: Long): Flow<List<TravelStop>> =
+        callbackFlow {
+            val registration = travelHistory(childId)
+                .orderBy("arrivalMillis", Query.Direction.DESCENDING)
+                .limit(limit)
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        trySend(emptyList()); return@addSnapshotListener
+                    }
+                    trySend(snapshot?.documents?.map { it.toTravelStop() } ?: emptyList())
+                }
+            awaitClose { registration.remove() }
+        }
+
     private fun live(childId: String) =
         firestore.collection(CHILDREN).document(childId).collection(LIVE)
+
+    private fun travelHistory(childId: String) =
+        firestore.collection(CHILDREN).document(childId).collection(TRAVEL_HISTORY)
+
+    private fun DocumentSnapshot.toTravelStop() = TravelStop(
+        id = id,
+        latitude = getDouble("latitude") ?: 0.0,
+        longitude = getDouble("longitude") ?: 0.0,
+        arrivalMillis = getLong("arrivalMillis") ?: 0L,
+        departureMillis = getLong("departureMillis") ?: 0L,
+    )
 
     private fun DocumentSnapshot.toLocation() = ChildLocation(
         latitude = getDouble("latitude") ?: 0.0,
@@ -86,5 +125,6 @@ class FirebaseDeviceRepository @Inject constructor(
         const val LIVE = "live"
         const val LOCATION = "location"
         const val RING = "ring"
+        const val TRAVEL_HISTORY = "travelHistory"
     }
 }

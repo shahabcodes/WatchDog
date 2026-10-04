@@ -18,6 +18,7 @@ data class UsageRow(val label: String, val minutes: Int)
 data class UsageUiState(
     val rows: List<UsageRow> = emptyList(),
     val totalMinutes: Int = 0,
+    val loading: Boolean = true,
 )
 
 @HiltViewModel
@@ -41,6 +42,6 @@ class UsageViewModel @Inject constructor(
             .map { UsageRow(labels[it.key] ?: it.key, it.value) }
             .filter { it.minutes > 0 }
             .sortedByDescending { it.minutes }
-        UsageUiState(rows = rows, totalMinutes = rows.sumOf { it.minutes })
+        UsageUiState(rows = rows, totalMinutes = rows.sumOf { it.minutes }, loading = false)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UsageUiState())
 }

@@ -23,6 +23,7 @@ import com.shahaabapps.core.firebase.auth.AuthRepository
 import com.shahaabapps.core.firebase.device.DeviceRepository
 import com.shahaabapps.core.firebase.geofence.GeofenceRepository
 import com.shahaabapps.core.model.ChildLocation
+import com.shahaabapps.core.model.TravelStop
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -50,6 +51,11 @@ class GeofenceSyncService : Service() {
     private var locationCallback: LocationCallback? = null
     private var started = false
     private var lastRingNonce: String? = null
+
+    // In-memory "stop" cluster for travel history.
+    private var stopAnchor: android.location.Location? = null
+    private var stopArrivalMillis = 0L
+    private var stopLastMillis = 0L
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         try {
@@ -126,6 +132,7 @@ class GeofenceSyncService : Service() {
     }
 
     private fun publishLocation(childId: String, loc: android.location.Location) {
+        val now = System.currentTimeMillis()
         scope.launch {
             runCatching {
                 deviceRepository.updateLocation(
@@ -134,11 +141,44 @@ class GeofenceSyncService : Service() {
                         latitude = loc.latitude,
                         longitude = loc.longitude,
                         accuracyMeters = loc.accuracy,
-                        timestampMillis = System.currentTimeMillis(),
+                        timestampMillis = now,
                     ),
                 )
             }
         }
+        trackStop(childId, loc, now)
+    }
+
+    /**
+     * Groups nearby fixes into a "stop". When the child leaves a spot they stayed
+     * at for at least [STOP_MIN_MS], the completed stop is saved to travel history.
+     */
+    private fun trackStop(childId: String, loc: android.location.Location, now: Long) {
+        val anchor = stopAnchor
+        if (anchor == null) {
+            stopAnchor = loc
+            stopArrivalMillis = now
+            stopLastMillis = now
+            return
+        }
+        if (anchor.distanceTo(loc) <= STOP_RADIUS_METERS) {
+            // Still at the same place — extend the stay.
+            stopLastMillis = now
+            return
+        }
+        // Moved away: record the previous stay if it was long enough.
+        if (stopLastMillis - stopArrivalMillis >= STOP_MIN_MS) {
+            val stop = TravelStop(
+                latitude = anchor.latitude,
+                longitude = anchor.longitude,
+                arrivalMillis = stopArrivalMillis,
+                departureMillis = stopLastMillis,
+            )
+            scope.launch { runCatching { deviceRepository.addTravelStop(childId, stop) } }
+        }
+        stopAnchor = loc
+        stopArrivalMillis = now
+        stopLastMillis = now
     }
 
     private fun startForegroundCompat() {
@@ -177,6 +217,10 @@ class GeofenceSyncService : Service() {
         private const val NOTIFICATION_ID = 42
         private const val LOCATION_INTERVAL_MS = 60_000L
         private const val LOCATION_FASTEST_MS = 30_000L
+
+        // Travel-history "stop" detection.
+        private const val STOP_RADIUS_METERS = 150f
+        private const val STOP_MIN_MS = 5 * 60_000L // 5 minutes
 
         const val ACTION_RING_SNOOZE = "com.shahaabapps.shield.action.RING_SNOOZE"
         const val ACTION_RING_DISMISS = "com.shahaabapps.shield.action.RING_DISMISS"

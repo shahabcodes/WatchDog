@@ -45,6 +45,7 @@ import com.shahaabapps.core.ui.components.CupertinoPrimaryButton
 import com.shahaabapps.core.ui.components.CupertinoTextButton
 import com.shahaabapps.core.ui.components.Hero
 import com.shahaabapps.core.ui.components.HeroIconButton
+import com.shahaabapps.core.ui.components.LoadingView
 import com.shahaabapps.core.ui.components.StatusChip
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
@@ -64,6 +65,7 @@ fun DashboardScreen(
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val children by viewModel.children.collectAsStateWithLifecycle()
+    val loading by viewModel.loading.collectAsStateWithLifecycle()
     val linkState by viewModel.linkState.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
@@ -143,7 +145,9 @@ fun DashboardScreen(
                 LinkState.Idle -> Unit
             }
 
-            if (children.isEmpty()) {
+            if (loading && children.isEmpty()) {
+                LoadingView(label = "Loading your family…")
+            } else if (children.isEmpty()) {
                 EmptyState()
             } else {
                 Text(

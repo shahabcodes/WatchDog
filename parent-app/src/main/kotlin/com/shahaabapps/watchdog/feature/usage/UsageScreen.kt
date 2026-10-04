@@ -30,6 +30,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.components.Hero
 import com.shahaabapps.core.ui.components.HeroIconButton
+import com.shahaabapps.core.ui.components.LoadingView
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Brand
 import com.shahaabapps.core.ui.theme.Spacing
@@ -66,7 +67,9 @@ fun UsageScreen(
         }
 
         Column(modifier = Modifier.padding(horizontal = Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            if (state.rows.isEmpty()) {
+            if (state.loading && state.rows.isEmpty()) {
+                LoadingView(label = "Loading screen time…")
+            } else if (state.rows.isEmpty()) {
                 CupertinoCard {
                     Text("No usage yet", style = MaterialTheme.typography.bodyLarge)
                     Text(

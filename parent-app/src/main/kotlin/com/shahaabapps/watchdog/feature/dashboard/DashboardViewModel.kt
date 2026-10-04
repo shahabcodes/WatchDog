@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -41,6 +42,17 @@ class DashboardViewModel @Inject constructor(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = emptyList(),
+        )
+
+    /** True until the first children snapshot arrives, so the UI can show a spinner. */
+    val loading: StateFlow<Boolean> = authRepository.currentUserId
+        .flatMapLatest { uid ->
+            if (uid == null) flowOf(false) else childRepository.observeLinkedChildren(uid).map { false }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = true,
         )
 
     private val _linkState = MutableStateFlow<LinkState>(LinkState.Idle)

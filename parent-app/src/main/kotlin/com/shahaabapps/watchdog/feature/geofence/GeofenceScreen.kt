@@ -19,9 +19,12 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pentagon
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalIconButton
@@ -29,9 +32,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -69,6 +69,7 @@ import com.google.maps.android.compose.rememberMarkerState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import com.shahaabapps.core.model.GeoPoint
@@ -79,6 +80,7 @@ import com.shahaabapps.core.model.GeofenceTransition
 import com.shahaabapps.core.model.GeofenceTrigger
 import com.shahaabapps.core.ui.components.ConfirmDialog
 import com.shahaabapps.core.ui.components.CupertinoPrimaryButton
+import com.shahaabapps.core.ui.components.CupertinoSegmentedControl
 import com.shahaabapps.core.ui.components.CupertinoTextField
 import kotlinx.coroutines.launch
 import com.shahaabapps.core.ui.theme.AppTheme
@@ -241,20 +243,15 @@ fun GeofenceScreen(
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.padding(start = Spacing.sm).weight(1f),
                     )
-                    SingleChoiceSegmentedButtonRow {
-                        SegmentedButton(
-                            selected = mode == DrawMode.PIN,
-                            onClick = { mode = DrawMode.PIN; area = emptyList() },
-                            shape = SegmentedButtonDefaults.itemShape(0, 2),
-                            icon = {},
-                        ) { Text("Pin") }
-                        SegmentedButton(
-                            selected = mode == DrawMode.AREA,
-                            onClick = { mode = DrawMode.AREA; pending = null },
-                            shape = SegmentedButtonDefaults.itemShape(1, 2),
-                            icon = {},
-                        ) { Text("Area") }
-                    }
+                    CupertinoSegmentedControl(
+                        options = listOf("Pin", "Area"),
+                        selectedIndex = if (mode == DrawMode.PIN) 0 else 1,
+                        onSelect = { i ->
+                            if (i == 0) { mode = DrawMode.PIN; area = emptyList() }
+                            else { mode = DrawMode.AREA; pending = null }
+                        },
+                        modifier = Modifier.width(168.dp),
+                    )
                 }
             }
             HintPill(
@@ -523,8 +520,20 @@ private fun PlacesList(
                                 color = AppTheme.colors.secondaryLabel,
                             )
                         }
-                        IconButton(onClick = { pendingDelete = g }) {
-                            Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = AppTheme.colors.destructive)
+                        var menuOpen by remember { mutableStateOf(false) }
+                        Box {
+                            IconButton(onClick = { menuOpen = true }) {
+                                Icon(Icons.Filled.MoreVert, contentDescription = "More", tint = AppTheme.colors.secondaryLabel)
+                            }
+                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Delete", color = AppTheme.colors.destructive) },
+                                    onClick = { menuOpen = false; pendingDelete = g },
+                                    leadingIcon = {
+                                        Icon(Icons.Filled.Delete, contentDescription = null, tint = AppTheme.colors.destructive)
+                                    },
+                                )
+                            }
                         }
                     }
                 }

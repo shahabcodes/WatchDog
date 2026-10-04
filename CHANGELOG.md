@@ -8,8 +8,13 @@ on `main` publishes a versioned pre-release (kept as history) plus a rolling
 ## Unreleased / latest
 
 ### Added
+- **Travel history**: Shield records places the child stays at for 5+ minutes;
+  Watch Dog shows them as a timeline (via the live-location card's ⋯ menu).
 - **Live child location** on Watch Dog — a Family-Link-style map card on the
   child's page plus a live marker on the full map.
+- Loading indicators across the app (dashboard, child apps list, screen time,
+  travel history).
+- iOS-style three-dot overflow menus on the live-location card and saved places.
 - **Ring the child's device**: a full-screen alarm over the lock screen with an
   optional message. The child stops it with the on-screen button, the **volume**
   keys, or the **power** button.
@@ -21,8 +26,10 @@ on `main` publishes a versioned pre-release (kept as history) plus a rolling
 - Undo (with a snackbar) while drawing a geofence.
 
 ### Changed
+- Redesigned the map's Pin/Area control as a modern iOS segmented control with
+  a sliding thumb.
 - Warmer, more colorful UI: tinted icon badges, online status dots, refreshed
-  cards.
+  cards, consistent spacing.
 - The schedule editor supports **multiple allowed-hours windows** per app.
 - Ring now lives beside the live-location card, not inside the full map.
 

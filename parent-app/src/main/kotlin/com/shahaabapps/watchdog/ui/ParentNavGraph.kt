@@ -11,6 +11,7 @@ import com.shahaabapps.watchdog.feature.dashboard.DashboardScreen
 import com.shahaabapps.watchdog.feature.geofence.GeofenceScreen
 import com.shahaabapps.watchdog.feature.rules.ChildDetailScreen
 import com.shahaabapps.watchdog.feature.settings.SettingsScreen
+import com.shahaabapps.watchdog.feature.travel.TravelHistoryScreen
 import com.shahaabapps.watchdog.feature.usage.UsageScreen
 
 private object Routes {
@@ -18,10 +19,12 @@ private object Routes {
     const val CHILD_DETAIL = "child/{childId}"
     const val GEOFENCES = "child/{childId}/geofences"
     const val USAGE = "child/{childId}/usage"
+    const val TRAVEL = "child/{childId}/travel"
     const val SETTINGS = "settings"
     fun childDetail(childId: String) = "child/$childId"
     fun geofences(childId: String) = "child/$childId/geofences"
     fun usage(childId: String) = "child/$childId/usage"
+    fun travel(childId: String) = "child/$childId/travel"
 }
 
 @Composable
@@ -43,6 +46,7 @@ fun ParentNavGraph(profile: UserProfile) {
             ChildDetailScreen(
                 onOpenGeofences = { navController.navigate(Routes.geofences(childId)) },
                 onOpenUsage = { navController.navigate(Routes.usage(childId)) },
+                onOpenTravel = { navController.navigate(Routes.travel(childId)) },
             )
         }
         composable(
@@ -56,6 +60,12 @@ fun ParentNavGraph(profile: UserProfile) {
             arguments = listOf(navArgument("childId") { type = NavType.StringType }),
         ) {
             UsageScreen(onBack = { navController.popBackStack() })
+        }
+        composable(
+            route = Routes.TRAVEL,
+            arguments = listOf(navArgument("childId") { type = NavType.StringType }),
+        ) {
+            TravelHistoryScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(onBack = { navController.popBackStack() })

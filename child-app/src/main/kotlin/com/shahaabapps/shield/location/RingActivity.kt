@@ -10,6 +10,11 @@ import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.shahaabapps.core.ui.theme.AppTheme
+import com.shahaabapps.shield.ui.ThemeViewModel
+import dagger.hilt.android.AndroidEntryPoint
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,6 +48,7 @@ import androidx.compose.ui.unit.sp
  * standard alarm: it appears over the lock screen and the ring is silenced by
  * the on-screen buttons, the volume keys, or the power button (screen off).
  */
+@AndroidEntryPoint
 class RingActivity : ComponentActivity() {
 
     private var message: String = ""
@@ -62,11 +68,16 @@ class RingActivity : ComponentActivity() {
         registerReceiver(screenOffReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
 
         setContent {
-            RingScreen(
-                message = message,
-                onStop = { dismiss() },
-                onSnooze = { snooze() },
-            )
+            val themeViewModel: ThemeViewModel = hiltViewModel()
+            val themeMode by themeViewModel.themeMode.collectAsStateWithLifecycle()
+            val accentPalette by themeViewModel.accentPalette.collectAsStateWithLifecycle()
+            AppTheme(themeMode = themeMode, accentPalette = accentPalette) {
+                RingScreen(
+                    message = message,
+                    onStop = { dismiss() },
+                    onSnooze = { snooze() },
+                )
+            }
         }
     }
 
@@ -132,12 +143,12 @@ class RingActivity : ComponentActivity() {
     }
 }
 
-private val RingGradient = Brush.verticalGradient(listOf(Color(0xFF2F7DF6), Color(0xFF1B4DA6)))
-
 @Composable
 private fun RingScreen(message: String, onStop: () -> Unit, onSnooze: () -> Unit) {
+    val gradient = Brush.verticalGradient(AppTheme.palette.gradient)
+    val accent = AppTheme.colors.accent
     Box(
-        modifier = Modifier.fillMaxSize().background(RingGradient),
+        modifier = Modifier.fillMaxSize().background(gradient),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -197,7 +208,7 @@ private fun RingScreen(message: String, onStop: () -> Unit, onSnooze: () -> Unit
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color.White,
-                    contentColor = Color(0xFF1B4DA6),
+                    contentColor = accent,
                 ),
             ) { Text("Stop", fontSize = 18.sp, fontWeight = FontWeight.SemiBold) }
             OutlinedButton(

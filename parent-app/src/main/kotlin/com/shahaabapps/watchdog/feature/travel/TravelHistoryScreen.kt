@@ -46,6 +46,7 @@ import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberMarkerState
+import com.shahaabapps.watchdog.feature.geofence.PlaceIcons
 import com.shahaabapps.watchdog.util.rememberCircleMarker
 import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.components.Hero
@@ -208,7 +209,12 @@ private fun StopRow(item: TravelStopItem) {
                     .background(AppTheme.colors.accent.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Filled.Place, contentDescription = null, tint = AppTheme.colors.accent, modifier = Modifier.size(16.dp))
+                Icon(
+                    PlaceIcons.forKey(item.placeIcon),
+                    contentDescription = null,
+                    tint = AppTheme.colors.accent,
+                    modifier = Modifier.size(16.dp),
+                )
             }
             Box(
                 modifier = Modifier

@@ -18,6 +18,8 @@ data class Geofence(
     val active: Boolean = true,
     val shape: GeofenceShape = GeofenceShape.CIRCLE,
     val points: List<GeoPoint> = emptyList(),
+    /** A place-icon key (see the parent app's PlaceIcons), e.g. "home", "school". */
+    val icon: String = "place",
 )
 
 enum class GeofenceShape { CIRCLE, POLYGON }

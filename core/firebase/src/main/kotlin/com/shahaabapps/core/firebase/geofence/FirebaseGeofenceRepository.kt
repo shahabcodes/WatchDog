@@ -44,6 +44,7 @@ class FirebaseGeofenceRepository @Inject constructor(
                 "active" to geofence.active,
                 "shape" to geofence.shape.name,
                 "points" to geofence.points.map { mapOf("latitude" to it.latitude, "longitude" to it.longitude) },
+                "icon" to geofence.icon,
             )
             doc.set(data).await()
         }
@@ -106,6 +107,7 @@ class FirebaseGeofenceRepository @Inject constructor(
             shape = getString("shape")?.let { runCatching { GeofenceShape.valueOf(it) }.getOrNull() }
                 ?: GeofenceShape.CIRCLE,
             points = points,
+            icon = getString("icon") ?: "place",
         )
     }
 

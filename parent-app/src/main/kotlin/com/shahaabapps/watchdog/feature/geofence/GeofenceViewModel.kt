@@ -47,6 +47,7 @@ class GeofenceViewModel @Inject constructor(
         longitude: Double,
         radiusMeters: Float,
         trigger: GeofenceTrigger,
+        icon: String = "place",
     ) {
         viewModelScope.launch {
             geofenceRepository.saveGeofence(
@@ -58,6 +59,7 @@ class GeofenceViewModel @Inject constructor(
                     radiusMeters = radiusMeters,
                     trigger = trigger,
                     active = true,
+                    icon = icon,
                 ),
             )
         }
@@ -68,6 +70,7 @@ class GeofenceViewModel @Inject constructor(
         name: String,
         points: List<GeoPoint>,
         trigger: GeofenceTrigger,
+        icon: String = "place",
     ) {
         if (points.size < 3) return
         val (centerLat, centerLon, radius) = GeoMath.boundingCircle(points)
@@ -83,6 +86,7 @@ class GeofenceViewModel @Inject constructor(
                     active = true,
                     shape = GeofenceShape.POLYGON,
                     points = points,
+                    icon = icon,
                 ),
             )
         }

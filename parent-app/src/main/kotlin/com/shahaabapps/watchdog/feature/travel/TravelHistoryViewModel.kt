@@ -45,6 +45,7 @@ enum class TravelTime(val label: String, val startHour: Int, val endHour: Int) {
 data class TravelStopItem(
     val stop: TravelStop,
     val placeName: String?,
+    val placeIcon: String? = null,
 )
 
 data class TravelHistoryUiState(
@@ -77,7 +78,10 @@ class TravelHistoryViewModel @Inject constructor(
                 inRange(stop.arrivalMillis, selectedRange) &&
                     selectedTime.contains(Instant.ofEpochMilli(stop.arrivalMillis).atZone(zone).hour)
             }
-            .map { stop -> TravelStopItem(stop, placeNameFor(stop.latitude, stop.longitude, geofences)) }
+            .map { stop ->
+                val place = placeFor(stop.latitude, stop.longitude, geofences)
+                TravelStopItem(stop, place?.name, place?.icon)
+            }
         TravelHistoryUiState(
             loading = false,
             range = selectedRange,
@@ -86,13 +90,13 @@ class TravelHistoryViewModel @Inject constructor(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TravelHistoryUiState())
 
-    /** Name of the saved place this point sits inside (nearest within its radius), or null. */
-    private fun placeNameFor(lat: Double, lon: Double, geofences: List<Geofence>): String? =
+    /** The saved place this point sits inside (nearest within its radius), or null. */
+    private fun placeFor(lat: Double, lon: Double, geofences: List<Geofence>): Geofence? =
         geofences
             .map { it to GeoMath.distanceMeters(lat, lon, it.latitude, it.longitude) }
             .filter { (g, d) -> d <= g.radiusMeters + 40 }
             .minByOrNull { it.second }
-            ?.first?.name
+            ?.first
 
     fun setRange(newRange: TravelRange) {
         range.value = newRange

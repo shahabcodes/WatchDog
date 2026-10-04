@@ -68,10 +68,13 @@ import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberMarkerState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import com.shahaabapps.core.model.GeoPoint
 import com.shahaabapps.core.model.Geofence
 import com.shahaabapps.core.model.GeofenceEvent
@@ -180,7 +183,12 @@ fun GeofenceScreen(
                         strokeWidth = 4f,
                     )
                 }
-                PlaceMarker(position = LatLng(g.latitude, g.longitude), title = g.name, accent = accent)
+                PlaceMarker(
+                    position = LatLng(g.latitude, g.longitude),
+                    title = g.name,
+                    accent = accent,
+                    icon = PlaceIcons.forKey(g.icon),
+                )
             }
 
             // In-progress drawing
@@ -327,8 +335,8 @@ fun GeofenceScreen(
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(onDismissRequest = { showCircleSheet = false; pending = null }, sheetState = sheetState) {
             CircleEditor(
-                onSave = { name, radius, trigger ->
-                    viewModel.saveGeofence(name, center.latitude, center.longitude, radius, trigger)
+                onSave = { name, radius, trigger, icon ->
+                    viewModel.saveGeofence(name, center.latitude, center.longitude, radius, trigger, icon)
                     showCircleSheet = false; pending = null
                 },
             )
@@ -340,8 +348,8 @@ fun GeofenceScreen(
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(onDismissRequest = { showAreaSheet = false }, sheetState = sheetState) {
             AreaEditor(
-                onSave = { name, trigger ->
-                    viewModel.saveArea(name, area.map { GeoPoint(it.latitude, it.longitude) }, trigger)
+                onSave = { name, trigger, icon ->
+                    viewModel.saveArea(name, area.map { GeoPoint(it.latitude, it.longitude) }, trigger, icon)
                     showAreaSheet = false; area = emptyList()
                 },
             )
@@ -391,9 +399,16 @@ private fun ChildMarker(position: LatLng, accent: Color) {
 @OptIn(MapsComposeExperimentalApi::class)
 @Composable
 @GoogleMapComposable
-private fun PlaceMarker(position: LatLng, title: String, accent: Color) {
+private fun PlaceMarker(
+    position: LatLng,
+    title: String,
+    accent: Color,
+    icon: ImageVector = Icons.Filled.Place,
+) {
     MarkerComposable(
         position,
+        accent,
+        icon,
         state = rememberMarkerState(position = position),
         title = title,
     ) {
@@ -407,7 +422,7 @@ private fun PlaceMarker(position: LatLng, title: String, accent: Color) {
                 .background(accent),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Filled.Place, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -449,24 +464,28 @@ private fun HintPill(text: String) {
 }
 
 @Composable
-private fun CircleEditor(onSave: (name: String, radius: Float, trigger: GeofenceTrigger) -> Unit) {
+private fun CircleEditor(onSave: (name: String, radius: Float, trigger: GeofenceTrigger, icon: String) -> Unit) {
     var name by remember { mutableStateOf("") }
     var radius by remember { mutableStateOf(150f) }
+    var icon by remember { mutableStateOf("place") }
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
         Text("New place", style = MaterialTheme.typography.headlineMedium)
         CupertinoTextField(value = name, onValueChange = { name = it }, placeholder = "Name (e.g. School)")
+        Text("Icon", style = MaterialTheme.typography.titleMedium)
+        IconPicker(selected = icon, onSelect = { icon = it })
         Text("Radius: ${radius.toInt()} m", style = MaterialTheme.typography.bodyMedium)
         Slider(value = radius, onValueChange = { radius = it }, valueRange = 50f..1000f)
-        CupertinoPrimaryButton(text = "Save place", onClick = { onSave(name, radius, GeofenceTrigger.ENTER_EXIT) })
+        CupertinoPrimaryButton(text = "Save place", onClick = { onSave(name, radius, GeofenceTrigger.ENTER_EXIT, icon) })
     }
 }
 
 @Composable
-private fun AreaEditor(onSave: (name: String, trigger: GeofenceTrigger) -> Unit) {
+private fun AreaEditor(onSave: (name: String, trigger: GeofenceTrigger, icon: String) -> Unit) {
     var name by remember { mutableStateOf("") }
+    var icon by remember { mutableStateOf("place") }
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
@@ -478,7 +497,46 @@ private fun AreaEditor(onSave: (name: String, trigger: GeofenceTrigger) -> Unit)
             color = AppTheme.colors.secondaryLabel,
         )
         CupertinoTextField(value = name, onValueChange = { name = it }, placeholder = "Name (e.g. Neighborhood)")
-        CupertinoPrimaryButton(text = "Save area", onClick = { onSave(name, GeofenceTrigger.ENTER_EXIT) })
+        Text("Icon", style = MaterialTheme.typography.titleMedium)
+        IconPicker(selected = icon, onSelect = { icon = it })
+        CupertinoPrimaryButton(text = "Save area", onClick = { onSave(name, GeofenceTrigger.ENTER_EXIT, icon) })
+    }
+}
+
+@Composable
+private fun IconPicker(selected: String, onSelect: (String) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        PlaceIcons.options.forEach { (key, vector) ->
+            val isSelected = key == selected
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                    .background(
+                        if (isSelected) AppTheme.colors.accent.copy(alpha = 0.18f)
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                    .then(
+                        if (isSelected) Modifier.border(
+                            1.5.dp,
+                            AppTheme.colors.accent,
+                            androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                        ) else Modifier,
+                    )
+                    .clickable { onSelect(key) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    vector,
+                    contentDescription = key,
+                    tint = if (isSelected) AppTheme.colors.accent else AppTheme.colors.secondaryLabel,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
     }
 }
 
@@ -510,7 +568,7 @@ private fun PlacesList(
                 items(geofences, key = { it.id }) { g ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            if (g.shape == GeofenceShape.POLYGON) Icons.Filled.Pentagon else Icons.Filled.Place,
+                            PlaceIcons.forKey(g.icon),
                             contentDescription = null,
                             tint = AppTheme.colors.accent,
                         )

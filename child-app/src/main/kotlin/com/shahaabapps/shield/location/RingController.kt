@@ -4,12 +4,17 @@ import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.RingtoneManager
+import android.media.VolumeProvider
+import android.media.session.MediaSession
+import android.media.session.PlaybackState
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -30,6 +35,8 @@ class RingController @Inject constructor(
 ) {
     private var player: MediaPlayer? = null
     private var lastMessage: String = ""
+    private var mediaSession: MediaSession? = null
+    private var screenOffReceiver: BroadcastReceiver? = null
 
     fun start(message: String) {
         lastMessage = message
@@ -37,9 +44,61 @@ class RingController @Inject constructor(
         showNotification(message)
         startAlarm()
         cancelSnoozeAlarm()
+        // Capture hardware buttons even when no ring UI is in the foreground:
+        // volume keys (via a MediaSession) and power (via screen-off) stop the ring.
+        startVolumeCapture()
+        registerScreenOff()
         // Try to bring the full-screen alarm up directly (works when allowed);
         // otherwise the notification's full-screen intent handles it.
         runCatching { context.startActivity(RingActivity.intent(context, message)) }
+    }
+
+    /** Stop the ring the same way the UI would (also clears the Firestore ring). */
+    private fun dismissViaService() {
+        val intent = Intent(context, GeofenceSyncService::class.java)
+            .setAction(GeofenceSyncService.ACTION_RING_DISMISS)
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
+            else context.startService(intent)
+        }
+    }
+
+    private fun startVolumeCapture() {
+        runCatching {
+            val session = MediaSession(context, "shield_ring")
+            session.setPlaybackState(
+                PlaybackState.Builder()
+                    .setState(PlaybackState.STATE_PLAYING, 0, 1f)
+                    .build(),
+            )
+            session.setPlaybackToRemote(
+                object : VolumeProvider(VOLUME_CONTROL_RELATIVE, 100, 50) {
+                    override fun onAdjustVolume(direction: Int) { dismissViaService() }
+                    override fun onSetVolumeTo(volume: Int) { dismissViaService() }
+                },
+            )
+            session.isActive = true
+            mediaSession = session
+        }
+    }
+
+    private fun registerScreenOff() {
+        if (screenOffReceiver != null) return
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context, i: Intent) {
+                if (i.action == Intent.ACTION_SCREEN_OFF) dismissViaService()
+            }
+        }
+        runCatching { context.registerReceiver(receiver, IntentFilter(Intent.ACTION_SCREEN_OFF)) }
+        screenOffReceiver = receiver
+    }
+
+    private fun releaseButtonCapture() {
+        runCatching { mediaSession?.isActive = false }
+        runCatching { mediaSession?.release() }
+        mediaSession = null
+        screenOffReceiver?.let { r -> runCatching { context.unregisterReceiver(r) } }
+        screenOffReceiver = null
     }
 
     /** Stop the alarm now, then ring again after [SNOOZE_MINUTES] minutes. */
@@ -99,6 +158,7 @@ class RingController @Inject constructor(
         }
         player = null
         runCatching { vibrator()?.cancel() }
+        releaseButtonCapture()
     }
 
     private fun vibrate() {

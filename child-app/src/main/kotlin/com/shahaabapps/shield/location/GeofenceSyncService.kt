@@ -101,29 +101,44 @@ class GeofenceSyncService : Service() {
         val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
         if (fine != PackageManager.PERMISSION_GRANTED && coarse != PackageManager.PERMISSION_GRANTED) return
 
+        // Publish the last-known location right away so the parent sees something
+        // immediately (location callbacks only fire on a *new* computed fix).
+        runCatching {
+            fusedClient.lastLocation.addOnSuccessListener { loc -> loc?.let { publishLocation(childId, it) } }
+        }
+        // Also actively request a fresh fix once, in case there is no cached one.
+        runCatching {
+            fusedClient.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null)
+                .addOnSuccessListener { loc -> loc?.let { publishLocation(childId, it) } }
+        }
+
         val request = LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, LOCATION_INTERVAL_MS)
             .setMinUpdateIntervalMillis(LOCATION_FASTEST_MS)
             .build()
         val callback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 val loc = result.lastLocation ?: return
-                scope.launch {
-                    runCatching {
-                        deviceRepository.updateLocation(
-                            childId,
-                            ChildLocation(
-                                latitude = loc.latitude,
-                                longitude = loc.longitude,
-                                accuracyMeters = loc.accuracy,
-                                timestampMillis = System.currentTimeMillis(),
-                            ),
-                        )
-                    }
-                }
+                publishLocation(childId, loc)
             }
         }
         locationCallback = callback
         runCatching { fusedClient.requestLocationUpdates(request, callback, Looper.getMainLooper()) }
+    }
+
+    private fun publishLocation(childId: String, loc: android.location.Location) {
+        scope.launch {
+            runCatching {
+                deviceRepository.updateLocation(
+                    childId,
+                    ChildLocation(
+                        latitude = loc.latitude,
+                        longitude = loc.longitude,
+                        accuracyMeters = loc.accuracy,
+                        timestampMillis = System.currentTimeMillis(),
+                    ),
+                )
+            }
+        }
     }
 
     private fun startForegroundCompat() {

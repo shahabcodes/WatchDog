@@ -212,12 +212,17 @@ private fun FlatTopBar(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(greeting, fontSize = 13.sp, color = AppTheme.colors.secondaryLabel)
-                Text(
-                    title,
-                    fontSize = 30.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        title,
+                        fontSize = 30.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                    AppTheme.palette.flag?.let { flag ->
+                        Text(flag, fontSize = 22.sp, modifier = Modifier.padding(start = Spacing.sm))
+                    }
+                }
             }
             Box(modifier = Modifier.size(40.dp)) {
                 Avatar(

@@ -51,6 +51,14 @@ enum class AccentPalette(
     val accentLight: Color,
     val accentDark: Color,
     val gradient: List<Color>,
+    // Optional per-palette surface tints (country themes wash the background in
+    // their colour). Default to the neutral palette.
+    val backgroundLight: Color = Palette.BackgroundLight,
+    val backgroundDark: Color = Palette.BackgroundDark,
+    val variantLight: Color = Palette.SurfaceVariantLight,
+    val variantDark: Color = Palette.SurfaceVariantDark,
+    /** A short label/flag shown when this theme is active (null for the neutral ones). */
+    val flag: String? = null,
 ) {
     MEADOW(
         accentLight = Color(0xFF1E8E5A),
@@ -73,5 +81,10 @@ enum class AccentPalette(
         accentLight = Color(0xFF8A1538),
         accentDark = Color(0xFFE08BA3),
         gradient = listOf(Color(0xFFA81E47), Color(0xFF8A1538), Color(0xFF6E102C)),
+        backgroundLight = Color(0xFFFBF2F5),
+        backgroundDark = Color(0xFF160A0E),
+        variantLight = Color(0xFFF3DFE6),
+        variantDark = Color(0xFF2A141A),
+        flag = "🇶🇦",
     ),
 }

@@ -88,7 +88,8 @@ fun TravelHistoryScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
-                .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+                .padding(horizontal = Spacing.lg)
+                .padding(top = Spacing.sm),
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
             TravelRange.entries.forEach { range ->
@@ -96,6 +97,27 @@ fun TravelHistoryScreen(
                     selected = state.range == range,
                     onClick = { viewModel.setRange(range) },
                     label = { Text(range.label) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = accent.copy(alpha = 0.15f),
+                        selectedLabelColor = accent,
+                    ),
+                )
+            }
+        }
+        // Time-of-day filter chips
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = Spacing.lg)
+                .padding(top = Spacing.xs, bottom = Spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+        ) {
+            TravelTime.entries.forEach { t ->
+                FilterChip(
+                    selected = state.time == t,
+                    onClick = { viewModel.setTime(t) },
+                    label = { Text(t.label) },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = accent.copy(alpha = 0.15f),
                         selectedLabelColor = accent,

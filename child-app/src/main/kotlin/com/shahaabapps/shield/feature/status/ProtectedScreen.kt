@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -30,10 +31,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import com.shahaabapps.core.model.ChildAccount
 import com.shahaabapps.core.ui.components.CupertinoCard
-import com.shahaabapps.core.ui.components.Hero
-import com.shahaabapps.core.ui.components.HeroIconButton
 import com.shahaabapps.core.ui.components.StatusChip
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Brand
@@ -63,15 +67,7 @@ fun ProtectedScreen(
             .background(AppTheme.colors.groupedBackground)
             .verticalScroll(rememberScrollState()),
     ) {
-        Hero(
-            title = "Shield",
-            subtitle = "Hi, ${child.profile.name}",
-            actions = {
-                HeroIconButton(onClick = { showSettings = true }) {
-                    Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = Color.White)
-                }
-            },
-        )
+        ShieldTopBar(name = child.profile.name, onSettings = { showSettings = true })
 
         Column(
             modifier = Modifier
@@ -126,6 +122,41 @@ fun ProtectedScreen(
             EnforcementSetupCard()
             LocationSetupCard()
             AlertsSetupCard()
+        }
+    }
+}
+
+@Composable
+private fun ShieldTopBar(name: String, onSettings: () -> Unit) {
+    Surface(color = AppTheme.colors.card) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 14.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Hi, ${name.ifBlank { "there" }}",
+                    fontSize = 13.sp,
+                    color = AppTheme.colors.secondaryLabel,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Shield",
+                        fontSize = 30.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                    AppTheme.palette.flag?.let { flag ->
+                        Text(flag, fontSize = 22.sp, modifier = Modifier.padding(start = Spacing.sm))
+                    }
+                }
+            }
+            IconButton(onClick = onSettings) {
+                Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = AppTheme.colors.secondaryLabel)
+            }
         }
     }
 }

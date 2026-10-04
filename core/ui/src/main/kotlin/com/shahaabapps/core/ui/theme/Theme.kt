@@ -6,39 +6,43 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
 /** User-selectable light/dark preference. */
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
-private fun lightColors(accent: Color) = lightColorScheme(
+/** The currently active accent palette, for UI that adapts to it (e.g. flags). */
+val LocalAccentPalette = staticCompositionLocalOf { AccentPalette.MEADOW }
+
+private fun lightColors(accent: Color, palette: AccentPalette) = lightColorScheme(
     primary = accent,
     onPrimary = Color.White,
     secondary = accent,
     error = Palette.BlockedLight,
-    background = Palette.BackgroundLight,
+    background = palette.backgroundLight,
     onBackground = Palette.LabelLight,
     surface = Palette.SurfaceLight,
     onSurface = Palette.LabelLight,
-    surfaceVariant = Palette.SurfaceVariantLight,
+    surfaceVariant = palette.variantLight,
     outline = Palette.OutlineLight,
 )
 
-private fun darkColors(accent: Color) = darkColorScheme(
+private fun darkColors(accent: Color, palette: AccentPalette) = darkColorScheme(
     primary = accent,
     onPrimary = Color(0xFF0B1F16),
     secondary = accent,
     error = Palette.BlockedDark,
-    background = Palette.BackgroundDark,
+    background = palette.backgroundDark,
     onBackground = Palette.LabelDark,
     surface = Palette.SurfaceDark,
     onSurface = Palette.LabelDark,
-    surfaceVariant = Palette.SurfaceVariantDark,
+    surfaceVariant = palette.variantDark,
     outline = Palette.OutlineDark,
 )
 
 private fun cupertinoColors(dark: Boolean, palette: AccentPalette) = CupertinoColors(
-    groupedBackground = if (dark) Palette.BackgroundDark else Palette.BackgroundLight,
+    groupedBackground = if (dark) palette.backgroundDark else palette.backgroundLight,
     card = if (dark) Palette.SurfaceDark else Palette.SurfaceLight,
     secondaryLabel = if (dark) Palette.SecondaryLabelDark else Palette.SecondaryLabelLight,
     separator = if (dark) Palette.SeparatorDark else Palette.SeparatorLight,
@@ -70,9 +74,12 @@ fun AppTheme(
     }
     val accent = if (dark) accentPalette.accentDark else accentPalette.accentLight
 
-    CompositionLocalProvider(LocalCupertinoColors provides cupertinoColors(dark, accentPalette)) {
+    CompositionLocalProvider(
+        LocalCupertinoColors provides cupertinoColors(dark, accentPalette),
+        LocalAccentPalette provides accentPalette,
+    ) {
         MaterialTheme(
-            colorScheme = if (dark) darkColors(accent) else lightColors(accent),
+            colorScheme = if (dark) darkColors(accent, accentPalette) else lightColors(accent, accentPalette),
             typography = CupertinoTypography,
             content = content,
         )
@@ -83,4 +90,7 @@ fun AppTheme(
 object AppTheme {
     val colors: CupertinoColors
         @Composable get() = LocalCupertinoColors.current
+
+    val palette: AccentPalette
+        @Composable get() = LocalAccentPalette.current
 }

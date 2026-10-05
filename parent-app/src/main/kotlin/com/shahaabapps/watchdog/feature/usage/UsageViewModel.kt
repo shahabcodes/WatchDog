@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.stateIn
 import java.time.LocalDate
 import javax.inject.Inject
 
-data class UsageRow(val label: String, val minutes: Int)
+data class UsageRow(val label: String, val minutes: Int, val icon: String? = null)
 
 data class UsageUiState(
     val rows: List<UsageRow> = emptyList(),
@@ -36,10 +36,11 @@ class UsageViewModel @Inject constructor(
         appRulesRepository.observeInstalledApps(childId),
     ) { usage, apps ->
         val labels = apps.associate { it.packageName to it.label }
-        // Show only known (user-facing) apps; resolve labels.
+        val icons = apps.associate { it.packageName to it.icon }
+        // Show only known (user-facing) apps; resolve labels and icons.
         val rows = usage
             .filterKeys { labels.containsKey(it) }
-            .map { UsageRow(labels[it.key] ?: it.key, it.value) }
+            .map { UsageRow(labels[it.key] ?: it.key, it.value, icons[it.key]) }
             .filter { it.minutes > 0 }
             .sortedByDescending { it.minutes }
         UsageUiState(rows = rows, totalMinutes = rows.sumOf { it.minutes }, loading = false)

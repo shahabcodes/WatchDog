@@ -48,6 +48,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shahaabapps.core.model.AppRule
 import com.shahaabapps.core.model.TimeWindow
+import com.shahaabapps.core.ui.components.AppIcon
 import com.shahaabapps.core.ui.components.ConfirmDialog
 import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.components.CupertinoListRow
@@ -61,39 +62,6 @@ import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
 
 private val LIMIT_OPTIONS = listOf(null, 15, 30, 60, 120, 180)
-
-@Composable
-private fun AppIcon(base64: String?, label: String, size: androidx.compose.ui.unit.Dp = 40.dp) {
-    val image = remember(base64) {
-        base64?.let {
-            runCatching {
-                val bytes = android.util.Base64.decode(it, android.util.Base64.NO_WRAP)
-                android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
-            }.getOrNull()
-        }
-    }
-    if (image != null) {
-        androidx.compose.foundation.Image(
-            bitmap = image,
-            contentDescription = null,
-            modifier = Modifier.size(size).clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp)),
-        )
-    } else {
-        Box(
-            modifier = Modifier
-                .size(size)
-                .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
-                .background(AppTheme.colors.accent.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = label.trim().firstOrNull()?.uppercase() ?: "?",
-                color = AppTheme.colors.accent,
-                style = MaterialTheme.typography.titleMedium,
-            )
-        }
-    }
-}
 
 /** The "Apps" tab: set a daily limit, a schedule, or block each installed app. */
 @OptIn(ExperimentalMaterial3Api::class)

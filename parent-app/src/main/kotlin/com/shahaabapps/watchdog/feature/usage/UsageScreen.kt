@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.shahaabapps.core.ui.components.AppIcon
 import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.components.Hero
 import com.shahaabapps.core.ui.components.HeroIconButton
@@ -104,6 +105,12 @@ fun UsageScreen(
 private fun UsageBar(row: UsageRow, maxMinutes: Int) {
     CupertinoCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            AppIcon(
+                base64 = row.icon,
+                label = row.label,
+                size = 36.dp,
+                modifier = Modifier.padding(end = Spacing.md),
+            )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     row.label,

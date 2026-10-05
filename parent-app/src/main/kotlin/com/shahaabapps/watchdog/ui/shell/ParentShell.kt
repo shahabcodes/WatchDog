@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -445,12 +446,12 @@ private fun ManageChildrenScreen(
 
     Column(modifier = Modifier.fillMaxSize().background(AppTheme.colors.groupedBackground)) {
         SimpleHeader(title = "Children", onBack = onBack)
-        androidx.compose.foundation.lazy.LazyColumn(
+        LazyColumn(
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
-            androidx.compose.foundation.lazy.items(children, key = { it.childId }) { child ->
+            items(children, key = { it.childId }) { child ->
                 val online = child.device.lastSeenMillis > 0 &&
                     System.currentTimeMillis() - child.device.lastSeenMillis < 5 * 60_000L
                 com.shahaabapps.core.ui.components.CupertinoCard {

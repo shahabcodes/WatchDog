@@ -92,28 +92,19 @@ jobs:
             [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md).
           files: dist/*.apk
 
-      # Persistent per-build release so the Releases tab keeps a full history,
-      # each with its version and auto-generated changelog of commits since the
-      # previous version.
-      - name: Publish versioned release (history)
+      # Only the rolling "latest" release keeps APKs. Delete every other release
+      # (and its tag) each build so old APKs don't pile up in git storage. The
+      # textual history still lives in CHANGELOG.md and the git log.
+      - name: Prune old release APKs to save storage
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ env.APP_VERSION_NAME }}
-          name: v${{ env.APP_VERSION_NAME }}
-          prerelease: true
-          generate_release_notes: true
-          body: |
-            **Watch Dog & Shield — version ${{ env.APP_VERSION_NAME }}** (build ${{ github.run_number }}).
-
-            Curated highlights: [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)
-
-            ### Commits in this build
-          files: dist/*.apk
-
-      - name: Publish tagged release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          files: dist/*.apk
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tags=$(gh release list --repo "${{ github.repository }}" --limit 300 --json tagName -q '.[].tagName' || true)
+          for tag in $tags; do
+            if [ "$tag" != "latest" ]; then
+              echo "Deleting old release: $tag"
+              gh release delete "$tag" --repo "${{ github.repository }}" --yes --cleanup-tag || true
+            fi
+          done

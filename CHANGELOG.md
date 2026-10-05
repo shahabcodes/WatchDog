@@ -2,8 +2,8 @@
 
 All notable changes to Watch Dog (parent) and Shield (child) are recorded here.
 Versions are `0.1.<build>`, where `<build>` is the CI build number. Each CI build
-on `main` publishes a versioned pre-release (kept as history) plus a rolling
-`latest` release.
+on `main` publishes the APKs to a single rolling `latest` release and prunes
+older releases to save storage; this file and the git log are the version history.
 
 ## Unreleased / latest
 

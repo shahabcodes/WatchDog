@@ -84,7 +84,10 @@ import com.shahaabapps.core.model.GeofenceShape
 import com.shahaabapps.core.model.GeofenceTransition
 import com.shahaabapps.core.model.GeofenceTrigger
 import com.shahaabapps.core.ui.components.ConfirmDialog
+import com.shahaabapps.core.ui.components.CupertinoCard
+import com.shahaabapps.core.ui.components.CupertinoListRow
 import com.shahaabapps.core.ui.components.CupertinoPrimaryButton
+import com.shahaabapps.core.ui.components.CupertinoSwitch
 import com.shahaabapps.core.ui.components.CupertinoTextField
 import kotlinx.coroutines.launch
 import com.shahaabapps.core.ui.theme.AppTheme
@@ -374,8 +377,8 @@ fun GeofenceScreen(
             CircleEditor(
                 initialIcon = selectedIcon,
                 initialName = categoryName(selectedIcon),
-                onSave = { name, radius, trigger, icon ->
-                    viewModel.saveGeofence(name, center.latitude, center.longitude, radius, trigger, icon)
+                onSave = { name, radius, trigger, icon, active ->
+                    viewModel.saveGeofence(name, center.latitude, center.longitude, radius, trigger, icon, active)
                     showCircleSheet = false; pending = null
                 },
             )
@@ -387,8 +390,8 @@ fun GeofenceScreen(
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(onDismissRequest = { showAreaSheet = false }, sheetState = sheetState) {
             AreaEditor(
-                onSave = { name, trigger, icon ->
-                    viewModel.saveArea(name, area.map { GeoPoint(it.latitude, it.longitude) }, trigger, icon)
+                onSave = { name, trigger, icon, active ->
+                    viewModel.saveArea(name, area.map { GeoPoint(it.latitude, it.longitude) }, trigger, icon, active)
                     showAreaSheet = false; area = emptyList()
                 },
             )
@@ -402,7 +405,7 @@ fun GeofenceScreen(
             PlacesList(
                 geofences = geofences,
                 events = events,
-                onDelete = { viewModel.deleteGeofence(it) },
+                onDelete = { showList = false; viewModel.deleteGeofence(it) },
                 onEdit = { showList = false; editingGeofence = it },
             )
         }
@@ -415,8 +418,8 @@ fun GeofenceScreen(
         ModalBottomSheet(onDismissRequest = { editingGeofence = null }, sheetState = sheetState) {
             EditGeofenceEditor(
                 geofence = editing,
-                onSave = { name, radius, icon ->
-                    viewModel.updateGeofence(editing, name, radius, icon)
+                onSave = { name, radius, icon, trigger, active ->
+                    viewModel.updateGeofence(editing, name, radius, icon, trigger, active)
                     editingGeofence = null
                 },
             )
@@ -547,15 +550,48 @@ private fun HintPill(text: String) {
     }
 }
 
+private fun triggerFor(enter: Boolean, exit: Boolean): GeofenceTrigger = when {
+    enter && exit -> GeofenceTrigger.ENTER_EXIT
+    exit -> GeofenceTrigger.EXIT
+    else -> GeofenceTrigger.ENTER
+}
+
+@Composable
+private fun AlertToggles(
+    enter: Boolean,
+    exit: Boolean,
+    onEnter: (Boolean) -> Unit,
+    onExit: (Boolean) -> Unit,
+) {
+    Text("Push alerts", style = MaterialTheme.typography.titleMedium)
+    CupertinoCard {
+        Column {
+            CupertinoListRow(
+                title = "Notify on arrival",
+                subtitle = "Push when they enter",
+                trailing = { CupertinoSwitch(checked = enter, onCheckedChange = onEnter) },
+            )
+            CupertinoListRow(
+                title = "Notify on leaving",
+                subtitle = "Push when they exit",
+                showDivider = false,
+                trailing = { CupertinoSwitch(checked = exit, onCheckedChange = onExit) },
+            )
+        }
+    }
+}
+
 @Composable
 private fun CircleEditor(
     initialIcon: String = "place",
     initialName: String = "",
-    onSave: (name: String, radius: Float, trigger: GeofenceTrigger, icon: String) -> Unit,
+    onSave: (name: String, radius: Float, trigger: GeofenceTrigger, icon: String, active: Boolean) -> Unit,
 ) {
     var name by remember { mutableStateOf(initialName) }
     var radius by remember { mutableStateOf(150f) }
     var icon by remember { mutableStateOf(initialIcon) }
+    var notifyEnter by remember { mutableStateOf(true) }
+    var notifyExit by remember { mutableStateOf(true) }
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
@@ -566,39 +602,50 @@ private fun CircleEditor(
         IconPicker(selected = icon, onSelect = { icon = it })
         Text("Radius: ${radius.toInt()} m", style = MaterialTheme.typography.bodyMedium)
         Slider(value = radius, onValueChange = { radius = it }, valueRange = 50f..1000f)
-        CupertinoPrimaryButton(text = "Save place", onClick = { onSave(name, radius, GeofenceTrigger.ENTER_EXIT, icon) })
+        AlertToggles(notifyEnter, notifyExit, { notifyEnter = it }, { notifyExit = it })
+        CupertinoPrimaryButton(
+            text = "Save place",
+            onClick = { onSave(name, radius, triggerFor(notifyEnter, notifyExit), icon, notifyEnter || notifyExit) },
+        )
     }
 }
 
 @Composable
-private fun AreaEditor(onSave: (name: String, trigger: GeofenceTrigger, icon: String) -> Unit) {
+private fun AreaEditor(onSave: (name: String, trigger: GeofenceTrigger, icon: String, active: Boolean) -> Unit) {
     var name by remember { mutableStateOf("") }
     var icon by remember { mutableStateOf("place") }
+    var notifyEnter by remember { mutableStateOf(true) }
+    var notifyExit by remember { mutableStateOf(true) }
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
         Text("New area", style = MaterialTheme.typography.headlineMedium)
-        Text(
-            "Alerts trigger around this area.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = AppTheme.colors.secondaryLabel,
-        )
         CupertinoTextField(value = name, onValueChange = { name = it }, placeholder = "Name (e.g. Neighborhood)")
         Text("Icon", style = MaterialTheme.typography.titleMedium)
         IconPicker(selected = icon, onSelect = { icon = it })
-        CupertinoPrimaryButton(text = "Save area", onClick = { onSave(name, GeofenceTrigger.ENTER_EXIT, icon) })
+        AlertToggles(notifyEnter, notifyExit, { notifyEnter = it }, { notifyExit = it })
+        CupertinoPrimaryButton(
+            text = "Save area",
+            onClick = { onSave(name, triggerFor(notifyEnter, notifyExit), icon, notifyEnter || notifyExit) },
+        )
     }
 }
 
 @Composable
 private fun EditGeofenceEditor(
     geofence: Geofence,
-    onSave: (name: String, radius: Float, icon: String) -> Unit,
+    onSave: (name: String, radius: Float, icon: String, trigger: GeofenceTrigger, active: Boolean) -> Unit,
 ) {
     var name by remember { mutableStateOf(geofence.name) }
     var radius by remember { mutableStateOf(geofence.radiusMeters) }
     var icon by remember { mutableStateOf(geofence.icon) }
+    var notifyEnter by remember {
+        mutableStateOf(geofence.active && geofence.trigger != GeofenceTrigger.EXIT)
+    }
+    var notifyExit by remember {
+        mutableStateOf(geofence.active && geofence.trigger != GeofenceTrigger.ENTER)
+    }
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
@@ -617,7 +664,13 @@ private fun EditGeofenceEditor(
                 color = AppTheme.colors.secondaryLabel,
             )
         }
-        CupertinoPrimaryButton(text = "Save changes", onClick = { onSave(name, radius, icon) })
+        AlertToggles(notifyEnter, notifyExit, { notifyEnter = it }, { notifyExit = it })
+        CupertinoPrimaryButton(
+            text = "Save changes",
+            onClick = {
+                onSave(name, radius, icon, triggerFor(notifyEnter, notifyExit), notifyEnter || notifyExit)
+            },
+        )
     }
 }
 

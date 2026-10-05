@@ -49,6 +49,7 @@ class GeofenceViewModel @Inject constructor(
         radiusMeters: Float,
         trigger: GeofenceTrigger,
         icon: String = "place",
+        active: Boolean = true,
     ) {
         viewModelScope.launch {
             geofenceRepository.saveGeofence(
@@ -59,7 +60,7 @@ class GeofenceViewModel @Inject constructor(
                     longitude = longitude,
                     radiusMeters = radiusMeters,
                     trigger = trigger,
-                    active = true,
+                    active = active,
                     icon = icon,
                 ),
             )
@@ -73,6 +74,7 @@ class GeofenceViewModel @Inject constructor(
         points: List<GeoPoint>,
         trigger: GeofenceTrigger,
         icon: String = "place",
+        active: Boolean = true,
     ) {
         if (points.size < 3) return
         val (centerLat, centerLon, radius) = GeoMath.boundingCircle(points)
@@ -85,7 +87,7 @@ class GeofenceViewModel @Inject constructor(
                     longitude = centerLon,
                     radiusMeters = radius,
                     trigger = trigger,
-                    active = true,
+                    active = active,
                     shape = GeofenceShape.POLYGON,
                     points = points,
                     icon = icon,
@@ -95,12 +97,14 @@ class GeofenceViewModel @Inject constructor(
         }
     }
 
-    /** Updates an existing geofence's name, icon (and radius for circles). */
+    /** Updates an existing geofence's name, icon, alerts (and radius for circles). */
     fun updateGeofence(
         original: Geofence,
         name: String,
         radiusMeters: Float,
         icon: String,
+        trigger: GeofenceTrigger,
+        active: Boolean,
     ) {
         viewModelScope.launch {
             geofenceRepository.saveGeofence(
@@ -109,6 +113,8 @@ class GeofenceViewModel @Inject constructor(
                     name = name.ifBlank { original.name },
                     radiusMeters = radiusMeters,
                     icon = icon,
+                    trigger = trigger,
+                    active = active,
                 ),
             )
             Celebrations.saved()

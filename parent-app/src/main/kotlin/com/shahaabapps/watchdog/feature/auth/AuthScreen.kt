@@ -18,7 +18,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -215,13 +214,7 @@ fun AuthScreen(
             )
 
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .shadow(10.dp, RoundedCornerShape(24.dp), clip = false)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(AppTheme.colors.card.copy(alpha = 0.55f))
-                    .border(1.dp, onBg.copy(alpha = 0.06f), RoundedCornerShape(24.dp))
-                    .padding(20.dp),
+                modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 GlassField(

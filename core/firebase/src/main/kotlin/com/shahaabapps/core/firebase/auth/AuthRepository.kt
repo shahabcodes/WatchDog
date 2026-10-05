@@ -20,5 +20,8 @@ interface AuthRepository {
 
     suspend fun signInAnonymously(): AppResult<String>
 
+    /** Sends a password-reset email to [email]. */
+    suspend fun sendPasswordReset(email: String): AppResult<Unit>
+
     fun signOut()
 }

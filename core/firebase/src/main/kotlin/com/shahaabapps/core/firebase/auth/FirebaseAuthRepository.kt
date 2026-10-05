@@ -39,5 +39,10 @@ class FirebaseAuthRepository @Inject constructor(
             requireNotNull(result.user?.uid) { "Anonymous sign-in returned null uid" }
         }
 
+    override suspend fun sendPasswordReset(email: String): AppResult<Unit> =
+        runCatchingResult {
+            auth.sendPasswordResetEmail(email).await()
+        }
+
     override fun signOut() = auth.signOut()
 }

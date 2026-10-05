@@ -135,6 +135,12 @@ fun AuthScreen(
         animationSpec = tween(if (reducedMotion) 0 else 240),
         label = "peek",
     )
+    // Leans in (comes near) while you interact, relaxes back (goes far) when idle.
+    val near by animateFloatAsState(
+        targetValue = if (focusedField != FocusField.NONE) 1f else 0f,
+        animationSpec = tween(if (reducedMotion) 0 else 320, easing = FastOutSlowInEasing),
+        label = "near",
+    )
 
     val enter = remember { Animatable(0f) }
     LaunchedEffect(reducedMotion) {
@@ -155,17 +161,6 @@ fun AuthScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(Modifier.height((40 * (1f - enter.value)).dp))
-
-            Dog(
-                gradient = gradient,
-                accent = accent,
-                cover = cover,
-                look = look,
-                mood = mood,
-                stand = stand,
-                peek = peek,
-                animate = !reducedMotion,
-            )
 
             Crossfade(targetState = state.mode, label = "title") { mode ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -193,17 +188,20 @@ fun AuthScreen(
                 }
             }
 
-            // Glass form card — light, elevated, subtly bordered.
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .shadow(16.dp, RoundedCornerShape(24.dp), clip = false)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(AppTheme.colors.card.copy(alpha = 0.72f))
-                    .border(1.dp, onBg.copy(alpha = 0.06f), RoundedCornerShape(24.dp))
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
+            // The dog holds the form card from above — leaning in (near) while you
+            // interact, relaxing back (far) when idle.
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 84.dp)
+                        .shadow(16.dp, RoundedCornerShape(24.dp), clip = false)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(AppTheme.colors.card.copy(alpha = 0.72f))
+                        .border(1.dp, onBg.copy(alpha = 0.06f), RoundedCornerShape(24.dp))
+                        .padding(start = 20.dp, end = 20.dp, bottom = 20.dp, top = 68.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
                 GlassField(
                     value = state.email,
                     onValueChange = viewModel::onEmailChange,
@@ -282,6 +280,21 @@ fun AuthScreen(
                     enabled = state.canSubmit,
                     loading = state.isSubmitting,
                     onClick = viewModel::submit,
+                )
+                }
+
+                Dog(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .scale(lerpF(0.95f, 1.07f, near)),
+                    gradient = gradient,
+                    accent = accent,
+                    cover = cover,
+                    look = look,
+                    mood = mood,
+                    stand = stand,
+                    peek = peek,
+                    animate = !reducedMotion,
                 )
             }
 
@@ -375,6 +388,7 @@ private fun Dog(
     stand: Float,
     peek: Float,
     animate: Boolean,
+    modifier: Modifier = Modifier,
 ) {
     if (animate) {
         val transition = rememberInfiniteTransition(label = "dog")
@@ -387,15 +401,19 @@ private fun Dog(
         val wag by transition.animateFloat(
             -1f, 1f, infiniteRepeatable(tween(620, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "wag",
         )
+        val ear by transition.animateFloat(
+            -1f, 1f, infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "ear",
+        )
         val blink = if (cycle > 0.95f) 1f - sin(((cycle - 0.95f) / 0.05f) * PI).toFloat() else 1f
-        DogVisual(gradient, accent, cover, look, mood, stand, peek, blink = blink, bob = bob, wag = wag)
+        DogVisual(modifier, gradient, accent, cover, look, mood, stand, peek, blink = blink, bob = bob, wag = wag, ear = ear)
     } else {
-        DogVisual(gradient, accent, cover, look, mood, stand, peek, blink = 1f, bob = 0f, wag = 0f)
+        DogVisual(modifier, gradient, accent, cover, look, mood, stand, peek, blink = 1f, bob = 0f, wag = 0f, ear = 0f)
     }
 }
 
 @Composable
 private fun DogVisual(
+    modifier: Modifier,
     gradient: List<Color>,
     accent: Color,
     cover: Float,
@@ -406,6 +424,7 @@ private fun DogVisual(
     blink: Float,
     bob: Float,
     wag: Float,
+    ear: Float,
 ) {
     val fur = gradient
     val furDark = gradient.getOrElse(gradient.size - 1) { accent }
@@ -419,13 +438,14 @@ private fun DogVisual(
         DogMood.NEUTRAL -> 0.4f
         DogMood.ERROR -> -0.6f
     }
-    val earDrop = when (mood) {
-        DogMood.ERROR -> 5f
-        DogMood.HAPPY, DogMood.SUCCESS -> -2.5f
+    // Base ear tilt by mood; the live wiggle is added on top.
+    val earBase = when (mood) {
+        DogMood.ERROR -> 12f
+        DogMood.HAPPY, DogMood.SUCCESS -> -9f
         DogMood.NEUTRAL -> 0f
     }
 
-    Box(modifier = Modifier.size(170.dp), contentAlignment = Alignment.Center) {
+    Box(modifier = modifier.size(150.dp), contentAlignment = Alignment.Center) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val u = size.minDimension / 120f
             fun px(v: Float) = v * u
@@ -490,8 +510,9 @@ private fun DogVisual(
                 // ---- Arms/paws: rest on the belly, or rise to cover the eyes ----
                 val shoulderL = p(60f - halfW + 2f, bodyTop + 10f)
                 val shoulderR = p(60f + halfW - 2f, bodyTop + 10f)
-                val restL = p(52f, bodyTop + 22f)
-                val restR = p(68f, bodyTop + 22f)
+                // At rest the paws drop low and wide to grip the top of the card below.
+                val restL = p(40f, 108f)
+                val restR = p(80f, 108f)
                 val coverL = p(52f, 34f)
                 val coverR = p(68f, 34f)
                 val pawL = lerpO(restL, coverL, cover)
@@ -502,13 +523,26 @@ private fun DogVisual(
                 // ---- Head ----
                 val headC = p(60f, 36f)
                 val headR = px(20f)
-                // Ears behind the head.
-                translate(top = px(earDrop)) {
+                // Ears behind the head, tilting with mood and wiggling continuously.
+                rotate(degrees = earBase + ear * 6f, pivot = p(45f, 24f)) {
                     drawPath(earPath(::px, left = true), color = furDark)
+                }
+                rotate(degrees = -earBase - ear * 6f, pivot = p(75f, 24f)) {
                     drawPath(earPath(::px, left = false), color = furDark)
                 }
                 drawCircle(brush = Brush.verticalGradient(fur, startY = px(16f), endY = px(56f)), radius = headR, center = headC)
                 drawCircle(Color.White.copy(alpha = 0.10f), radius = headR, center = headC)
+                // Little head tuft + a spy earpiece for character.
+                drawPath(
+                    Path().apply { moveTo(px(57f), px(17f)); quadraticBezierTo(px(60f), px(10f), px(63f), px(17f)); close() },
+                    color = furDark,
+                )
+                drawCircle(accent, radius = px(1.8f), center = p(79f, 40f))
+                drawLine(accent.copy(alpha = 0.7f), p(79f, 40f), p(74f, 44f), strokeWidth = px(1f), cap = StrokeCap.Round)
+
+                // Cheeks.
+                drawCircle(belly.copy(alpha = 0.7f), radius = px(4.5f), center = p(46f, 42f))
+                drawCircle(belly.copy(alpha = 0.7f), radius = px(4.5f), center = p(74f, 42f))
 
                 // Snout + nose + mouth.
                 drawOval(color = belly, topLeft = p(49f, 40f), size = Size(px(22f), px(16f)))

@@ -7,4 +7,6 @@ package com.shahaabapps.core.model
 data class InstalledApp(
     val packageName: String = "",
     val label: String = "",
+    /** The app's launcher icon as a Base64 PNG (small), or null if unavailable. */
+    val icon: String? = null,
 )

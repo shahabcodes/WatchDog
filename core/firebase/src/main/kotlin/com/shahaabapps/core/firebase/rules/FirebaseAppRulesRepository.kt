@@ -57,7 +57,13 @@ class FirebaseAppRulesRepository @Inject constructor(
         apps: List<InstalledApp>,
     ): AppResult<Unit> = runCatchingResult {
         val data = mapOf(
-            "apps" to apps.map { mapOf("packageName" to it.packageName, "label" to it.label) },
+            "apps" to apps.map {
+                buildMap {
+                    put("packageName", it.packageName)
+                    put("label", it.label)
+                    if (it.icon != null) put("icon", it.icon)
+                }
+            },
             "updatedAtMillis" to System.currentTimeMillis(),
         )
         firestore.collection(COLLECTION_CHILDREN)
@@ -83,6 +89,7 @@ class FirebaseAppRulesRepository @Inject constructor(
                     InstalledApp(
                         packageName = it["packageName"] as? String ?: "",
                         label = it["label"] as? String ?: "",
+                        icon = it["icon"] as? String,
                     )
                 }
                 trySend(apps)

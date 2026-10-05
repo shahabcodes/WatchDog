@@ -1,7 +1,9 @@
 package com.shahaabapps.watchdog.feature.rules
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -37,6 +40,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -56,6 +61,39 @@ import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
 
 private val LIMIT_OPTIONS = listOf(null, 15, 30, 60, 120, 180)
+
+@Composable
+private fun AppIcon(base64: String?, label: String, size: androidx.compose.ui.unit.Dp = 40.dp) {
+    val image = remember(base64) {
+        base64?.let {
+            runCatching {
+                val bytes = android.util.Base64.decode(it, android.util.Base64.NO_WRAP)
+                android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+            }.getOrNull()
+        }
+    }
+    if (image != null) {
+        androidx.compose.foundation.Image(
+            bitmap = image,
+            contentDescription = null,
+            modifier = Modifier.size(size).clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp)),
+        )
+    } else {
+        Box(
+            modifier = Modifier
+                .size(size)
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                .background(AppTheme.colors.accent.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = label.trim().firstOrNull()?.uppercase() ?: "?",
+                color = AppTheme.colors.accent,
+                style = MaterialTheme.typography.titleMedium,
+            )
+        }
+    }
+}
 
 /** The "Apps" tab: set a daily limit, a schedule, or block each installed app. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -81,7 +119,8 @@ fun AppsScreen(
             items(state.rows, key = { it.app.packageName }) { row ->
                 CupertinoCard(onClick = { editing = row }) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(modifier = Modifier.weight(1f)) {
+                        AppIcon(base64 = row.app.icon, label = row.app.label)
+                        Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
                             Text(
                                 text = row.app.label.ifBlank { row.app.packageName },
                                 style = MaterialTheme.typography.bodyLarge,

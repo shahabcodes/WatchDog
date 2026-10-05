@@ -8,6 +8,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -31,7 +32,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -39,25 +39,30 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MailOutline
-import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -69,8 +74,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shahaabapps.core.ui.components.rememberReducedMotion
 import com.shahaabapps.core.ui.theme.AppTheme
+import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
+
+private enum class FocusField { NONE, EMAIL, PASSWORD, CONFIRM }
+private enum class MascotMood { NEUTRAL, HAPPY, ERROR, SUCCESS }
 
 @Composable
 fun AuthScreen(
@@ -82,7 +91,33 @@ fun AuthScreen(
     val gradient = AppTheme.palette.gradient.ifEmpty { listOf(accent, accent) }
     val reducedMotion = rememberReducedMotion()
 
-    // Entrance: content fades and rises in on first composition (instant when reduced).
+    var focusedField by remember { mutableStateOf(FocusField.NONE) }
+
+    // Mascot reactions, driven by what the user is doing right now.
+    val coveringEyes = focusedField == FocusField.PASSWORD || focusedField == FocusField.CONFIRM
+    val cover by animateFloatAsState(
+        targetValue = if (coveringEyes) 1f else 0f,
+        animationSpec = tween(if (reducedMotion) 0 else 280, easing = FastOutSlowInEasing),
+        label = "cover",
+    )
+    val lookTarget = if (focusedField == FocusField.EMAIL) {
+        (state.email.length.coerceAtMost(18) / 18f) * 2f - 1f
+    } else {
+        0f
+    }
+    val look by animateFloatAsState(
+        targetValue = lookTarget,
+        animationSpec = tween(if (reducedMotion) 0 else 220),
+        label = "look",
+    )
+    val mood = when {
+        state.errorMessage != null -> MascotMood.ERROR
+        state.infoMessage != null -> MascotMood.SUCCESS
+        focusedField == FocusField.EMAIL -> MascotMood.HAPPY
+        else -> MascotMood.NEUTRAL
+    }
+
+    // Entrance: content fades and rises in (instant when reduced).
     val enter = remember { Animatable(0f) }
     LaunchedEffect(reducedMotion) {
         if (reducedMotion) enter.snapTo(1f) else enter.animateTo(1f, tween(700, easing = FastOutSlowInEasing))
@@ -98,12 +133,19 @@ fun AuthScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 28.dp)
                 .alpha(enter.value),
-            verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+            verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(Modifier.height((40 * (1f - enter.value)).dp))
 
-            GlowLogo(gradient = gradient, accent = accent, animate = !reducedMotion)
+            Mascot(
+                gradient = gradient,
+                accent = accent,
+                cover = cover,
+                look = look,
+                mood = mood,
+                animate = !reducedMotion,
+            )
 
             Crossfade(targetState = state.mode, label = "title") { mode ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -148,6 +190,8 @@ fun AuthScreen(
                     icon = Icons.Filled.MailOutline,
                     accent = accent,
                     keyboardType = KeyboardType.Email,
+                    animate = !reducedMotion,
+                    onFocusChanged = { if (it) focusedField = FocusField.EMAIL else if (focusedField == FocusField.EMAIL) focusedField = FocusField.NONE },
                 )
                 AnimatedVisibility(
                     visible = !state.isForgot,
@@ -162,6 +206,8 @@ fun AuthScreen(
                         accent = accent,
                         keyboardType = KeyboardType.Password,
                         isPassword = true,
+                        animate = !reducedMotion,
+                        onFocusChanged = { if (it) focusedField = FocusField.PASSWORD else if (focusedField == FocusField.PASSWORD) focusedField = FocusField.NONE },
                     )
                 }
                 AnimatedVisibility(
@@ -178,6 +224,8 @@ fun AuthScreen(
                             accent = accent,
                             keyboardType = KeyboardType.Password,
                             isPassword = true,
+                            animate = !reducedMotion,
+                            onFocusChanged = { if (it) focusedField = FocusField.CONFIRM else if (focusedField == FocusField.CONFIRM) focusedField = FocusField.NONE },
                         )
                         if (state.passwordsMismatch) {
                             Text(
@@ -262,7 +310,7 @@ private fun AuroraCanvas(colors: List<Color>, t: Float) {
     Canvas(modifier = Modifier.fillMaxSize()) {
         val w = size.width
         val h = size.height
-        val two = (2f * Math.PI).toFloat()
+        val two = (2f * PI).toFloat()
         colors.forEachIndexed { i, c ->
             val phase = t * two + i * 1.7f
             val cx = w * (0.5f + 0.42f * cos(phase + i))
@@ -281,70 +329,151 @@ private fun AuroraCanvas(colors: List<Color>, t: Float) {
     }
 }
 
-/** The brand shield with a soft pulsing halo and expanding accent rings (static when reduced). */
+/**
+ * A living shield "buddy": its eyes track the email text, it covers its eyes with
+ * its paws when a password field is focused, blinks, bobs, and changes mood.
+ */
 @Composable
-private fun GlowLogo(gradient: List<Color>, accent: Color, animate: Boolean) {
+private fun Mascot(
+    gradient: List<Color>,
+    accent: Color,
+    cover: Float,
+    look: Float,
+    mood: MascotMood,
+    animate: Boolean,
+) {
     if (animate) {
-        val transition = rememberInfiniteTransition(label = "logo")
-        val pulse by transition.animateFloat(
-            initialValue = 0f, targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(2600, easing = FastOutSlowInEasing), RepeatMode.Restart),
-            label = "pulse",
+        val transition = rememberInfiniteTransition(label = "mascot")
+        val cycle by transition.animateFloat(
+            0f, 1f, infiniteRepeatable(tween(3600, easing = LinearEasing), RepeatMode.Restart), label = "cycle",
         )
-        val breathe by transition.animateFloat(
-            initialValue = 0.96f, targetValue = 1.04f,
-            animationSpec = infiniteRepeatable(tween(2200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-            label = "breathe",
+        val bob by transition.animateFloat(
+            -1f, 1f, infiniteRepeatable(tween(2200, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "bob",
         )
-        LogoVisual(gradient = gradient, accent = accent, pulse = pulse, breathe = breathe, drawRings = true)
+        val blink = if (cycle > 0.95f) 1f - sin(((cycle - 0.95f) / 0.05f) * PI).toFloat() else 1f
+        MascotVisual(gradient, accent, cover, look, mood, blink = blink, bob = bob)
     } else {
-        LogoVisual(gradient = gradient, accent = accent, pulse = 0f, breathe = 1f, drawRings = false)
+        MascotVisual(gradient, accent, cover, look, mood, blink = 1f, bob = 0f)
     }
 }
 
 @Composable
-private fun LogoVisual(
+private fun MascotVisual(
     gradient: List<Color>,
     accent: Color,
-    pulse: Float,
-    breathe: Float,
-    drawRings: Boolean,
+    cover: Float,
+    look: Float,
+    mood: MascotMood,
+    blink: Float,
+    bob: Float,
 ) {
-    Box(modifier = Modifier.size(132.dp), contentAlignment = Alignment.Center) {
+    val eyeWhite = Color.White
+    val eyeDark = Color(0xFF16232E)
+    val pawColor = gradient.getOrElse(gradient.size - 1) { accent }
+    val smile = when (mood) {
+        MascotMood.SUCCESS -> 1f
+        MascotMood.HAPPY -> 0.7f
+        MascotMood.NEUTRAL -> 0.4f
+        MascotMood.ERROR -> -0.6f
+    }
+
+    Box(modifier = Modifier.size(140.dp), contentAlignment = Alignment.Center) {
         Canvas(modifier = Modifier.fillMaxSize()) {
+            val u = size.minDimension / 108f
+            fun px(v: Float) = v * u
+            val bobPx = bob * 3f * u
+
+            // Soft accent halo behind the buddy.
             val center = Offset(size.width / 2f, size.height / 2f)
-            val maxR = size.minDimension / 2f
-            if (drawRings) {
-                for (i in 0..1) {
-                    val p = ((pulse + i * 0.5f) % 1f)
-                    drawCircle(
-                        color = accent.copy(alpha = (1f - p) * 0.4f),
-                        radius = maxR * (0.5f + 0.5f * p),
-                        center = center,
-                        style = Stroke(width = 3f * (1f - p) + 1f),
-                    )
-                }
-            }
             drawCircle(
                 brush = Brush.radialGradient(
-                    listOf(accent.copy(alpha = 0.35f), Color.Transparent),
-                    center = center, radius = maxR,
+                    listOf(accent.copy(alpha = 0.32f), Color.Transparent),
+                    center = center, radius = size.minDimension / 2f,
                 ),
-                radius = maxR, center = center,
+                radius = size.minDimension / 2f,
+                center = center,
             )
-        }
-        Box(
-            modifier = Modifier
-                .scale(breathe)
-                .size(78.dp)
-                .clip(CircleShape)
-                .background(Brush.linearGradient(gradient)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Filled.Shield, null, tint = Color.White, modifier = Modifier.size(40.dp))
+
+            translate(top = bobPx) {
+                // Shield body in the theme gradient.
+                val shield = Path().apply {
+                    moveTo(px(54f), px(28f))
+                    cubicTo(px(49f), px(28f), px(43f), px(30f), px(38f), px(31f))
+                    cubicTo(px(34f), px(32f), px(32.5f), px(33.5f), px(32.5f), px(38f))
+                    lineTo(px(32.5f), px(56f))
+                    cubicTo(px(32.5f), px(69f), px(41f), px(78f), px(54f), px(83.5f))
+                    cubicTo(px(67f), px(78f), px(75.5f), px(69f), px(75.5f), px(56f))
+                    lineTo(px(75.5f), px(38f))
+                    cubicTo(px(75.5f), px(33.5f), px(74f), px(32f), px(70f), px(31f))
+                    cubicTo(px(65f), px(30f), px(59f), px(28f), px(54f), px(28f))
+                    close()
+                }
+                drawPath(shield, brush = Brush.verticalGradient(gradient, startY = px(28f), endY = px(84f)))
+                // Top sheen.
+                drawPath(shield, color = Color.White.copy(alpha = 0.10f))
+
+                val eyeY = 49f
+                val lookDown = if (mood == MascotMood.HAPPY) 1.1f else 0f
+                // Eyes (whites), squashed vertically while blinking.
+                for (cx in listOf(46f, 62f)) {
+                    val ry = 5.2f * blink
+                    drawOval(
+                        color = eyeWhite,
+                        topLeft = Offset(px(cx - 5.2f), px(eyeY - ry)),
+                        size = Size(px(10.4f), px(2f * ry)),
+                    )
+                }
+                // Pupils follow the look direction (hidden while blinking shut).
+                if (blink > 0.35f) {
+                    for (cx in listOf(46f, 62f)) {
+                        drawCircle(
+                            color = eyeDark,
+                            radius = px(2.5f),
+                            center = Offset(px(cx + look * 2.3f), px(eyeY + lookDown)),
+                        )
+                        // Catch-light.
+                        drawCircle(
+                            color = Color.White,
+                            radius = px(0.8f),
+                            center = Offset(px(cx + look * 2.3f + 0.9f), px(eyeY + lookDown - 1f)),
+                        )
+                    }
+                }
+
+                // Cheeks when happy.
+                if (smile > 0.5f) {
+                    for (cx in listOf(41f, 67f)) {
+                        drawCircle(
+                            color = accent.copy(alpha = 0.35f * ((smile - 0.5f) / 0.5f)),
+                            radius = px(3.2f),
+                            center = Offset(px(cx), px(56f)),
+                        )
+                    }
+                }
+
+                // Mouth: smile / frown via a quadratic curve.
+                val mouth = Path().apply {
+                    moveTo(px(49f), px(61f))
+                    quadraticBezierTo(px(54f), px(61f + smile * 6f), px(59f), px(61f))
+                }
+                drawPath(mouth, color = eyeDark, style = Stroke(width = px(2.3f), cap = StrokeCap.Round))
+
+                // Paws rise from the chin to cover the eyes while a password field is focused.
+                if (cover > 0.01f) {
+                    val lp = lerp(Offset(px(44f), px(86f)), Offset(px(46f), px(49f)), cover)
+                    val rp = lerp(Offset(px(64f), px(86f)), Offset(px(62f), px(49f)), cover)
+                    val pawR = px(10f)
+                    for (p in listOf(lp, rp)) {
+                        drawCircle(color = pawColor, radius = pawR, center = p)
+                        drawCircle(color = Color.White.copy(alpha = 0.12f), radius = pawR * 0.6f, center = Offset(p.x - pawR * 0.25f, p.y - pawR * 0.25f))
+                    }
+                }
+            }
         }
     }
 }
+
+private fun lerp(a: Offset, b: Offset, f: Float) = Offset(a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f)
 
 @Composable
 private fun GlassField(
@@ -355,7 +484,15 @@ private fun GlassField(
     accent: Color,
     keyboardType: KeyboardType = KeyboardType.Text,
     isPassword: Boolean = false,
+    animate: Boolean = true,
+    onFocusChanged: (Boolean) -> Unit = {},
 ) {
+    var focused by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (focused && animate) 1.015f else 1f,
+        animationSpec = tween(180),
+        label = "fieldScale",
+    )
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
@@ -378,7 +515,13 @@ private fun GlassField(
             focusedLeadingIconColor = accent,
             unfocusedLeadingIconColor = Color.White.copy(alpha = 0.6f),
         ),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .scale(scale)
+            .onFocusChanged {
+                focused = it.isFocused
+                onFocusChanged(it.isFocused)
+            },
     )
 }
 
@@ -390,7 +533,7 @@ private fun GradientButton(
     loading: Boolean,
     onClick: () -> Unit,
 ) {
-    val alpha by animateColorAsState(
+    val textColor by animateColorAsState(
         targetValue = if (enabled) Color.White else Color.White.copy(alpha = 0.4f),
         label = "btnText",
     )
@@ -407,7 +550,7 @@ private fun GradientButton(
         if (loading) {
             CircularProgressIndicator(color = Color.White, strokeWidth = 2.5.dp, modifier = Modifier.size(24.dp))
         } else {
-            Text(label, color = alpha, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+            Text(label, color = textColor, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }

@@ -22,7 +22,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.BarChart
@@ -78,7 +77,6 @@ import com.shahaabapps.watchdog.feature.dashboard.LinkState
 import com.shahaabapps.watchdog.feature.dashboard.QrImageDecoder
 import com.shahaabapps.watchdog.feature.geofence.GeofenceScreen
 import com.shahaabapps.watchdog.feature.overview.OverviewScreen
-import com.shahaabapps.watchdog.feature.rules.AppsScreen
 import com.shahaabapps.watchdog.feature.settings.SettingsScreen
 import com.shahaabapps.watchdog.feature.travel.TravelHistoryScreen
 import com.shahaabapps.watchdog.feature.usage.UsageScreen
@@ -88,7 +86,6 @@ import kotlinx.coroutines.withContext
 
 private enum class Tab(val route: String, val label: String, val icon: ImageVector) {
     OVERVIEW("overview", "Overview", Icons.Filled.GridView),
-    APPS("apps", "Apps", Icons.Filled.Apps),
     PLACES("places", "Places", Icons.Filled.Place),
     SCREENTIME("screentime", "Screen time", Icons.Filled.BarChart),
 }
@@ -187,7 +184,6 @@ fun ParentShell(
                     onOpenTravel = { navController.navigate("travel/$currentChildId") },
                 )
             }
-            composable("apps/{childId}", childArg) { AppsScreen() }
             composable("places/{childId}", childArg) { GeofenceScreen(onBack = { }, showBack = false) }
             composable("screentime/{childId}", childArg) { UsageScreen(onBack = { }, embedded = true) }
             composable("travel/{childId}", childArg) {

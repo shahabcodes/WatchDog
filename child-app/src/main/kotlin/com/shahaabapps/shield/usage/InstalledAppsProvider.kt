@@ -32,6 +32,10 @@ class InstalledAppsProvider @Inject constructor(
                     packageName = pkg,
                     label = info.loadLabel(pm).toString(),
                     icon = runCatching { encodeIcon(info.loadIcon(pm)) }.getOrNull(),
+                    installedAtMillis = runCatching {
+                        @Suppress("DEPRECATION")
+                        pm.getPackageInfo(pkg, 0).firstInstallTime
+                    }.getOrDefault(0L),
                 )
             }
             .distinctBy { it.packageName }

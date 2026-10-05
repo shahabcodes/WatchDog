@@ -62,6 +62,7 @@ class FirebaseAppRulesRepository @Inject constructor(
                     put("packageName", it.packageName)
                     put("label", it.label)
                     if (it.icon != null) put("icon", it.icon)
+                    put("installedAt", it.installedAtMillis)
                 }
             },
             "updatedAtMillis" to System.currentTimeMillis(),
@@ -90,6 +91,7 @@ class FirebaseAppRulesRepository @Inject constructor(
                         packageName = it["packageName"] as? String ?: "",
                         label = it["label"] as? String ?: "",
                         icon = it["icon"] as? String,
+                        installedAtMillis = (it["installedAt"] as? Number)?.toLong() ?: 0L,
                     )
                 }
                 trySend(apps)

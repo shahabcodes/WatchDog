@@ -26,6 +26,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -134,17 +136,6 @@ fun ParentShell(
     val showChrome = Tab.entries.any { it.route == currentTab }
 
     val selectedChild = children.firstOrNull { it.childId == currentChildId } ?: children.first()
-    var confirmRemove by remember { mutableStateOf<ChildAccount?>(null) }
-
-    confirmRemove?.let { child ->
-        com.shahaabapps.core.ui.components.ConfirmDialog(
-            title = "Remove ${child.profile.name.ifBlank { "this child" }}?",
-            message = "This unlinks the device. Its restrictions turn off and it will show as no longer supervised. You can re-pair anytime.",
-            confirmText = "Remove",
-            onConfirm = { viewModel.removeChild(child.childId); confirmRemove = null },
-            onDismiss = { confirmRemove = null },
-        )
-    }
 
     Scaffold(
         containerColor = AppTheme.colors.groupedBackground,
@@ -156,9 +147,8 @@ fun ParentShell(
                         title = selectedChild.profile.name.ifBlank { "Child" },
                         parentName = profile.name,
                         parentPhoto = profile.photoUrl,
-                        childName = selectedChild.profile.name,
+                        onManage = { navController.navigate("manage") },
                         onSettings = { navController.navigate("settings") },
-                        onRemoveChild = { confirmRemove = selectedChild },
                     )
                     if (children.size > 1) {
                         ChildChipRow(
@@ -205,6 +195,17 @@ fun ParentShell(
             composable("settings") {
                 SettingsScreen(onBack = { navController.popBackStack() })
             }
+            composable("manage") {
+                ManageChildrenScreen(
+                    children = children,
+                    onRemove = { viewModel.removeChild(it) },
+                    onAdd = { navController.navigate("add") },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable("add") {
+                AddChildScreen(profile = profile, linkState = linkState, viewModel = viewModel, onBack = { navController.popBackStack() })
+            }
         }
     }
 }
@@ -215,9 +216,8 @@ private fun FlatTopBar(
     title: String,
     parentName: String,
     parentPhoto: String?,
-    childName: String,
+    onManage: () -> Unit,
     onSettings: () -> Unit,
-    onRemoveChild: () -> Unit,
 ) {
     Surface(color = AppTheme.colors.card) {
         Row(
@@ -246,24 +246,17 @@ private fun FlatTopBar(
                 )
                 androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     androidx.compose.material3.DropdownMenuItem(
-                        text = { Text("Settings") },
-                        onClick = { menu = false; onSettings() },
+                        text = { Text("Manage children") },
+                        onClick = { menu = false; onManage() },
                         leadingIcon = {
-                            androidx.compose.material3.Icon(
-                                Icons.Filled.Settings,
-                                contentDescription = null,
-                            )
+                            androidx.compose.material3.Icon(Icons.Filled.Group, contentDescription = null)
                         },
                     )
                     androidx.compose.material3.DropdownMenuItem(
-                        text = { Text("Remove ${childName.ifBlank { "child" }}", color = AppTheme.colors.destructive) },
-                        onClick = { menu = false; onRemoveChild() },
+                        text = { Text("Settings") },
+                        onClick = { menu = false; onSettings() },
                         leadingIcon = {
-                            androidx.compose.material3.Icon(
-                                Icons.Filled.Delete,
-                                contentDescription = null,
-                                tint = AppTheme.colors.destructive,
-                            )
+                            androidx.compose.material3.Icon(Icons.Filled.Settings, contentDescription = null)
                         },
                     )
                 }
@@ -328,6 +321,7 @@ private fun AddChildScreen(
     profile: UserProfile,
     linkState: LinkState,
     viewModel: DashboardViewModel,
+    onBack: (() -> Unit)? = null,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
@@ -351,15 +345,18 @@ private fun AddChildScreen(
             .background(AppTheme.colors.groupedBackground)
             .verticalScroll(rememberScrollState()),
     ) {
-        FlatTopBar(
-            greeting = "Hi, ${profile.name}",
-            title = "Watch Dog",
-            parentName = profile.name,
-            parentPhoto = profile.photoUrl,
-            childName = "",
-            onSettings = { },
-            onRemoveChild = { },
-        )
+        if (onBack != null) {
+            SimpleHeader(title = "Add a child", onBack = onBack)
+        } else {
+            FlatTopBar(
+                greeting = "Hi, ${profile.name}",
+                title = "Watch Dog",
+                parentName = profile.name,
+                parentPhoto = profile.photoUrl,
+                onManage = { },
+                onSettings = { },
+            )
+        }
         Column(
             modifier = Modifier.fillMaxWidth().padding(Spacing.lg),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -396,6 +393,93 @@ private fun AddChildScreen(
                     imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                 },
             )
+        }
+    }
+}
+
+@Composable
+private fun SimpleHeader(title: String, onBack: () -> Unit) {
+    Surface(color = AppTheme.colors.card) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(start = 6.dp, end = 18.dp, top = 10.dp, bottom = 10.dp),
+        ) {
+            androidx.compose.material3.IconButton(onClick = onBack) {
+                androidx.compose.material3.Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = MaterialTheme.colorScheme.onBackground,
+                )
+            }
+            Text(
+                title,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(start = 4.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ManageChildrenScreen(
+    children: List<ChildAccount>,
+    onRemove: (String) -> Unit,
+    onAdd: () -> Unit,
+    onBack: () -> Unit,
+) {
+    var confirm by remember { mutableStateOf<ChildAccount?>(null) }
+    confirm?.let { child ->
+        com.shahaabapps.core.ui.components.ConfirmDialog(
+            title = "Remove ${child.profile.name.ifBlank { "this child" }}?",
+            message = "This unlinks the device. Its restrictions turn off and it shows as no longer supervised. You can re-pair anytime.",
+            confirmText = "Remove",
+            onConfirm = { onRemove(child.childId); confirm = null },
+            onDismiss = { confirm = null },
+        )
+    }
+
+    Column(modifier = Modifier.fillMaxSize().background(AppTheme.colors.groupedBackground)) {
+        SimpleHeader(title = "Children", onBack = onBack)
+        androidx.compose.foundation.lazy.LazyColumn(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(Spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+        ) {
+            androidx.compose.foundation.lazy.items(children, key = { it.childId }) { child ->
+                val online = child.device.lastSeenMillis > 0 &&
+                    System.currentTimeMillis() - child.device.lastSeenMillis < 5 * 60_000L
+                com.shahaabapps.core.ui.components.CupertinoCard {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Avatar(name = child.profile.name, photoUrl = child.profile.photoUrl, size = 48.dp)
+                        Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
+                            Text(child.profile.name.ifBlank { "Child" }, style = MaterialTheme.typography.titleMedium)
+                            com.shahaabapps.core.ui.components.StatusChip(
+                                text = if (online) "Online" else "Offline",
+                                color = if (online) AppTheme.colors.success else AppTheme.colors.secondaryLabel,
+                            )
+                        }
+                        androidx.compose.material3.IconButton(onClick = { confirm = child }) {
+                            androidx.compose.material3.Icon(
+                                Icons.Filled.Delete,
+                                contentDescription = "Remove",
+                                tint = AppTheme.colors.destructive,
+                            )
+                        }
+                    }
+                }
+            }
+            item {
+                CupertinoPrimaryButton(
+                    text = "Add a child",
+                    onClick = onAdd,
+                    modifier = Modifier.padding(top = Spacing.sm),
+                )
+            }
         }
     }
 }

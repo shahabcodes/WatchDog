@@ -121,6 +121,9 @@ class GeofenceSyncService : Service() {
 
         val request = LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, LOCATION_INTERVAL_MS)
             .setMinUpdateIntervalMillis(LOCATION_FASTEST_MS)
+            // Only report when the child actually moves — saves battery and
+            // Firestore writes while they're stationary (home, school, etc.).
+            .setMinUpdateDistanceMeters(MOVE_DISTANCE_METERS)
             .build()
         val callback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
@@ -179,13 +182,15 @@ class GeofenceSyncService : Service() {
             stopLastMillis = now
             return
         }
-        // Moved away: record the previous stay if it was long enough.
-        if (stopLastMillis - stopArrivalMillis >= STOP_MIN_MS) {
+        // Moved away: record the previous stay if it was long enough. Use `now`
+        // for departure because, with move-only updates, no fixes arrive while
+        // stationary — so the stay lasts from arrival until this leaving fix.
+        if (now - stopArrivalMillis >= STOP_MIN_MS) {
             val stop = TravelStop(
                 latitude = anchor.latitude,
                 longitude = anchor.longitude,
                 arrivalMillis = stopArrivalMillis,
-                departureMillis = stopLastMillis,
+                departureMillis = now,
             )
             scope.launch { runCatching { deviceRepository.addTravelStop(childId, stop) } }
         }
@@ -234,6 +239,9 @@ class GeofenceSyncService : Service() {
         // Travel-history "stop" detection.
         private const val STOP_RADIUS_METERS = 150f
         private const val STOP_MIN_MS = 5 * 60_000L // 5 minutes
+
+        // Only report location after moving this far — the move-only optimization.
+        private const val MOVE_DISTANCE_METERS = 40f
 
         const val ACTION_RING_SNOOZE = "com.shahaabapps.shield.action.RING_SNOOZE"
         const val ACTION_RING_DISMISS = "com.shahaabapps.shield.action.RING_DISMISS"

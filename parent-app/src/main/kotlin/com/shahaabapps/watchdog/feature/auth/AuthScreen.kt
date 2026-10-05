@@ -561,10 +561,10 @@ private fun DogVisual(
 
                 // ---- Paws on top when covering the eyes ----
                 if (cover > 0.01f) {
-                    val pawR = px(9f)
+                    val pawRad = px(9f)
                     for (pw in listOf(pawL, pawR)) {
-                        drawCircle(color = furDark, radius = pawR, center = pw)
-                        drawCircle(color = Color.White.copy(alpha = 0.14f), radius = pawR * 0.55f, center = Offset(pw.x - pawR * 0.25f, pw.y - pawR * 0.25f))
+                        drawCircle(color = furDark, radius = pawRad, center = pw)
+                        drawCircle(color = Color.White.copy(alpha = 0.14f), radius = pawRad * 0.55f, center = Offset(pw.x - pawRad * 0.25f, pw.y - pawRad * 0.25f))
                         for (dx in listOf(-3.3f, 0f, 3.3f)) {
                             drawCircle(color = belly.copy(alpha = 0.6f * cover), radius = px(1.2f), center = Offset(pw.x + px(dx), pw.y + px(3.2f)))
                         }

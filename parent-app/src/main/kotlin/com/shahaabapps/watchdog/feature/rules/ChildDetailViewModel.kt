@@ -78,11 +78,15 @@ class ChildDetailViewModel @Inject constructor(
                 schedule = schedule,
             )
             appRulesRepository.saveAppRule(childId, rule)
+            com.shahaabapps.core.ui.components.Celebrations.saved()
         }
     }
 
     fun clearRule(packageName: String) {
-        viewModelScope.launch { appRulesRepository.deleteAppRule(childId, packageName) }
+        viewModelScope.launch {
+            appRulesRepository.deleteAppRule(childId, packageName)
+            com.shahaabapps.core.ui.components.Celebrations.deleted()
+        }
     }
 
     companion object {

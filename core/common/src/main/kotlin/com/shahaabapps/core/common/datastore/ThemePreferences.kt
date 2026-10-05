@@ -42,7 +42,7 @@ class ThemePreferences @Inject constructor(
     private companion object {
         val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
         val KEY_ACCENT_PALETTE = stringPreferencesKey("accent_palette")
-        const val DEFAULT_MODE = "SYSTEM"
-        const val DEFAULT_PALETTE = "MEADOW"
+        const val DEFAULT_MODE = "LIGHT"
+        const val DEFAULT_PALETTE = "QATAR"
     }
 }

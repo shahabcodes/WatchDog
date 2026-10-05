@@ -60,6 +60,8 @@ enum class AccentPalette(
     val variantDark: Color = Palette.SurfaceVariantDark,
     /** Whether this is a nationality/country theme (grouped separately in settings). */
     val isCountry: Boolean = false,
+    /** Flag emoji, used only in the full-screen save/delete celebration. */
+    val flag: String? = null,
 ) {
     MEADOW(
         label = "Meadow",
@@ -91,6 +93,7 @@ enum class AccentPalette(
         variantLight = Color(0xFFF3DFE6),
         variantDark = Color(0xFF2A141A),
         isCountry = true,
+        flag = "🇶🇦",
     ),
     INDIA(
         label = "India",
@@ -102,6 +105,7 @@ enum class AccentPalette(
         variantLight = Color(0xFFFCE7CF),
         variantDark = Color(0xFF2A2014),
         isCountry = true,
+        flag = "🇮🇳",
     ),
     PAKISTAN(
         label = "Pakistan",
@@ -113,6 +117,7 @@ enum class AccentPalette(
         variantLight = Color(0xFFD6EADE),
         variantDark = Color(0xFF15241B),
         isCountry = true,
+        flag = "🇵🇰",
     ),
     CANADA(
         label = "Canada",
@@ -124,6 +129,7 @@ enum class AccentPalette(
         variantLight = Color(0xFFF7D9D6),
         variantDark = Color(0xFF2A1513),
         isCountry = true,
+        flag = "🇨🇦",
     ),
     AUSTRALIA(
         label = "Australia",
@@ -135,6 +141,7 @@ enum class AccentPalette(
         variantLight = Color(0xFFD6DEF0),
         variantDark = Color(0xFF141A28),
         isCountry = true,
+        flag = "🇦🇺",
     ),
     IRELAND(
         label = "Ireland",
@@ -146,6 +153,7 @@ enum class AccentPalette(
         variantLight = Color(0xFFD7EEE0),
         variantDark = Color(0xFF15241B),
         isCountry = true,
+        flag = "🇮🇪",
     ),
     NEW_ZEALAND(
         label = "New Zealand",
@@ -157,5 +165,6 @@ enum class AccentPalette(
         variantLight = Color(0xFFD4DDF0),
         variantDark = Color(0xFF121826),
         isCountry = true,
+        flag = "🇳🇿",
     ),
 }

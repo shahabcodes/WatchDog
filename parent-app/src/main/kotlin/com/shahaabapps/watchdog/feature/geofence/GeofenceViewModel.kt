@@ -12,6 +12,7 @@ import com.shahaabapps.core.model.Geofence
 import com.shahaabapps.core.model.GeofenceEvent
 import com.shahaabapps.core.model.GeofenceShape
 import com.shahaabapps.core.model.GeofenceTrigger
+import com.shahaabapps.core.ui.components.Celebrations
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -62,6 +63,7 @@ class GeofenceViewModel @Inject constructor(
                     icon = icon,
                 ),
             )
+            Celebrations.saved()
         }
     }
 
@@ -89,6 +91,7 @@ class GeofenceViewModel @Inject constructor(
                     icon = icon,
                 ),
             )
+            Celebrations.saved()
         }
     }
 
@@ -108,11 +111,15 @@ class GeofenceViewModel @Inject constructor(
                     icon = icon,
                 ),
             )
+            Celebrations.saved()
         }
     }
 
     fun deleteGeofence(geofenceId: String) {
-        viewModelScope.launch { geofenceRepository.deleteGeofence(childId, geofenceId) }
+        viewModelScope.launch {
+            geofenceRepository.deleteGeofence(childId, geofenceId)
+            Celebrations.deleted()
+        }
     }
 }
 

@@ -36,7 +36,7 @@ fun CupertinoSwitch(
         modifier = modifier,
         colors = SwitchDefaults.colors(
             checkedThumbColor = Color.White,
-            checkedTrackColor = AppTheme.colors.success,
+            checkedTrackColor = AppTheme.colors.accent,
             uncheckedThumbColor = Color.White,
             uncheckedTrackColor = Color(0xFFE9E9EA),
             uncheckedBorderColor = Color.Transparent,

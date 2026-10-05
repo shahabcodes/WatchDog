@@ -39,7 +39,9 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    ParentAppRoot()
+                    com.shahaabapps.core.ui.components.CelebrationHost {
+                        ParentAppRoot()
+                    }
                 }
             }
         }

@@ -1,0 +1,11 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Shield with the smiling face knocked out, for Android 13+ themed icons. -->
+    <path
+        android:fillColor="#000000"
+        android:fillType="evenOdd"
+        android:pathData="M54,28 C49,28 43,30 38,31 C34,32 32.5,33.5 32.5,38 L32.5,56 C32.5,69 41,78 54,83.5 C67,78 75.5,69 75.5,56 L75.5,38 C75.5,33.5 74,32 70,31 C65,30 59,28 54,28 Z M47,50 m-3.3,0 a3.3,3.3 0 1,0 6.6,0 a3.3,3.3 0 1,0 -6.6,0 Z M61,50 m-3.3,0 a3.3,3.3 0 1,0 6.6,0 a3.3,3.3 0 1,0 -6.6,0 Z M45,58 C48,66.5 60,66.5 63,58 C61,62.8 47,62.8 45,58 Z" />
+</vector>

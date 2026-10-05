@@ -1,10 +1,34 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Simple shield glyph centered in the adaptive-icon safe zone. -->
+    <!-- Soft drop shadow behind the shield for depth. -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M54,30 L72,38 L72,54 C72,66 64,74 54,78 C44,74 36,66 36,54 L36,38 Z" />
+        android:pathData="M54,30 C49,30 43,32 38,33 C34,34 32.5,35.5 32.5,40 L32.5,58 C32.5,71 41,80 54,85.5 C67,80 75.5,71 75.5,58 L75.5,40 C75.5,35.5 74,34 70,33 C65,32 59,30 54,30 Z"
+        android:fillColor="#22000000" />
+    <!-- White shield badge with a gentle vertical sheen. -->
+    <path android:pathData="M54,28 C49,28 43,30 38,31 C34,32 32.5,33.5 32.5,38 L32.5,56 C32.5,69 41,78 54,83.5 C67,78 75.5,69 75.5,56 L75.5,38 C75.5,33.5 74,32 70,31 C65,30 59,28 54,28 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="54" android:startY="28"
+                android:endX="54" android:endY="83.5">
+                <item android:offset="0" android:color="#FFFFFFFF" />
+                <item android:offset="1" android:color="#FFF3EDEF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Paw print in brand maroon: four toes + main pad. -->
+    <path android:fillColor="#FF8A1538"
+        android:pathData="M43,52 m-3,0 a3,4 0 1,0 6,0 a3,4 0 1,0 -6,0 Z" />
+    <path android:fillColor="#FF8A1538"
+        android:pathData="M49.5,47.5 m-3.2,0 a3.2,4.2 0 1,0 6.4,0 a3.2,4.2 0 1,0 -6.4,0 Z" />
+    <path android:fillColor="#FF8A1538"
+        android:pathData="M58.5,47.5 m-3.2,0 a3.2,4.2 0 1,0 6.4,0 a3.2,4.2 0 1,0 -6.4,0 Z" />
+    <path android:fillColor="#FF8A1538"
+        android:pathData="M65,52 m-3,0 a3,4 0 1,0 6,0 a3,4 0 1,0 -6,0 Z" />
+    <path android:fillColor="#FF8A1538"
+        android:pathData="M54,55 C48,55 44,59 44,63.5 C44,67.5 49,69.5 54,69.5 C59,69.5 64,67.5 64,63.5 C64,59 60,55 54,55 Z" />
 </vector>

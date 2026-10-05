@@ -1,0 +1,11 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Shield with the paw knocked out, for Android 13+ themed icons. -->
+    <path
+        android:fillColor="#000000"
+        android:fillType="evenOdd"
+        android:pathData="M54,28 C49,28 43,30 38,31 C34,32 32.5,33.5 32.5,38 L32.5,56 C32.5,69 41,78 54,83.5 C67,78 75.5,69 75.5,56 L75.5,38 C75.5,33.5 74,32 70,31 C65,30 59,28 54,28 Z M43,52 m-3,0 a3,4 0 1,0 6,0 a3,4 0 1,0 -6,0 Z M49.5,47.5 m-3.2,0 a3.2,4.2 0 1,0 6.4,0 a3.2,4.2 0 1,0 -6.4,0 Z M58.5,47.5 m-3.2,0 a3.2,4.2 0 1,0 6.4,0 a3.2,4.2 0 1,0 -6.4,0 Z M65,52 m-3,0 a3,4 0 1,0 6,0 a3,4 0 1,0 -6,0 Z M54,55 C48,55 44,59 44,63.5 C44,67.5 49,69.5 54,69.5 C59,69.5 64,67.5 64,63.5 C64,59 60,55 54,55 Z" />
+</vector>

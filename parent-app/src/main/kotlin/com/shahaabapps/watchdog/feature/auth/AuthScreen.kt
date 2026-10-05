@@ -141,6 +141,17 @@ fun AuthScreen(
         animationSpec = tween(if (reducedMotion) 0 else 320, easing = FastOutSlowInEasing),
         label = "near",
     )
+    // A brief walk each time you touch a different field — not a perpetual march.
+    val gait = remember { Animatable(0f) }
+    LaunchedEffect(focusedField) {
+        if (reducedMotion || focusedField == FocusField.NONE) {
+            gait.snapTo(0f)
+        } else {
+            gait.snapTo(0f)
+            gait.animateTo(1f, tween(900, easing = LinearEasing))
+        }
+    }
+    val walk = gait.value
 
     val enter = remember { Animatable(0f) }
     LaunchedEffect(reducedMotion) {
@@ -188,20 +199,31 @@ fun AuthScreen(
                 }
             }
 
-            // The dog holds the form card from above — leaning in (near) while you
-            // interact, relaxing back (far) when idle.
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 84.dp)
-                        .shadow(16.dp, RoundedCornerShape(24.dp), clip = false)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(AppTheme.colors.card.copy(alpha = 0.72f))
-                        .border(1.dp, onBg.copy(alpha = 0.06f), RoundedCornerShape(24.dp))
-                        .padding(start = 20.dp, end = 20.dp, bottom = 20.dp, top = 68.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
+            // The dog stands above and reaches toward the form, leaning in (near)
+            // while you interact and relaxing back (far) when idle.
+            Dog(
+                modifier = Modifier.scale(lerpF(0.96f, 1.06f, near)),
+                gradient = gradient,
+                accent = accent,
+                cover = cover,
+                look = look,
+                mood = mood,
+                stand = stand,
+                peek = peek,
+                walk = walk,
+                animate = !reducedMotion,
+            )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .shadow(10.dp, RoundedCornerShape(24.dp), clip = false)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(AppTheme.colors.card.copy(alpha = 0.55f))
+                    .border(1.dp, onBg.copy(alpha = 0.06f), RoundedCornerShape(24.dp))
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
                 GlassField(
                     value = state.email,
                     onValueChange = viewModel::onEmailChange,
@@ -280,21 +302,6 @@ fun AuthScreen(
                     enabled = state.canSubmit,
                     loading = state.isSubmitting,
                     onClick = viewModel::submit,
-                )
-                }
-
-                Dog(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .scale(lerpF(0.95f, 1.07f, near)),
-                    gradient = gradient,
-                    accent = accent,
-                    cover = cover,
-                    look = look,
-                    mood = mood,
-                    stand = stand,
-                    peek = peek,
-                    animate = !reducedMotion,
                 )
             }
 
@@ -387,6 +394,7 @@ private fun Dog(
     mood: DogMood,
     stand: Float,
     peek: Float,
+    walk: Float,
     animate: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -404,13 +412,10 @@ private fun Dog(
         val ear by transition.animateFloat(
             -1f, 1f, infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "ear",
         )
-        val walk by transition.animateFloat(
-            0f, 1f, infiniteRepeatable(tween(520, easing = LinearEasing), RepeatMode.Restart), label = "walk",
-        )
         val blink = if (cycle > 0.95f) 1f - sin(((cycle - 0.95f) / 0.05f) * PI).toFloat() else 1f
         DogVisual(modifier, gradient, accent, cover, look, mood, stand, peek, blink = blink, bob = bob, wag = wag, ear = ear, walk = walk)
     } else {
-        DogVisual(modifier, gradient, accent, cover, look, mood, stand, peek, blink = 1f, bob = 0f, wag = 0f, ear = 0f, walk = 0f)
+        DogVisual(modifier, gradient, accent, cover, look, mood, stand, peek, blink = 1f, bob = 0f, wag = 0f, ear = 0f, walk = walk)
     }
 }
 
@@ -449,7 +454,7 @@ private fun DogVisual(
         DogMood.NEUTRAL -> 0f
     }
 
-    Box(modifier = modifier.size(150.dp), contentAlignment = Alignment.Center) {
+    Box(modifier = modifier.size(140.dp), contentAlignment = Alignment.Center) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val u = size.minDimension / 120f
             fun px(v: Float) = v * u
@@ -470,7 +475,9 @@ private fun DogVisual(
             val amp = if (mood == DogMood.SUCCESS) 6f else 3f
             val lift = if (mood == DogMood.SUCCESS) -4f else 0f
             val twoPi = (2f * PI).toFloat()
-            val sway = sin(walk * twoPi) * stand * 1.6f
+            // Walk is a short burst (a few steps) that decays to standing still.
+            val gaitEnv = (1f - walk)
+            val sway = sin(walk * 3f * twoPi) * stand * 1.6f * gaitEnv
             translate(left = px(sway), top = px(bob * amp + lift)) {
 
                 // ---- Body morph: sitting (stand≈0) → standing on two legs (stand≈1) ----
@@ -479,9 +486,9 @@ private fun DogVisual(
                 val halfW = lerpF(27f, 21f, stand)
                 val feetY = bodyBot - 1f
                 val footSpread = lerpF(15f, 9f, stand)
-                // Alternating steps give a little walk-in-place while standing.
-                val stepL = sin(walk * twoPi) * stand * 3f
-                val stepR = sin(walk * twoPi + PI.toFloat()) * stand * 3f
+                // Alternating steps during the short walk burst, then still.
+                val stepL = sin(walk * 3f * twoPi) * stand * 3f * gaitEnv
+                val stepR = sin(walk * 3f * twoPi + PI.toFloat()) * stand * 3f * gaitEnv
 
                 // Tail (behind body), wagging — livelier when happy.
                 val wagDeg = wag * (if (mood == DogMood.HAPPY || mood == DogMood.SUCCESS) 16f else 7f)

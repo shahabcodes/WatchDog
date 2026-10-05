@@ -22,6 +22,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Place
@@ -248,7 +250,7 @@ private fun FlatTopBar(
                         onClick = { menu = false; onSettings() },
                         leadingIcon = {
                             androidx.compose.material3.Icon(
-                                androidx.compose.material.icons.Icons.Filled.Settings,
+                                Icons.Filled.Settings,
                                 contentDescription = null,
                             )
                         },
@@ -258,7 +260,7 @@ private fun FlatTopBar(
                         onClick = { menu = false; onRemoveChild() },
                         leadingIcon = {
                             androidx.compose.material3.Icon(
-                                androidx.compose.material.icons.Icons.Filled.Delete,
+                                Icons.Filled.Delete,
                                 contentDescription = null,
                                 tint = AppTheme.colors.destructive,
                             )

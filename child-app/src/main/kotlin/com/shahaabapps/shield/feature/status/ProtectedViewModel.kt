@@ -3,6 +3,7 @@ package com.shahaabapps.shield.feature.status
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.shahaabapps.core.firebase.auth.AuthRepository
+import com.shahaabapps.core.firebase.child.ChildRepository
 import com.shahaabapps.core.firebase.rules.AppRulesRepository
 import com.shahaabapps.core.firebase.usage.UsageRepository
 import com.shahaabapps.shield.enforcement.UsageTracker
@@ -19,6 +20,7 @@ class ProtectedViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val appRulesRepository: AppRulesRepository,
     private val usageRepository: UsageRepository,
+    private val childRepository: ChildRepository,
     private val installedAppsProvider: InstalledAppsProvider,
     private val usageTracker: UsageTracker,
 ) : ViewModel() {
@@ -27,6 +29,8 @@ class ProtectedViewModel @Inject constructor(
     fun reportState() {
         val childId = authRepository.currentUserIdOrNull() ?: return
         viewModelScope.launch {
+            runCatching { childRepository.heartbeat(childId, android.os.Build.MODEL) }
+
             val apps = withContext(Dispatchers.IO) { installedAppsProvider.launchableApps() }
             appRulesRepository.reportInstalledApps(childId, apps)
 

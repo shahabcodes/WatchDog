@@ -13,6 +13,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -43,18 +44,29 @@ class OverviewViewModel @Inject constructor(
     val childLocation: StateFlow<ChildLocation?> = deviceRepository.observeLocation(childId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    // Re-evaluate online/offline on a tick (the child doc only changes every
+    // heartbeat, so without this it would never flip back to offline).
+    private val ticker = flow {
+        while (true) {
+            emit(Unit)
+            kotlinx.coroutines.delay(30_000)
+        }
+    }
+    private val childWithTick = combine(childRepository.observeChild(childId), ticker) { child, _ -> child }
+
     val uiState: StateFlow<OverviewUiState> = combine(
         usageRepository.observeUsage(childId, today),
         appRulesRepository.observeInstalledApps(childId),
         appRulesRepository.observeAppRules(childId),
         geofenceRepository.observeGeofences(childId),
-        childRepository.observeChild(childId),
+        childWithTick,
     ) { usage, apps, rules, geofences, child ->
         val knownPackages = apps.map { it.packageName }.toSet()
         val screenTime = usage.filterKeys { it in knownPackages }.values.sum()
+        val lastSeen = child?.device?.lastSeenMillis ?: 0L
         OverviewUiState(
             childName = child?.profile?.name ?: "Child",
-            online = child?.device?.online ?: false,
+            online = lastSeen > 0 && System.currentTimeMillis() - lastSeen < ONLINE_THRESHOLD_MS,
             screenTimeMinutes = screenTime,
             limitedOrBlocked = rules.count { it.blocked || it.dailyLimitMinutes != null },
             placesCount = geofences.size,
@@ -64,5 +76,9 @@ class OverviewViewModel @Inject constructor(
 
     fun ringDevice(message: String) {
         viewModelScope.launch { deviceRepository.sendRing(childId, message) }
+    }
+
+    private companion object {
+        const val ONLINE_THRESHOLD_MS = 5 * 60_000L
     }
 }

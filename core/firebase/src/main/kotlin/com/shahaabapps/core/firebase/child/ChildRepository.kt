@@ -31,4 +31,10 @@ interface ChildRepository {
      * Runs as a transaction against `children/{childId}`.
      */
     suspend fun linkChild(childId: String, code: String, parentId: String): AppResult<Unit>
+
+    /**
+     * Child presence heartbeat: stamps `device.lastSeenMillis` (and model). The
+     * parent derives online/offline from how fresh this is.
+     */
+    suspend fun heartbeat(childId: String, model: String): AppResult<Unit>
 }

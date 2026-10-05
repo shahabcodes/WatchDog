@@ -284,7 +284,7 @@ fun GeofenceScreen(
                 ) {
                     item {
                         CategoryPill(
-                            label = "Area",
+                            label = "Draw area",
                             icon = Icons.Filled.Pentagon,
                             selected = mode == DrawMode.AREA,
                             onClick = { mode = DrawMode.AREA; pending = null },

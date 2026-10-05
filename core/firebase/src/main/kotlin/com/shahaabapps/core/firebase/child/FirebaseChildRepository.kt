@@ -90,6 +90,20 @@ class FirebaseChildRepository @Inject constructor(
         Unit
     }
 
+    override suspend fun heartbeat(childId: String, model: String): AppResult<Unit> =
+        runCatchingResult {
+            childrenCollection.document(childId).set(
+                mapOf(
+                    FIELD_DEVICE to mapOf(
+                        "online" to true,
+                        "lastSeenMillis" to System.currentTimeMillis(),
+                        "model" to model,
+                    ),
+                ),
+                SetOptions.merge(),
+            ).await()
+        }
+
     private fun DocumentSnapshot.toChildAccount(): ChildAccount {
         @Suppress("UNCHECKED_CAST")
         val profileMap = get(FIELD_PROFILE) as? Map<String, Any?> ?: emptyMap()

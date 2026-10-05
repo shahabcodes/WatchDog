@@ -54,11 +54,21 @@ fun AlertsSetupCard(modifier: Modifier = Modifier) {
         onPauseOrDispose { }
     }
 
-    if (notificationsGranted && fullScreenGranted) {
+    // Notifications are the essential alert permission. The full-screen alarm is
+    // a nice-to-have (Android can reset it on sideloaded updates), so once
+    // notifications are on, the card shows "Ready" with full-screen as optional.
+    if (notificationsGranted) {
         CupertinoCard(modifier = modifier) {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Text("Alerts", style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
                 StatusChip(text = "Ready", color = AppTheme.colors.success)
+                if (RingPermissions.fullScreenRequestable() && !fullScreenGranted) {
+                    PermissionRow(
+                        title = "Full-screen ring alarm (optional)",
+                        granted = false,
+                        onEnable = { context.startActivity(RingPermissions.fullScreenSettingsIntent(context)) },
+                    )
+                }
             }
         }
         return
@@ -83,7 +93,7 @@ fun AlertsSetupCard(modifier: Modifier = Modifier) {
             }
             if (RingPermissions.fullScreenRequestable()) {
                 PermissionRow(
-                    title = "Full-screen ring alarm",
+                    title = "Full-screen ring alarm (optional)",
                     granted = fullScreenGranted,
                     onEnable = {
                         context.startActivity(RingPermissions.fullScreenSettingsIntent(context))

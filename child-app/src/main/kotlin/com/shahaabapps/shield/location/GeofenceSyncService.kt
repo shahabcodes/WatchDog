@@ -44,6 +44,7 @@ class GeofenceSyncService : Service() {
     @Inject lateinit var geofenceRepository: GeofenceRepository
     @Inject lateinit var deviceRepository: DeviceRepository
     @Inject lateinit var authRepository: AuthRepository
+    @Inject lateinit var childRepository: com.shahaabapps.core.firebase.child.ChildRepository
     @Inject lateinit var registrar: GeofenceRegistrar
     @Inject lateinit var ringController: RingController
 
@@ -97,6 +98,13 @@ class GeofenceSyncService : Service() {
                         ringController.start(ring.message)
                     }
                 }
+            }
+        }
+        // Presence heartbeat: keep lastSeen fresh so the parent shows "Online".
+        scope.launch {
+            while (true) {
+                runCatching { childRepository.heartbeat(childId, android.os.Build.MODEL) }
+                kotlinx.coroutines.delay(HEARTBEAT_MS)
             }
         }
         startLocationUpdates(childId)
@@ -242,6 +250,9 @@ class GeofenceSyncService : Service() {
 
         // Only report location after moving this far — the move-only optimization.
         private const val MOVE_DISTANCE_METERS = 40f
+
+        // Presence heartbeat interval.
+        private const val HEARTBEAT_MS = 2 * 60_000L
 
         const val ACTION_RING_SNOOZE = "com.shahaabapps.shield.action.RING_SNOOZE"
         const val ACTION_RING_DISMISS = "com.shahaabapps.shield.action.RING_DISMISS"

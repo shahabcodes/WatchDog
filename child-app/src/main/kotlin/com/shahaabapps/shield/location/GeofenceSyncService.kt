@@ -107,6 +107,15 @@ class GeofenceSyncService : Service() {
                 kotlinx.coroutines.delay(HEARTBEAT_MS)
             }
         }
+        // Stop everything if the device is unlinked (no longer supervised).
+        scope.launch {
+            childRepository.observeChild(childId).collectLatest { child ->
+                if (child != null && !child.isLinked) {
+                    runCatching { registrar.register(emptyList()) }
+                    stopSelf()
+                }
+            }
+        }
         startLocationUpdates(childId)
     }
 

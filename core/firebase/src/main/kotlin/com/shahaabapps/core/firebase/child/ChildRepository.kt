@@ -37,4 +37,7 @@ interface ChildRepository {
      * parent derives online/offline from how fresh this is.
      */
     suspend fun heartbeat(childId: String, model: String): AppResult<Unit>
+
+    /** A linked parent removes (unlinks) themselves from a child. */
+    suspend fun unlinkChild(childId: String, parentId: String): AppResult<Unit>
 }

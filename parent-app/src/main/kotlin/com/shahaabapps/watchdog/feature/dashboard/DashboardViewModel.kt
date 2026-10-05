@@ -87,4 +87,10 @@ class DashboardViewModel @Inject constructor(
     fun clearLinkState() {
         _linkState.value = LinkState.Idle
     }
+
+    /** Unlinks (removes) a child from this parent. */
+    fun removeChild(childId: String) {
+        val parentId = authRepository.currentUserIdOrNull() ?: return
+        viewModelScope.launch { childRepository.unlinkChild(childId, parentId) }
+    }
 }

@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
 import com.shahaabapps.core.firebase.auth.AuthRepository
+import com.shahaabapps.core.firebase.child.ChildRepository
 import com.shahaabapps.core.firebase.rules.AppRulesRepository
 import com.shahaabapps.core.model.AppRule
 import dagger.hilt.android.AndroidEntryPoint
@@ -24,12 +25,17 @@ class EnforcementService : AccessibilityService() {
 
     @Inject lateinit var appRulesRepository: AppRulesRepository
     @Inject lateinit var authRepository: AuthRepository
+    @Inject lateinit var childRepository: ChildRepository
     @Inject lateinit var usageTracker: UsageTracker
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     @Volatile
     private var rulesByPackage: Map<String, AppRule> = emptyMap()
+
+    // Only enforce while the device is supervised (linked to a parent).
+    @Volatile
+    private var supervised: Boolean = false
 
     private var lastBlockedPackage: String? = null
     private var lastBlockAtMillis: Long = 0L
@@ -42,10 +48,16 @@ class EnforcementService : AccessibilityService() {
                 rulesByPackage = rules.associateBy { it.packageName }
             }
         }
+        serviceScope.launch {
+            childRepository.observeChild(childId).collectLatest { child ->
+                supervised = child?.isLinked == true
+            }
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        if (!supervised) return // device no longer supervised — no restrictions
         val packageName = event.packageName?.toString() ?: return
         if (packageName == this.packageName) return
 

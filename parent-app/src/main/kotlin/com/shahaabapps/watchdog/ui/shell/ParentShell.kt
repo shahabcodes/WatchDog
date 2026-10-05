@@ -132,6 +132,17 @@ fun ParentShell(
     val showChrome = Tab.entries.any { it.route == currentTab }
 
     val selectedChild = children.firstOrNull { it.childId == currentChildId } ?: children.first()
+    var confirmRemove by remember { mutableStateOf<ChildAccount?>(null) }
+
+    confirmRemove?.let { child ->
+        com.shahaabapps.core.ui.components.ConfirmDialog(
+            title = "Remove ${child.profile.name.ifBlank { "this child" }}?",
+            message = "This unlinks the device. Its restrictions turn off and it will show as no longer supervised. You can re-pair anytime.",
+            confirmText = "Remove",
+            onConfirm = { viewModel.removeChild(child.childId); confirmRemove = null },
+            onDismiss = { confirmRemove = null },
+        )
+    }
 
     Scaffold(
         containerColor = AppTheme.colors.groupedBackground,
@@ -143,7 +154,9 @@ fun ParentShell(
                         title = selectedChild.profile.name.ifBlank { "Child" },
                         parentName = profile.name,
                         parentPhoto = profile.photoUrl,
-                        onAvatarClick = { navController.navigate("settings") },
+                        childName = selectedChild.profile.name,
+                        onSettings = { navController.navigate("settings") },
+                        onRemoveChild = { confirmRemove = selectedChild },
                     )
                     if (children.size > 1) {
                         ChildChipRow(
@@ -200,7 +213,9 @@ private fun FlatTopBar(
     title: String,
     parentName: String,
     parentPhoto: String?,
-    onAvatarClick: () -> Unit,
+    childName: String,
+    onSettings: () -> Unit,
+    onRemoveChild: () -> Unit,
 ) {
     Surface(color = AppTheme.colors.card) {
         Row(
@@ -219,13 +234,37 @@ private fun FlatTopBar(
                     color = MaterialTheme.colorScheme.onBackground,
                 )
             }
-            Box(modifier = Modifier.size(40.dp)) {
+            var menu by remember { mutableStateOf(false) }
+            Box {
                 Avatar(
                     name = parentName,
                     photoUrl = parentPhoto,
                     size = 40.dp,
-                    modifier = Modifier.clickableAvatar(onAvatarClick),
+                    modifier = Modifier.clickableAvatar { menu = true },
                 )
+                androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text("Settings") },
+                        onClick = { menu = false; onSettings() },
+                        leadingIcon = {
+                            androidx.compose.material3.Icon(
+                                androidx.compose.material.icons.Icons.Filled.Settings,
+                                contentDescription = null,
+                            )
+                        },
+                    )
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text("Remove ${childName.ifBlank { "child" }}", color = AppTheme.colors.destructive) },
+                        onClick = { menu = false; onRemoveChild() },
+                        leadingIcon = {
+                            androidx.compose.material3.Icon(
+                                androidx.compose.material.icons.Icons.Filled.Delete,
+                                contentDescription = null,
+                                tint = AppTheme.colors.destructive,
+                            )
+                        },
+                    )
+                }
             }
         }
     }
@@ -315,7 +354,9 @@ private fun AddChildScreen(
             title = "Watch Dog",
             parentName = profile.name,
             parentPhoto = profile.photoUrl,
-            onAvatarClick = { },
+            childName = "",
+            onSettings = { },
+            onRemoveChild = { },
         )
         Column(
             modifier = Modifier.fillMaxWidth().padding(Spacing.lg),

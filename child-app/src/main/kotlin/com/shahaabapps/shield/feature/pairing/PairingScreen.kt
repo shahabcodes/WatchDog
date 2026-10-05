@@ -56,7 +56,8 @@ fun PairingScreen(
                 style = MaterialTheme.typography.headlineMedium,
             )
             Text(
-                text = "Ask a parent to open Watch Dog and scan this code.",
+                text = "This device isn't supervised — no restrictions are active. " +
+                    "Ask a parent to open Watch Dog and scan this code to connect.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = AppTheme.colors.secondaryLabel,
                 textAlign = TextAlign.Center,

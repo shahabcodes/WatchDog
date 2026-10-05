@@ -90,6 +90,25 @@ class FirebaseChildRepository @Inject constructor(
         Unit
     }
 
+    override suspend fun unlinkChild(childId: String, parentId: String): AppResult<Unit> =
+        runCatchingResult {
+            val doc = childrenCollection.document(childId)
+            firestore.runTransaction { transaction ->
+                val snapshot = transaction.get(doc)
+                @Suppress("UNCHECKED_CAST")
+                val remaining = (snapshot.get(FIELD_LINKED_PARENTS) as? List<String> ?: emptyList())
+                    .filter { it != parentId }
+                transaction.update(
+                    doc,
+                    mapOf(
+                        FIELD_LINKED_PARENTS to remaining,
+                        FIELD_PAIRING_ACTIVE to remaining.isEmpty(),
+                    ),
+                )
+            }.await()
+            Unit
+        }
+
     override suspend fun heartbeat(childId: String, model: String): AppResult<Unit> =
         runCatchingResult {
             childrenCollection.document(childId).set(

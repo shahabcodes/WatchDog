@@ -58,14 +58,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -121,6 +122,19 @@ fun AuthScreen(
         focusedField == FocusField.EMAIL -> DogMood.HAPPY
         else -> DogMood.NEUTRAL
     }
+    // Stands on two legs while engaged (typing or covering); sits otherwise.
+    val standing = mood == DogMood.HAPPY || mood == DogMood.SUCCESS || coveringEyes
+    val stand by animateFloatAsState(
+        targetValue = if (standing) 1f else 0f,
+        animationSpec = tween(if (reducedMotion) 0 else 340, easing = FastOutSlowInEasing),
+        label = "stand",
+    )
+    // Slides the shades down its nose to read your email.
+    val peek by animateFloatAsState(
+        targetValue = if (focusedField == FocusField.EMAIL) 1f else 0f,
+        animationSpec = tween(if (reducedMotion) 0 else 240),
+        label = "peek",
+    )
 
     val enter = remember { Animatable(0f) }
     LaunchedEffect(reducedMotion) {
@@ -148,6 +162,8 @@ fun AuthScreen(
                 cover = cover,
                 look = look,
                 mood = mood,
+                stand = stand,
+                peek = peek,
                 animate = !reducedMotion,
             )
 
@@ -344,9 +360,10 @@ private fun AuroraCanvas(colors: List<Color>, t: Float) {
 }
 
 /**
- * A living dog that makes the auth flow feel alive: its ears perk or droop with
- * its mood, its eyes track the email text, it covers its eyes with its paws when
- * a password field is focused, blinks, bobs, and pants happily on success.
+ * A full-body spy dog that brings the auth flow to life: it sits when idle,
+ * stands on two legs while you type, jumps for joy on success, slides its shades
+ * down its nose to read your email, covers its eyes with its paws for passwords,
+ * and droops its ears when something's wrong.
  */
 @Composable
 private fun Dog(
@@ -355,6 +372,8 @@ private fun Dog(
     cover: Float,
     look: Float,
     mood: DogMood,
+    stand: Float,
+    peek: Float,
     animate: Boolean,
 ) {
     if (animate) {
@@ -363,12 +382,15 @@ private fun Dog(
             0f, 1f, infiniteRepeatable(tween(3600, easing = LinearEasing), RepeatMode.Restart), label = "cycle",
         )
         val bob by transition.animateFloat(
-            -1f, 1f, infiniteRepeatable(tween(2200, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "bob",
+            -1f, 1f, infiniteRepeatable(tween(2000, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "bob",
+        )
+        val wag by transition.animateFloat(
+            -1f, 1f, infiniteRepeatable(tween(620, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "wag",
         )
         val blink = if (cycle > 0.95f) 1f - sin(((cycle - 0.95f) / 0.05f) * PI).toFloat() else 1f
-        DogVisual(gradient, accent, cover, look, mood, blink = blink, bob = bob, orbit = cycle)
+        DogVisual(gradient, accent, cover, look, mood, stand, peek, blink = blink, bob = bob, wag = wag)
     } else {
-        DogVisual(gradient, accent, cover, look, mood, blink = 1f, bob = 0f, orbit = 0.12f)
+        DogVisual(gradient, accent, cover, look, mood, stand, peek, blink = 1f, bob = 0f, wag = 0f)
     }
 }
 
@@ -379,15 +401,18 @@ private fun DogVisual(
     cover: Float,
     look: Float,
     mood: DogMood,
+    stand: Float,
+    peek: Float,
     blink: Float,
     bob: Float,
-    orbit: Float,
+    wag: Float,
 ) {
     val fur = gradient
     val furDark = gradient.getOrElse(gradient.size - 1) { accent }
-    val eyeDark = Color(0xFF2A2320)
-    val muzzle = Color(0xFFFDF3EA)
+    val eyeDark = Color(0xFF241B16)
+    val belly = Color(0xFFFBEFE4)
     val tongue = Color(0xFFF2788F)
+    val lens = Color(0xFF14202B)
     val smile = when (mood) {
         DogMood.SUCCESS -> 1f
         DogMood.HAPPY -> 0.7f
@@ -395,127 +420,153 @@ private fun DogVisual(
         DogMood.ERROR -> -0.6f
     }
     val earDrop = when (mood) {
-        DogMood.ERROR -> 4f
+        DogMood.ERROR -> 5f
         DogMood.HAPPY, DogMood.SUCCESS -> -2.5f
         DogMood.NEUTRAL -> 0f
     }
 
-    Box(modifier = Modifier.size(150.dp), contentAlignment = Alignment.Center) {
+    Box(modifier = Modifier.size(170.dp), contentAlignment = Alignment.Center) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val u = size.minDimension / 108f
+            val u = size.minDimension / 120f
             fun px(v: Float) = v * u
+            fun p(x: Float, y: Float) = Offset(px(x), px(y))
             val center = Offset(size.width / 2f, size.height / 2f)
-            val bobPx = bob * 3f * u
 
-            // Soft accent halo + a thin futuristic orbit ring with a travelling dot.
+            // Soft accent halo (the rotating ring is gone).
             drawCircle(
                 brush = Brush.radialGradient(
-                    listOf(accent.copy(alpha = 0.26f), Color.Transparent),
+                    listOf(accent.copy(alpha = 0.24f), Color.Transparent),
                     center = center, radius = size.minDimension / 2f,
                 ),
                 radius = size.minDimension / 2f,
                 center = center,
             )
-            val ringR = size.minDimension * 0.46f
-            drawCircle(accent.copy(alpha = 0.18f), radius = ringR, center = center, style = Stroke(width = px(0.8f)))
-            val a = orbit * (2f * PI).toFloat()
-            drawCircle(
-                color = accent,
-                radius = px(2.2f),
-                center = Offset(center.x + cos(a) * ringR, center.y + sin(a) * ringR),
-            )
 
-            translate(top = bobPx) {
-                // Ears (behind the head), drooping shapes that perk with mood.
-                translate(top = px(earDrop)) {
+            // Whole-body bob; a bigger joyful hop on success.
+            val amp = if (mood == DogMood.SUCCESS) 6f else 3f
+            val lift = if (mood == DogMood.SUCCESS) -4f else 0f
+            translate(top = px(bob * amp + lift)) {
+
+                // ---- Body morph: sitting (stand≈0) → standing on two legs (stand≈1) ----
+                val bodyTop = lerpF(62f, 56f, stand)
+                val bodyBot = lerpF(100f, 110f, stand)
+                val halfW = lerpF(27f, 21f, stand)
+                val feetY = bodyBot - 1f
+                val footSpread = lerpF(15f, 9f, stand)
+
+                // Tail (behind body), wagging — livelier when happy.
+                val wagDeg = wag * (if (mood == DogMood.HAPPY || mood == DogMood.SUCCESS) 16f else 7f)
+                rotate(degrees = wagDeg, pivot = p(60f + halfW - 4f, bodyBot - 14f)) {
                     drawPath(
                         Path().apply {
-                            moveTo(px(37f), px(34f))
-                            cubicTo(px(26f), px(34f), px(23f), px(52f), px(29f), px(63f))
-                            cubicTo(px(34f), px(70f), px(43f), px(64f), px(43f), px(54f))
-                            cubicTo(px(43f), px(44f), px(44f), px(36f), px(37f), px(34f))
-                            close()
-                        },
-                        color = furDark,
-                    )
-                    drawPath(
-                        Path().apply {
-                            moveTo(px(71f), px(34f))
-                            cubicTo(px(82f), px(34f), px(85f), px(52f), px(79f), px(63f))
-                            cubicTo(px(74f), px(70f), px(65f), px(64f), px(65f), px(54f))
-                            cubicTo(px(65f), px(44f), px(64f), px(36f), px(71f), px(34f))
+                            moveTo(px(60f + halfW - 6f), px(bodyBot - 10f))
+                            quadraticBezierTo(px(60f + halfW + 12f), px(bodyBot - 26f), px(60f + halfW + 6f), px(bodyBot - 34f))
+                            quadraticBezierTo(px(60f + halfW + 2f), px(bodyBot - 24f), px(60f + halfW - 2f), px(bodyBot - 8f))
                             close()
                         },
                         color = furDark,
                     )
                 }
 
-                // Head.
-                drawCircle(
-                    brush = Brush.verticalGradient(fur, startY = px(26f), endY = px(78f)),
-                    radius = px(25f),
-                    center = Offset(px(54f), px(50f)),
-                )
-                drawCircle(Color.White.copy(alpha = 0.10f), radius = px(25f), center = Offset(px(54f), px(50f)))
+                // Feet.
+                for (fx in listOf(60f - footSpread, 60f + footSpread)) {
+                    drawOval(color = furDark, topLeft = p(fx - 8f, feetY - 5f), size = Size(px(16f), px(11f)))
+                    drawOval(color = belly.copy(alpha = 0.5f), topLeft = p(fx - 4f, feetY), size = Size(px(8f), px(5f)))
+                }
 
-                // Muzzle.
+                // Torso (capsule) with a cream belly patch.
+                drawRoundRect(
+                    brush = Brush.verticalGradient(fur, startY = px(bodyTop), endY = px(bodyBot)),
+                    topLeft = p(60f - halfW, bodyTop),
+                    size = Size(px(2f * halfW), px(bodyBot - bodyTop)),
+                    cornerRadius = CornerRadius(px(halfW), px(halfW)),
+                )
                 drawOval(
-                    color = muzzle,
-                    topLeft = Offset(px(54f - 13f), px(53f)),
-                    size = Size(px(26f), px(20f)),
+                    color = belly,
+                    topLeft = p(60f - halfW * 0.6f, bodyTop + 6f),
+                    size = Size(px(halfW * 1.2f), px((bodyBot - bodyTop) * 0.62f)),
                 )
 
-                // Eyes (whites) with tracking pupils, squashed while blinking.
-                val eyeY = 46f
-                val lookDown = if (mood == DogMood.HAPPY) 1.0f else 0f
-                for (cx in listOf(45f, 63f)) {
-                    val ry = 5f * blink
-                    drawOval(
-                        color = Color.White,
-                        topLeft = Offset(px(cx - 5f), px(eyeY - ry)),
-                        size = Size(px(10f), px(2f * ry)),
-                    )
-                }
-                if (blink > 0.35f) {
-                    for (cx in listOf(45f, 63f)) {
-                        drawCircle(eyeDark, radius = px(2.5f), center = Offset(px(cx + look * 2.2f), px(eyeY + lookDown)))
-                        drawCircle(Color.White, radius = px(0.8f), center = Offset(px(cx + look * 2.2f + 0.9f), px(eyeY + lookDown - 1f)))
-                    }
-                }
+                // ---- Arms/paws: rest on the belly, or rise to cover the eyes ----
+                val shoulderL = p(60f - halfW + 2f, bodyTop + 10f)
+                val shoulderR = p(60f + halfW - 2f, bodyTop + 10f)
+                val restL = p(52f, bodyTop + 22f)
+                val restR = p(68f, bodyTop + 22f)
+                val coverL = p(52f, 34f)
+                val coverR = p(68f, 34f)
+                val pawL = lerpO(restL, coverL, cover)
+                val pawR = lerpO(restR, coverR, cover)
+                drawLine(furDark, shoulderL, pawL, strokeWidth = px(8f), cap = StrokeCap.Round)
+                drawLine(furDark, shoulderR, pawR, strokeWidth = px(8f), cap = StrokeCap.Round)
 
-                // Nose + mouth (and tongue when overjoyed).
-                drawOval(color = eyeDark, topLeft = Offset(px(54f - 3.2f), px(57f)), size = Size(px(6.4f), px(5f)))
-                drawLine(eyeDark, Offset(px(54f), px(62f)), Offset(px(54f), px(64f)), strokeWidth = px(1.6f), cap = StrokeCap.Round)
-                val cornerY = 64f - smile * 2f
+                // ---- Head ----
+                val headC = p(60f, 36f)
+                val headR = px(20f)
+                // Ears behind the head.
+                translate(top = px(earDrop)) {
+                    drawPath(earPath(::px, left = true), color = furDark)
+                    drawPath(earPath(::px, left = false), color = furDark)
+                }
+                drawCircle(brush = Brush.verticalGradient(fur, startY = px(16f), endY = px(56f)), radius = headR, center = headC)
+                drawCircle(Color.White.copy(alpha = 0.10f), radius = headR, center = headC)
+
+                // Snout + nose + mouth.
+                drawOval(color = belly, topLeft = p(49f, 40f), size = Size(px(22f), px(16f)))
+                drawOval(color = eyeDark, topLeft = p(56.5f, 42f), size = Size(px(7f), px(5.5f)))
+                drawLine(eyeDark, p(60f, 47f), p(60f, 50f), strokeWidth = px(1.6f), cap = StrokeCap.Round)
+                val cornerY = 50f - smile * 2f
                 drawPath(
-                    Path().apply {
-                        moveTo(px(54f), px(64f))
-                        quadraticBezierTo(px(49f), px(64f + smile * 3f), px(47f), px(cornerY))
-                    },
+                    Path().apply { moveTo(px(60f), px(50f)); quadraticBezierTo(px(54f), px(50f + smile * 3.5f), px(52f), px(cornerY)) },
                     color = eyeDark, style = Stroke(width = px(1.8f), cap = StrokeCap.Round),
                 )
                 drawPath(
-                    Path().apply {
-                        moveTo(px(54f), px(64f))
-                        quadraticBezierTo(px(59f), px(64f + smile * 3f), px(61f), px(cornerY))
-                    },
+                    Path().apply { moveTo(px(60f), px(50f)); quadraticBezierTo(px(66f), px(50f + smile * 3.5f), px(68f), px(cornerY)) },
                     color = eyeDark, style = Stroke(width = px(1.8f), cap = StrokeCap.Round),
                 )
                 if (smile > 0.95f) {
-                    drawOval(color = tongue, topLeft = Offset(px(54f - 3.5f), px(64f)), size = Size(px(7f), px(9f)))
+                    drawRoundRect(
+                        color = tongue, topLeft = p(56.5f, 50f), size = Size(px(7f), px(9f)),
+                        cornerRadius = CornerRadius(px(3.5f), px(3.5f)),
+                    )
                 }
 
-                // Paws rise from below to cover the eyes while a password field is focused.
+                // Eyes + eyebrows behind the shades.
+                val eyeY = 31f
+                val browY = eyeY - 7f + when (mood) { DogMood.ERROR -> 1.5f; else -> 0f }
+                for (cx in listOf(53f, 67f)) {
+                    val ry = 3.6f * blink
+                    drawOval(color = Color.White, topLeft = Offset(px(cx - 3.6f), px(eyeY - ry)), size = Size(px(7.2f), px(2f * ry)))
+                    if (blink > 0.35f) {
+                        drawCircle(eyeDark, radius = px(1.9f), center = p(cx + look * 1.8f, eyeY + 0.6f))
+                        drawCircle(Color.White, radius = px(0.7f), center = p(cx + look * 1.8f + 0.7f, eyeY - 0.4f))
+                    }
+                }
+                // Eyebrows (angry inward on error, raised when happy).
+                val browTilt = when (mood) { DogMood.ERROR -> 2.5f; DogMood.HAPPY, DogMood.SUCCESS -> -1.5f; else -> 0f }
+                drawLine(eyeDark, p(49f, browY + browTilt), p(57f, browY - browTilt), strokeWidth = px(1.6f), cap = StrokeCap.Round)
+                drawLine(eyeDark, p(63f, browY - browTilt), p(71f, browY + browTilt), strokeWidth = px(1.6f), cap = StrokeCap.Round)
+
+                // ---- Spy sunglasses: slide down the nose to peek while reading email ----
+                val gY = eyeY + peek * 8f
+                val lensR = px(6.4f)
+                for (cx in listOf(53f, 67f)) {
+                    drawCircle(lens, radius = lensR, center = p(cx, gY))
+                    drawCircle(accent.copy(alpha = 0.35f), radius = lensR, center = p(cx, gY), style = Stroke(width = px(1.4f)))
+                    // Cool diagonal glint.
+                    drawLine(Color.White.copy(alpha = 0.5f), p(cx - 3f, gY + 1.5f), p(cx + 0.5f, gY - 3f), strokeWidth = px(1.3f), cap = StrokeCap.Round)
+                }
+                drawLine(lens, p(57.5f, gY), p(62.5f, gY), strokeWidth = px(2.4f), cap = StrokeCap.Round)
+                drawLine(lens, p(47f, gY - 1f), p(40f, eyeY - 3f), strokeWidth = px(2f), cap = StrokeCap.Round)
+                drawLine(lens, p(73f, gY - 1f), p(80f, eyeY - 3f), strokeWidth = px(2f), cap = StrokeCap.Round)
+
+                // ---- Paws on top when covering the eyes ----
                 if (cover > 0.01f) {
-                    val lp = lerp(Offset(px(42f), px(92f)), Offset(px(45f), px(46f)), cover)
-                    val rp = lerp(Offset(px(66f), px(92f)), Offset(px(63f), px(46f)), cover)
-                    val pawR = px(10f)
-                    for (p in listOf(lp, rp)) {
-                        drawCircle(color = furDark, radius = pawR, center = p)
-                        drawCircle(color = Color.White.copy(alpha = 0.14f), radius = pawR * 0.55f, center = Offset(p.x - pawR * 0.25f, p.y - pawR * 0.25f))
-                        // Toe beans.
-                        for (dx in listOf(-3.5f, 0f, 3.5f)) {
-                            drawCircle(color = Color.White.copy(alpha = 0.22f), radius = px(1.3f), center = Offset(p.x + px(dx), p.y + px(3.5f)))
+                    val pawR = px(9f)
+                    for (pw in listOf(pawL, pawR)) {
+                        drawCircle(color = furDark, radius = pawR, center = pw)
+                        drawCircle(color = Color.White.copy(alpha = 0.14f), radius = pawR * 0.55f, center = Offset(pw.x - pawR * 0.25f, pw.y - pawR * 0.25f))
+                        for (dx in listOf(-3.3f, 0f, 3.3f)) {
+                            drawCircle(color = belly.copy(alpha = 0.6f * cover), radius = px(1.2f), center = Offset(pw.x + px(dx), pw.y + px(3.2f)))
                         }
                     }
                 }
@@ -524,7 +575,23 @@ private fun DogVisual(
     }
 }
 
-private fun lerp(a: Offset, b: Offset, f: Float) = Offset(a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f)
+private fun earPath(px: (Float) -> Float, left: Boolean): Path = Path().apply {
+    if (left) {
+        moveTo(px(45f), px(24f))
+        cubicTo(px(32f), px(22f), px(28f), px(40f), px(34f), px(50f))
+        cubicTo(px(38f), px(56f), px(46f), px(50f), px(46f), px(42f))
+        cubicTo(px(46f), px(34f), px(49f), px(26f), px(45f), px(24f))
+    } else {
+        moveTo(px(75f), px(24f))
+        cubicTo(px(88f), px(22f), px(92f), px(40f), px(86f), px(50f))
+        cubicTo(px(82f), px(56f), px(74f), px(50f), px(74f), px(42f))
+        cubicTo(px(74f), px(34f), px(71f), px(26f), px(75f), px(24f))
+    }
+    close()
+}
+
+private fun lerpF(a: Float, b: Float, f: Float) = a + (b - a) * f
+private fun lerpO(a: Offset, b: Offset, f: Float) = Offset(a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f)
 
 @Composable
 private fun GlassField(

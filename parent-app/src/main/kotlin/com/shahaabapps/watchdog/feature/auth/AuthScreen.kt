@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MailOutline
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -92,7 +93,7 @@ fun AuthScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val accent = AppTheme.colors.accent
     val gradient = AppTheme.palette.gradient.ifEmpty { listOf(accent, accent) }
-    val onBg = AppTheme.colors.label
+    val onBg = MaterialTheme.colorScheme.onBackground
     val muted = AppTheme.colors.secondaryLabel
     val reducedMotion = rememberReducedMotion()
 

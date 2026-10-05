@@ -404,10 +404,13 @@ private fun Dog(
         val ear by transition.animateFloat(
             -1f, 1f, infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "ear",
         )
+        val walk by transition.animateFloat(
+            0f, 1f, infiniteRepeatable(tween(520, easing = LinearEasing), RepeatMode.Restart), label = "walk",
+        )
         val blink = if (cycle > 0.95f) 1f - sin(((cycle - 0.95f) / 0.05f) * PI).toFloat() else 1f
-        DogVisual(modifier, gradient, accent, cover, look, mood, stand, peek, blink = blink, bob = bob, wag = wag, ear = ear)
+        DogVisual(modifier, gradient, accent, cover, look, mood, stand, peek, blink = blink, bob = bob, wag = wag, ear = ear, walk = walk)
     } else {
-        DogVisual(modifier, gradient, accent, cover, look, mood, stand, peek, blink = 1f, bob = 0f, wag = 0f, ear = 0f)
+        DogVisual(modifier, gradient, accent, cover, look, mood, stand, peek, blink = 1f, bob = 0f, wag = 0f, ear = 0f, walk = 0f)
     }
 }
 
@@ -425,6 +428,7 @@ private fun DogVisual(
     bob: Float,
     wag: Float,
     ear: Float,
+    walk: Float,
 ) {
     val fur = gradient
     val furDark = gradient.getOrElse(gradient.size - 1) { accent }
@@ -462,10 +466,12 @@ private fun DogVisual(
                 center = center,
             )
 
-            // Whole-body bob; a bigger joyful hop on success.
+            // Whole-body bob; a bigger joyful hop on success. A gentle sway while walking.
             val amp = if (mood == DogMood.SUCCESS) 6f else 3f
             val lift = if (mood == DogMood.SUCCESS) -4f else 0f
-            translate(top = px(bob * amp + lift)) {
+            val twoPi = (2f * PI).toFloat()
+            val sway = sin(walk * twoPi) * stand * 1.6f
+            translate(left = px(sway), top = px(bob * amp + lift)) {
 
                 // ---- Body morph: sitting (stand≈0) → standing on two legs (stand≈1) ----
                 val bodyTop = lerpF(62f, 56f, stand)
@@ -473,6 +479,9 @@ private fun DogVisual(
                 val halfW = lerpF(27f, 21f, stand)
                 val feetY = bodyBot - 1f
                 val footSpread = lerpF(15f, 9f, stand)
+                // Alternating steps give a little walk-in-place while standing.
+                val stepL = sin(walk * twoPi) * stand * 3f
+                val stepR = sin(walk * twoPi + PI.toFloat()) * stand * 3f
 
                 // Tail (behind body), wagging — livelier when happy.
                 val wagDeg = wag * (if (mood == DogMood.HAPPY || mood == DogMood.SUCCESS) 16f else 7f)
@@ -488,10 +497,10 @@ private fun DogVisual(
                     )
                 }
 
-                // Feet.
-                for (fx in listOf(60f - footSpread, 60f + footSpread)) {
-                    drawOval(color = furDark, topLeft = p(fx - 8f, feetY - 5f), size = Size(px(16f), px(11f)))
-                    drawOval(color = belly.copy(alpha = 0.5f), topLeft = p(fx - 4f, feetY), size = Size(px(8f), px(5f)))
+                // Feet (stepping while walking).
+                listOf(60f - footSpread to stepL, 60f + footSpread to stepR).forEach { (fx, step) ->
+                    drawOval(color = furDark, topLeft = p(fx - 8f, feetY - 5f + step), size = Size(px(16f), px(11f)))
+                    drawOval(color = belly.copy(alpha = 0.5f), topLeft = p(fx - 4f, feetY + step), size = Size(px(8f), px(5f)))
                 }
 
                 // Torso (capsule) with a cream belly patch.
@@ -507,18 +516,39 @@ private fun DogVisual(
                     size = Size(px(halfW * 1.2f), px((bodyBot - bodyTop) * 0.62f)),
                 )
 
-                // ---- Arms/paws: rest on the belly, or rise to cover the eyes ----
+                // ---- Secret-agent outfit: shirt V, jacket lapels, accent tie ----
+                val jacket = Color(0xFF2B3340)
+                drawPath(
+                    Path().apply { moveTo(px(60f), px(bodyTop - 1f)); lineTo(px(53f), px(bodyTop + 16f)); lineTo(px(67f), px(bodyTop + 16f)); close() },
+                    color = Color(0xFFF4F6FA),
+                )
+                drawPath(
+                    Path().apply { moveTo(px(60f), px(bodyTop - 1f)); lineTo(px(46f), px(bodyTop + 4f)); lineTo(px(56f), px(bodyTop + 18f)); close() },
+                    color = jacket,
+                )
+                drawPath(
+                    Path().apply { moveTo(px(60f), px(bodyTop - 1f)); lineTo(px(74f), px(bodyTop + 4f)); lineTo(px(64f), px(bodyTop + 18f)); close() },
+                    color = jacket,
+                )
+                drawPath(
+                    Path().apply {
+                        moveTo(px(60f), px(bodyTop + 1f)); lineTo(px(57f), px(bodyTop + 5f))
+                        lineTo(px(60f), px(bodyTop + 17f)); lineTo(px(63f), px(bodyTop + 5f)); close()
+                    },
+                    color = accent,
+                )
+
+                // ---- Arms (jacket sleeves): grip the card at rest, rise to cover the eyes ----
                 val shoulderL = p(60f - halfW + 2f, bodyTop + 10f)
                 val shoulderR = p(60f + halfW - 2f, bodyTop + 10f)
-                // At rest the paws drop low and wide to grip the top of the card below.
                 val restL = p(40f, 108f)
                 val restR = p(80f, 108f)
                 val coverL = p(52f, 34f)
                 val coverR = p(68f, 34f)
                 val pawL = lerpO(restL, coverL, cover)
                 val pawR = lerpO(restR, coverR, cover)
-                drawLine(furDark, shoulderL, pawL, strokeWidth = px(8f), cap = StrokeCap.Round)
-                drawLine(furDark, shoulderR, pawR, strokeWidth = px(8f), cap = StrokeCap.Round)
+                drawLine(jacket, shoulderL, pawL, strokeWidth = px(8f), cap = StrokeCap.Round)
+                drawLine(jacket, shoulderR, pawR, strokeWidth = px(8f), cap = StrokeCap.Round)
 
                 // ---- Head ----
                 val headC = p(60f, 36f)
@@ -532,13 +562,23 @@ private fun DogVisual(
                 }
                 drawCircle(brush = Brush.verticalGradient(fur, startY = px(16f), endY = px(56f)), radius = headR, center = headC)
                 drawCircle(Color.White.copy(alpha = 0.10f), radius = headR, center = headC)
-                // Little head tuft + a spy earpiece for character.
+
+                // ---- Cool spy fedora ----
+                val hat = Color(0xFF23262E)
+                // Crown.
                 drawPath(
-                    Path().apply { moveTo(px(57f), px(17f)); quadraticBezierTo(px(60f), px(10f), px(63f), px(17f)); close() },
-                    color = furDark,
+                    Path().apply {
+                        moveTo(px(50f), px(22f)); lineTo(px(53f), px(9f))
+                        quadraticBezierTo(px(60f), px(6f), px(67f), px(9f))
+                        lineTo(px(70f), px(22f)); close()
+                    },
+                    color = hat,
                 )
-                drawCircle(accent, radius = px(1.8f), center = p(79f, 40f))
-                drawLine(accent.copy(alpha = 0.7f), p(79f, 40f), p(74f, 44f), strokeWidth = px(1f), cap = StrokeCap.Round)
+                // Accent hat band.
+                drawLine(accent, p(50.5f, 20f), p(69.5f, 20f), strokeWidth = px(3.2f), cap = StrokeCap.Butt)
+                // Brim.
+                drawOval(color = hat, topLeft = p(37f, 19f), size = Size(px(46f), px(8.5f)))
+                drawOval(color = Color.White.copy(alpha = 0.06f), topLeft = p(37f, 19f), size = Size(px(46f), px(4f)))
 
                 // Cheeks.
                 drawCircle(belly.copy(alpha = 0.7f), radius = px(4.5f), center = p(46f, 42f))
@@ -593,15 +633,13 @@ private fun DogVisual(
                 drawLine(lens, p(47f, gY - 1f), p(40f, eyeY - 3f), strokeWidth = px(2f), cap = StrokeCap.Round)
                 drawLine(lens, p(73f, gY - 1f), p(80f, eyeY - 3f), strokeWidth = px(2f), cap = StrokeCap.Round)
 
-                // ---- Paws on top when covering the eyes ----
-                if (cover > 0.01f) {
-                    val pawRad = px(9f)
-                    for (pw in listOf(pawL, pawR)) {
-                        drawCircle(color = furDark, radius = pawRad, center = pw)
-                        drawCircle(color = Color.White.copy(alpha = 0.14f), radius = pawRad * 0.55f, center = Offset(pw.x - pawRad * 0.25f, pw.y - pawRad * 0.25f))
-                        for (dx in listOf(-3.3f, 0f, 3.3f)) {
-                            drawCircle(color = belly.copy(alpha = 0.6f * cover), radius = px(1.2f), center = Offset(pw.x + px(dx), pw.y + px(3.2f)))
-                        }
+                // ---- Paws: on the card at rest, growing to cover the eyes (drawn last, on top) ----
+                for (pw in listOf(pawL, pawR)) {
+                    val pawRad = px(lerpF(5.5f, 9f, cover))
+                    drawCircle(color = furDark, radius = pawRad, center = pw)
+                    drawCircle(color = Color.White.copy(alpha = 0.14f), radius = pawRad * 0.55f, center = Offset(pw.x - pawRad * 0.25f, pw.y - pawRad * 0.25f))
+                    for (dx in listOf(-3.3f, 0f, 3.3f)) {
+                        drawCircle(color = belly.copy(alpha = 0.55f), radius = px(1.2f), center = Offset(pw.x + px(dx), pw.y + pawRad * 0.4f))
                     }
                 }
             }
@@ -657,10 +695,12 @@ private fun GlassField(
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         shape = RoundedCornerShape(16.dp),
         colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = AppTheme.colors.card,
-            unfocusedContainerColor = AppTheme.colors.card.copy(alpha = 0.5f),
+            focusedContainerColor = Color.Transparent,
+            unfocusedContainerColor = Color.Transparent,
+            disabledContainerColor = Color.Transparent,
+            errorContainerColor = Color.Transparent,
             focusedBorderColor = accent,
-            unfocusedBorderColor = onBg.copy(alpha = 0.14f),
+            unfocusedBorderColor = onBg.copy(alpha = 0.22f),
             cursorColor = accent,
             focusedTextColor = onBg,
             unfocusedTextColor = onBg,

@@ -15,12 +15,18 @@ import javax.inject.Inject
 data class AuthUiState(
     val email: String = "",
     val password: String = "",
+    val confirmPassword: String = "",
     val isSignUp: Boolean = false,
     val isSubmitting: Boolean = false,
     val errorMessage: String? = null,
 ) {
+    /** True only while signing up with two passwords that don't match. */
+    val passwordsMismatch: Boolean
+        get() = isSignUp && confirmPassword.isNotEmpty() && confirmPassword != password
+
     val canSubmit: Boolean
-        get() = email.contains("@") && password.length >= 6 && !isSubmitting
+        get() = email.contains("@") && password.length >= 6 && !isSubmitting &&
+            (!isSignUp || confirmPassword == password)
 }
 
 @HiltViewModel
@@ -35,7 +41,11 @@ class AuthViewModel @Inject constructor(
 
     fun onPasswordChange(value: String) = _uiState.update { it.copy(password = value, errorMessage = null) }
 
-    fun toggleMode() = _uiState.update { it.copy(isSignUp = !it.isSignUp, errorMessage = null) }
+    fun onConfirmPasswordChange(value: String) = _uiState.update { it.copy(confirmPassword = value, errorMessage = null) }
+
+    fun toggleMode() = _uiState.update {
+        it.copy(isSignUp = !it.isSignUp, confirmPassword = "", errorMessage = null)
+    }
 
     fun submit() {
         val current = _uiState.value

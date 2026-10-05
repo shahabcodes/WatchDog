@@ -86,6 +86,22 @@ fun AuthScreen(
             keyboardType = KeyboardType.Password,
             isPassword = true,
         )
+        if (state.isSignUp) {
+            CupertinoTextField(
+                value = state.confirmPassword,
+                onValueChange = viewModel::onConfirmPasswordChange,
+                placeholder = "Confirm password",
+                keyboardType = KeyboardType.Password,
+                isPassword = true,
+            )
+            if (state.passwordsMismatch) {
+                Text(
+                    text = "Passwords don't match",
+                    color = AppTheme.colors.destructive,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
 
         if (state.errorMessage != null) {
             Text(

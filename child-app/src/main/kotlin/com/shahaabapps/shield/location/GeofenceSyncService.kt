@@ -23,6 +23,7 @@ import com.shahaabapps.core.firebase.auth.AuthRepository
 import com.shahaabapps.core.firebase.device.DeviceRepository
 import com.shahaabapps.core.firebase.geofence.GeofenceRepository
 import com.shahaabapps.core.model.ChildLocation
+import com.shahaabapps.core.model.TrailPoint
 import com.shahaabapps.core.model.TravelStop
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -145,9 +146,21 @@ class GeofenceSyncService : Service() {
                     ),
                 )
             }
+            // Append to the day's continuous trail (the actual path).
+            runCatching {
+                deviceRepository.appendTrailPoint(
+                    childId,
+                    today(now),
+                    TrailPoint(latitude = loc.latitude, longitude = loc.longitude, timestampMillis = now),
+                )
+            }
         }
         trackStop(childId, loc, now)
     }
+
+    private fun today(millis: Long): String =
+        java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault())
+            .toLocalDate().toString()
 
     /**
      * Groups nearby fixes into a "stop". When the child leaves a spot they stayed

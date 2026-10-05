@@ -1,7 +1,7 @@
 package com.shahaabapps.watchdog.feature.travel
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,20 +14,30 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Place
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,8 +48,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.Dash
-import com.google.android.gms.maps.model.Gap
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapUiSettings
@@ -47,20 +55,22 @@ import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberMarkerState
-import com.shahaabapps.watchdog.feature.geofence.PlaceIcons
-import com.shahaabapps.watchdog.util.rememberCircleMarker
 import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.components.Hero
 import com.shahaabapps.core.ui.components.HeroIconButton
 import com.shahaabapps.core.ui.components.LoadingView
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
+import com.shahaabapps.watchdog.feature.geofence.PlaceIcons
+import com.shahaabapps.watchdog.util.rememberCircleMarker
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TravelHistoryScreen(
     onBack: () -> Unit,
@@ -69,6 +79,10 @@ fun TravelHistoryScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val accent = AppTheme.colors.accent
 
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showFromPicker by remember { mutableStateOf(false) }
+    var showToPicker by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -76,7 +90,7 @@ fun TravelHistoryScreen(
     ) {
         Hero(
             title = "Travel history",
-            subtitle = "Places they stopped for 5+ minutes",
+            subtitle = "Where they went",
             actions = {
                 HeroIconButton(onClick = onBack) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
@@ -84,55 +98,39 @@ fun TravelHistoryScreen(
             },
         )
 
-        // Date filter chips
+        // Date + time-range selectors
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = Spacing.lg)
-                .padding(top = Spacing.sm),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg, vertical = Spacing.sm),
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
-            TravelRange.entries.forEach { range ->
-                FilterChip(
-                    selected = state.range == range,
-                    onClick = { viewModel.setRange(range) },
-                    label = { Text(range.label) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = accent.copy(alpha = 0.15f),
-                        selectedLabelColor = accent,
-                    ),
-                )
-            }
-        }
-        // Time-of-day filter chips
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = Spacing.lg)
-                .padding(top = Spacing.xs, bottom = Spacing.sm),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-        ) {
-            TravelTime.entries.forEach { t ->
-                FilterChip(
-                    selected = state.time == t,
-                    onClick = { viewModel.setTime(t) },
-                    label = { Text(t.label) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = accent.copy(alpha = 0.15f),
-                        selectedLabelColor = accent,
-                    ),
-                )
-            }
+            SelectorPill(
+                icon = Icons.Filled.CalendarMonth,
+                text = dateLabel(state.date),
+                onClick = { showDatePicker = true },
+                modifier = Modifier.weight(1f),
+            )
+            SelectorPill(
+                icon = Icons.Filled.Schedule,
+                text = minuteLabel(state.fromMinute),
+                onClick = { showFromPicker = true },
+                modifier = Modifier.weight(1f),
+            )
+            SelectorPill(
+                icon = Icons.Filled.Schedule,
+                text = minuteLabel(state.toMinute),
+                onClick = { showToPicker = true },
+                modifier = Modifier.weight(1f),
+            )
         }
 
+        val hasData = state.trail.isNotEmpty() || state.stops.isNotEmpty()
         when {
-            state.loading -> LoadingView(label = "Loading travel history…", modifier = Modifier.padding(top = Spacing.xl))
-            state.stops.isEmpty() -> EmptyState()
+            state.loading -> LoadingView(label = "Loading…", modifier = Modifier.padding(top = Spacing.xl))
+            !hasData -> EmptyState()
             else -> Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 TravelMap(
-                    items = state.stops,
+                    trail = state.trail,
+                    stops = state.stops,
                     accent = accent,
                     modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
                 )
@@ -145,27 +143,131 @@ fun TravelHistoryScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(Spacing.sm),
                 ) {
+                    if (state.stops.isEmpty()) {
+                        item {
+                            Text(
+                                "Path shown above — no 5+ minute stops in this window.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = AppTheme.colors.secondaryLabel,
+                                modifier = Modifier.padding(vertical = Spacing.sm),
+                            )
+                        }
+                    }
                     items(state.stops, key = { it.stop.id }) { item -> StopRow(item) }
                 }
             }
         }
     }
+
+    if (showDatePicker) {
+        val dpState = rememberDatePickerState(
+            initialSelectedDateMillis = state.date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    dpState.selectedDateMillis?.let {
+                        viewModel.setDate(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate())
+                    }
+                    showDatePicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("Cancel") } },
+        ) {
+            DatePicker(state = dpState)
+        }
+    }
+
+    if (showFromPicker) {
+        TimePickerDialog(
+            initialMinutes = state.fromMinute,
+            onDismiss = { showFromPicker = false },
+            onConfirm = { viewModel.setTimeRange(it, state.toMinute); showFromPicker = false },
+        )
+    }
+    if (showToPicker) {
+        TimePickerDialog(
+            initialMinutes = state.toMinute,
+            onDismiss = { showToPicker = false },
+            onConfirm = { viewModel.setTimeRange(state.fromMinute, it); showToPicker = false },
+        )
+    }
 }
 
 @Composable
-private fun TravelMap(items: List<TravelStopItem>, accent: Color, modifier: Modifier = Modifier) {
-    // Chronological order (the list is newest-first).
-    val chronological = items.reversed()
-    val points = chronological.map { LatLng(it.stop.latitude, it.stop.longitude) }
+private fun SelectorPill(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = AppTheme.colors.card,
+        modifier = modifier.clickable(onClick = onClick),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+        ) {
+            Icon(icon, contentDescription = null, tint = AppTheme.colors.accent, modifier = Modifier.size(16.dp))
+            Text(
+                text,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                modifier = Modifier.padding(start = 6.dp),
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimePickerDialog(
+    initialMinutes: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (minutes: Int) -> Unit,
+) {
+    val tpState = rememberTimePickerState(
+        initialHour = initialMinutes / 60,
+        initialMinute = initialMinutes % 60,
+        is24Hour = false,
+    )
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = { onConfirm(tpState.hour * 60 + tpState.minute) }) { Text("OK") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                TimePicker(state = tpState)
+            }
+        },
+    )
+}
+
+@Composable
+private fun TravelMap(
+    trail: List<com.shahaabapps.core.model.TrailPoint>,
+    stops: List<TravelStopItem>,
+    accent: Color,
+    modifier: Modifier = Modifier,
+) {
+    val trailLatLng = trail.map { LatLng(it.latitude, it.longitude) }
+    val allLat = trail.map { it.latitude } + stops.map { it.stop.latitude }
+    val allLng = trail.map { it.longitude } + stops.map { it.stop.longitude }
     val center = LatLng(
-        items.map { it.stop.latitude }.average(),
-        items.map { it.stop.longitude }.average(),
+        if (allLat.isEmpty()) 25.2854 else allLat.average(),
+        if (allLng.isEmpty()) 51.5310 else allLng.average(),
     )
     val cameraState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(center, 12f)
+        position = CameraPosition.fromLatLngZoom(center, 13f)
     }
     LaunchedEffect(center) {
-        cameraState.position = CameraPosition.fromLatLngZoom(center, 12f)
+        cameraState.position = CameraPosition.fromLatLngZoom(center, 13f)
     }
 
     CupertinoCard(modifier = modifier) {
@@ -180,31 +282,21 @@ private fun TravelMap(items: List<TravelStopItem>, accent: Color, modifier: Modi
                 cameraPositionState = cameraState,
                 uiSettings = MapUiSettings(
                     zoomControlsEnabled = false,
-                    scrollGesturesEnabled = true,
-                    zoomGesturesEnabled = true,
                     tiltGesturesEnabled = false,
                     rotationGesturesEnabled = false,
                     compassEnabled = false,
                     mapToolbarEnabled = false,
                 ),
             ) {
-                // We only record stops (places stayed 5+ min), not the real route,
-                // so the connecting line is a DASHED "approximate" link between
-                // stops, not an exact path.
-                if (points.size >= 2) {
-                    Polyline(
-                        points = points,
-                        color = accent.copy(alpha = 0.7f),
-                        width = 6f,
-                        pattern = listOf(Dash(28f), Gap(18f)),
-                    )
+                // The actual recorded path (GPS samples), drawn as a solid line.
+                if (trailLatLng.size >= 2) {
+                    Polyline(points = trailLatLng, color = accent, width = 9f)
                 }
-                val startIcon = rememberCircleMarker(AppTheme.colors.success)
                 val stopIcon = rememberCircleMarker(accent)
-                chronological.forEachIndexed { i, item ->
+                stops.forEach { item ->
                     Marker(
                         state = rememberMarkerState(position = LatLng(item.stop.latitude, item.stop.longitude)),
-                        icon = if (i == 0) startIcon else stopIcon,
+                        icon = stopIcon,
                         anchor = androidx.compose.ui.geometry.Offset(0.5f, 0.5f),
                         title = item.placeName ?: timeLabel(item.stop.arrivalMillis),
                     )
@@ -256,11 +348,6 @@ private fun StopRow(item: TravelStopItem) {
                     style = MaterialTheme.typography.bodyMedium,
                     color = AppTheme.colors.secondaryLabel,
                 )
-                Text(
-                    text = dateLabel(stop.arrivalMillis),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.colors.secondaryLabel,
-                )
             }
         }
     }
@@ -274,9 +361,9 @@ private fun EmptyState() {
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
         Icon(Icons.Filled.Place, contentDescription = null, tint = AppTheme.colors.accent, modifier = Modifier.size(44.dp))
-        Text("No stops in this range", style = MaterialTheme.typography.titleMedium)
+        Text("No movement recorded", style = MaterialTheme.typography.titleMedium)
         Text(
-            "When Shield is running, places where they stay for 5+ minutes appear here. Try a wider date range.",
+            "Pick another date or widen the time range. The path appears once Shield has been running on the child's phone.",
             style = MaterialTheme.typography.bodyMedium,
             color = AppTheme.colors.secondaryLabel,
             textAlign = TextAlign.Center,
@@ -300,12 +387,17 @@ private val dateFormatter = DateTimeFormatter.ofPattern("EEE, MMM d", Locale.get
 private fun timeLabel(millis: Long): String =
     Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalTime().format(timeFormatter)
 
-private fun dateLabel(millis: Long): String {
-    val date = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate()
-    val today = LocalDate.now()
-    return when (date) {
-        today -> "Today"
-        today.minusDays(1) -> "Yesterday"
-        else -> date.format(dateFormatter)
+private fun minuteLabel(min: Int): String {
+    val h = min / 60
+    val m = min % 60
+    val ampm = if (h < 12) "AM" else "PM"
+    val h12 = when {
+        h == 0 -> 12
+        h > 12 -> h - 12
+        else -> h
     }
+    return "%d:%02d %s".format(h12, m, ampm)
 }
+
+private fun dateLabel(date: LocalDate): String =
+    if (date == LocalDate.now()) "Today" else date.format(dateFormatter)

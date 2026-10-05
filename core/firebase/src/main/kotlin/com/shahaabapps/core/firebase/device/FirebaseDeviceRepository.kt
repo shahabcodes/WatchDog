@@ -1,12 +1,15 @@
 package com.shahaabapps.core.firebase.device
 
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.SetOptions
 import com.shahaabapps.core.common.AppResult
 import com.shahaabapps.core.common.runCatchingResult
 import com.shahaabapps.core.model.ChildLocation
 import com.shahaabapps.core.model.RingCommand
+import com.shahaabapps.core.model.TrailPoint
 import com.shahaabapps.core.model.TravelStop
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -92,8 +95,43 @@ class FirebaseDeviceRepository @Inject constructor(
             awaitClose { registration.remove() }
         }
 
+    override suspend fun appendTrailPoint(childId: String, date: String, point: TrailPoint): AppResult<Unit> =
+        runCatchingResult {
+            val entry = mapOf(
+                "lat" to point.latitude,
+                "lng" to point.longitude,
+                "t" to point.timestampMillis,
+            )
+            // Merge-set with arrayUnion so the day's doc is created on first point.
+            trail(childId).document(date)
+                .set(mapOf("points" to FieldValue.arrayUnion(entry)), SetOptions.merge())
+                .await()
+        }
+
+    override fun observeTrail(childId: String, date: String): Flow<List<TrailPoint>> = callbackFlow {
+        val registration = trail(childId).document(date).addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                trySend(emptyList()); return@addSnapshotListener
+            }
+            @Suppress("UNCHECKED_CAST")
+            val raw = snapshot?.get("points") as? List<Map<String, Any?>> ?: emptyList()
+            val points = raw.map {
+                TrailPoint(
+                    latitude = (it["lat"] as? Number)?.toDouble() ?: 0.0,
+                    longitude = (it["lng"] as? Number)?.toDouble() ?: 0.0,
+                    timestampMillis = (it["t"] as? Number)?.toLong() ?: 0L,
+                )
+            }.sortedBy { it.timestampMillis }
+            trySend(points)
+        }
+        awaitClose { registration.remove() }
+    }
+
     private fun live(childId: String) =
         firestore.collection(CHILDREN).document(childId).collection(LIVE)
+
+    private fun trail(childId: String) =
+        firestore.collection(CHILDREN).document(childId).collection(TRAIL)
 
     private fun travelHistory(childId: String) =
         firestore.collection(CHILDREN).document(childId).collection(TRAVEL_HISTORY)
@@ -126,5 +164,6 @@ class FirebaseDeviceRepository @Inject constructor(
         const val LOCATION = "location"
         const val RING = "ring"
         const val TRAVEL_HISTORY = "travelHistory"
+        const val TRAIL = "trail"
     }
 }

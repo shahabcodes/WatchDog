@@ -36,3 +36,10 @@ data class TravelStop(
 ) {
     val durationMinutes: Long get() = ((departureMillis - arrivalMillis) / 60_000L).coerceAtLeast(0)
 }
+
+/** One sampled point of the child's continuous location trail (the actual path). */
+data class TrailPoint(
+    val latitude: Double = 0.0,
+    val longitude: Double = 0.0,
+    val timestampMillis: Long = 0L,
+)

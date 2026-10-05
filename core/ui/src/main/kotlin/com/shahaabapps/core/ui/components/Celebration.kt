@@ -70,13 +70,14 @@ fun CelebrationHost(content: @Composable () -> Unit) {
     val accent = AppTheme.colors.accent
     val destructive = AppTheme.colors.destructive
     val gradient = AppTheme.palette.gradient
+    val reducedMotion = rememberReducedMotion()
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(reducedMotion) {
         Celebrations.events.collect {
             type = it
             seed++
             visible = true
-            delay(1550)
+            delay(if (reducedMotion) 1000 else 1550)
             visible = false
             delay(320)
         }
@@ -85,7 +86,14 @@ fun CelebrationHost(content: @Composable () -> Unit) {
     Box(modifier = Modifier.fillMaxSize()) {
         content()
         AnimatedVisibility(visible = visible, enter = fadeIn(tween(140)), exit = fadeOut(tween(340))) {
-            CelebrationOverlay(type = type, accent = accent, destructive = destructive, gradient = gradient, seed = seed)
+            CelebrationOverlay(
+                type = type,
+                accent = accent,
+                destructive = destructive,
+                gradient = gradient,
+                seed = seed,
+                reducedMotion = reducedMotion,
+            )
         }
     }
 }
@@ -106,6 +114,7 @@ private fun CelebrationOverlay(
     destructive: Color,
     gradient: List<Color>,
     seed: Int,
+    reducedMotion: Boolean,
 ) {
     val isSave = type == CelebrationType.SAVE
     // Theme colours drive everything; delete uses the destructive hue.
@@ -133,16 +142,25 @@ private fun CelebrationOverlay(
     val shimmer = remember(seed) { Animatable(0f) }    // light sweep across shield
 
     LaunchedEffect(seed) {
-        pop.animateTo(1f, spring(dampingRatio = 0.46f, stiffness = Spring.StiffnessLow))
+        if (reducedMotion) pop.snapTo(1f)
+        else pop.animateTo(1f, spring(dampingRatio = 0.46f, stiffness = Spring.StiffnessLow))
     }
     LaunchedEffect(seed) {
-        delay(140)
-        emblem.animateTo(1f, spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMediumLow))
+        if (reducedMotion) {
+            emblem.snapTo(1f)
+        } else {
+            delay(140)
+            emblem.animateTo(1f, spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMediumLow))
+        }
     }
-    LaunchedEffect(seed) { progress.animateTo(1f, tween(1250, easing = FastOutSlowInEasing)) }
     LaunchedEffect(seed) {
-        delay(220)
-        shimmer.animateTo(1f, tween(900, easing = LinearEasing))
+        if (!reducedMotion) progress.animateTo(1f, tween(1250, easing = FastOutSlowInEasing))
+    }
+    LaunchedEffect(seed) {
+        if (!reducedMotion) {
+            delay(220)
+            shimmer.animateTo(1f, tween(900, easing = LinearEasing))
+        }
     }
 
     Box(
@@ -168,6 +186,8 @@ private fun CelebrationOverlay(
                 radius = bloomR,
                 center = center,
             )
+
+            if (reducedMotion) return@Canvas
 
             // Radar pulse rings — the "watching" motif from the icon.
             for (i in 0..2) {

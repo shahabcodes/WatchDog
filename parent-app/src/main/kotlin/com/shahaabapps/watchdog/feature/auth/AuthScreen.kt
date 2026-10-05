@@ -67,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.shahaabapps.core.ui.components.rememberReducedMotion
 import com.shahaabapps.core.ui.theme.AppTheme
 import kotlin.math.cos
 import kotlin.math.sin
@@ -79,13 +80,16 @@ fun AuthScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val accent = AppTheme.colors.accent
     val gradient = AppTheme.palette.gradient.ifEmpty { listOf(accent, accent) }
+    val reducedMotion = rememberReducedMotion()
 
-    // Entrance: content fades and rises in on first composition.
+    // Entrance: content fades and rises in on first composition (instant when reduced).
     val enter = remember { Animatable(0f) }
-    LaunchedEffect(Unit) { enter.animateTo(1f, tween(700, easing = FastOutSlowInEasing)) }
+    LaunchedEffect(reducedMotion) {
+        if (reducedMotion) enter.snapTo(1f) else enter.animateTo(1f, tween(700, easing = FastOutSlowInEasing))
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
-        AuroraBackground(gradient = gradient, accent = accent)
+        AuroraBackground(gradient = gradient, accent = accent, animate = !reducedMotion)
 
         Column(
             modifier = Modifier
@@ -99,7 +103,7 @@ fun AuthScreen(
         ) {
             Spacer(Modifier.height((40 * (1f - enter.value)).dp))
 
-            GlowLogo(gradient = gradient, accent = accent)
+            GlowLogo(gradient = gradient, accent = accent, animate = !reducedMotion)
 
             Crossfade(targetState = state.mode, label = "title") { mode ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -229,74 +233,98 @@ fun AuthScreen(
     }
 }
 
-/** A dark cosmic backdrop with slowly drifting glowing blobs in the theme colours. */
+/** A dark cosmic backdrop with glowing theme-coloured blobs — drifting, or static when reduced. */
 @Composable
-private fun AuroraBackground(gradient: List<Color>, accent: Color) {
-    val transition = rememberInfiniteTransition(label = "aurora")
-    val t by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(16000, easing = LinearEasing), RepeatMode.Restart),
-        label = "drift",
-    )
+private fun AuroraBackground(gradient: List<Color>, accent: Color, animate: Boolean) {
     val colors = (gradient + accent)
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(Color(0xFF0C1016), Color(0xFF060810)))),
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val w = size.width
-            val h = size.height
-            val two = (2f * Math.PI).toFloat()
-            colors.forEachIndexed { i, c ->
-                val phase = t * two + i * 1.7f
-                val cx = w * (0.5f + 0.42f * cos(phase + i))
-                val cy = h * (0.42f + 0.40f * sin(phase * 0.8f + i * 1.3f))
-                val r = size.minDimension * (0.55f + 0.12f * sin(phase).let { it * it })
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(c.copy(alpha = 0.42f), c.copy(alpha = 0.10f), Color.Transparent),
-                        center = Offset(cx, cy),
-                        radius = r,
-                    ),
-                    radius = r,
-                    center = Offset(cx, cy),
-                )
-            }
+        if (animate) {
+            val transition = rememberInfiniteTransition(label = "aurora")
+            val t by transition.animateFloat(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(tween(16000, easing = LinearEasing), RepeatMode.Restart),
+                label = "drift",
+            )
+            AuroraCanvas(colors = colors, t = t)
+        } else {
+            AuroraCanvas(colors = colors, t = 0.12f)
         }
     }
 }
 
-/** The brand shield with a soft pulsing halo and expanding accent rings. */
 @Composable
-private fun GlowLogo(gradient: List<Color>, accent: Color) {
-    val transition = rememberInfiniteTransition(label = "logo")
-    val pulse by transition.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2600, easing = FastOutSlowInEasing), RepeatMode.Restart),
-        label = "pulse",
-    )
-    val breathe by transition.animateFloat(
-        initialValue = 0.96f, targetValue = 1.04f,
-        animationSpec = infiniteRepeatable(tween(2200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "breathe",
-    )
+private fun AuroraCanvas(colors: List<Color>, t: Float) {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val w = size.width
+        val h = size.height
+        val two = (2f * Math.PI).toFloat()
+        colors.forEachIndexed { i, c ->
+            val phase = t * two + i * 1.7f
+            val cx = w * (0.5f + 0.42f * cos(phase + i))
+            val cy = h * (0.42f + 0.40f * sin(phase * 0.8f + i * 1.3f))
+            val r = size.minDimension * (0.55f + 0.12f * sin(phase).let { it * it })
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(c.copy(alpha = 0.42f), c.copy(alpha = 0.10f), Color.Transparent),
+                    center = Offset(cx, cy),
+                    radius = r,
+                ),
+                radius = r,
+                center = Offset(cx, cy),
+            )
+        }
+    }
+}
+
+/** The brand shield with a soft pulsing halo and expanding accent rings (static when reduced). */
+@Composable
+private fun GlowLogo(gradient: List<Color>, accent: Color, animate: Boolean) {
+    if (animate) {
+        val transition = rememberInfiniteTransition(label = "logo")
+        val pulse by transition.animateFloat(
+            initialValue = 0f, targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(2600, easing = FastOutSlowInEasing), RepeatMode.Restart),
+            label = "pulse",
+        )
+        val breathe by transition.animateFloat(
+            initialValue = 0.96f, targetValue = 1.04f,
+            animationSpec = infiniteRepeatable(tween(2200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "breathe",
+        )
+        LogoVisual(gradient = gradient, accent = accent, pulse = pulse, breathe = breathe, drawRings = true)
+    } else {
+        LogoVisual(gradient = gradient, accent = accent, pulse = 0f, breathe = 1f, drawRings = false)
+    }
+}
+
+@Composable
+private fun LogoVisual(
+    gradient: List<Color>,
+    accent: Color,
+    pulse: Float,
+    breathe: Float,
+    drawRings: Boolean,
+) {
     Box(modifier = Modifier.size(132.dp), contentAlignment = Alignment.Center) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val center = Offset(size.width / 2f, size.height / 2f)
             val maxR = size.minDimension / 2f
-            // Two expanding rings staggered in phase.
-            for (i in 0..1) {
-                val p = ((pulse + i * 0.5f) % 1f)
-                drawCircle(
-                    color = accent.copy(alpha = (1f - p) * 0.4f),
-                    radius = maxR * (0.5f + 0.5f * p),
-                    center = center,
-                    style = Stroke(width = 3f * (1f - p) + 1f),
-                )
+            if (drawRings) {
+                for (i in 0..1) {
+                    val p = ((pulse + i * 0.5f) % 1f)
+                    drawCircle(
+                        color = accent.copy(alpha = (1f - p) * 0.4f),
+                        radius = maxR * (0.5f + 0.5f * p),
+                        center = center,
+                        style = Stroke(width = 3f * (1f - p) + 1f),
+                    )
+                }
             }
-            // Soft halo.
             drawCircle(
                 brush = Brush.radialGradient(
                     listOf(accent.copy(alpha = 0.35f), Color.Transparent),

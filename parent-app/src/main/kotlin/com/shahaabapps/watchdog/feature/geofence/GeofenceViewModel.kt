@@ -92,6 +92,25 @@ class GeofenceViewModel @Inject constructor(
         }
     }
 
+    /** Updates an existing geofence's name, icon (and radius for circles). */
+    fun updateGeofence(
+        original: Geofence,
+        name: String,
+        radiusMeters: Float,
+        icon: String,
+    ) {
+        viewModelScope.launch {
+            geofenceRepository.saveGeofence(
+                childId,
+                original.copy(
+                    name = name.ifBlank { original.name },
+                    radiusMeters = radiusMeters,
+                    icon = icon,
+                ),
+            )
+        }
+    }
+
     fun deleteGeofence(geofenceId: String) {
         viewModelScope.launch { geofenceRepository.deleteGeofence(childId, geofenceId) }
     }

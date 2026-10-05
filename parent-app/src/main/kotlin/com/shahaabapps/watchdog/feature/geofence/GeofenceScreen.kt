@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pentagon
 import androidx.compose.material.icons.filled.Person
@@ -110,6 +111,7 @@ fun GeofenceScreen(
     var showCircleSheet by remember { mutableStateOf(false) }
     var showAreaSheet by remember { mutableStateOf(false) }
     var showList by remember { mutableStateOf(false) }
+    var editingGeofence by remember { mutableStateOf<Geofence?>(null) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -365,6 +367,22 @@ fun GeofenceScreen(
                 geofences = geofences,
                 events = events,
                 onDelete = { viewModel.deleteGeofence(it) },
+                onEdit = { showList = false; editingGeofence = it },
+            )
+        }
+    }
+
+    // Edit place sheet
+    val editing = editingGeofence
+    if (editing != null) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(onDismissRequest = { editingGeofence = null }, sheetState = sheetState) {
+            EditGeofenceEditor(
+                geofence = editing,
+                onSave = { name, radius, icon ->
+                    viewModel.updateGeofence(editing, name, radius, icon)
+                    editingGeofence = null
+                },
             )
         }
     }
@@ -505,6 +523,36 @@ private fun AreaEditor(onSave: (name: String, trigger: GeofenceTrigger, icon: St
 }
 
 @Composable
+private fun EditGeofenceEditor(
+    geofence: Geofence,
+    onSave: (name: String, radius: Float, icon: String) -> Unit,
+) {
+    var name by remember { mutableStateOf(geofence.name) }
+    var radius by remember { mutableStateOf(geofence.radiusMeters) }
+    var icon by remember { mutableStateOf(geofence.icon) }
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl),
+        verticalArrangement = Arrangement.spacedBy(Spacing.md),
+    ) {
+        Text("Edit place", style = MaterialTheme.typography.headlineMedium)
+        CupertinoTextField(value = name, onValueChange = { name = it }, placeholder = "Name")
+        Text("Icon", style = MaterialTheme.typography.titleMedium)
+        IconPicker(selected = icon, onSelect = { icon = it })
+        if (geofence.shape == GeofenceShape.CIRCLE) {
+            Text("Radius: ${radius.toInt()} m", style = MaterialTheme.typography.bodyMedium)
+            Slider(value = radius, onValueChange = { radius = it }, valueRange = 50f..1000f)
+        } else {
+            Text(
+                "This is a drawn area — its shape can't be changed here. Delete and redraw to change the shape.",
+                style = MaterialTheme.typography.bodySmall,
+                color = AppTheme.colors.secondaryLabel,
+            )
+        }
+        CupertinoPrimaryButton(text = "Save changes", onClick = { onSave(name, radius, icon) })
+    }
+}
+
+@Composable
 private fun IconPicker(selected: String, onSelect: (String) -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -546,6 +594,7 @@ private fun PlacesList(
     geofences: List<Geofence>,
     events: List<GeofenceEvent>,
     onDelete: (String) -> Unit,
+    onEdit: (Geofence) -> Unit,
 ) {
     var pendingDelete by remember { mutableStateOf<Geofence?>(null) }
     pendingDelete?.let { target ->
@@ -588,6 +637,13 @@ private fun PlacesList(
                                 Icon(Icons.Filled.MoreVert, contentDescription = "More", tint = AppTheme.colors.secondaryLabel)
                             }
                             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Edit") },
+                                    onClick = { menuOpen = false; onEdit(g) },
+                                    leadingIcon = {
+                                        Icon(Icons.Filled.Edit, contentDescription = null, tint = AppTheme.colors.accent)
+                                    },
+                                )
                                 DropdownMenuItem(
                                     text = { Text("Delete", color = AppTheme.colors.destructive) },
                                     onClick = { menuOpen = false; pendingDelete = g },

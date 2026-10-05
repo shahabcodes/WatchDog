@@ -30,7 +30,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -248,7 +247,7 @@ fun GeofenceScreen(
             }
         }
 
-        // Top floating controls: compact bar + Google-Maps-style category pills
+        // Top floating controls: a Google-Maps-style back circle + category pills
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -258,50 +257,47 @@ fun GeofenceScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
-            Surface(
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-                color = AppTheme.colors.card,
-                tonalElevation = 3.dp,
-                shadowElevation = 4.dp,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md),
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xs),
-                ) {
-                    if (showBack) {
-                        FilledTonalIconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                if (showBack) {
+                    Surface(
+                        shape = CircleShape,
+                        color = AppTheme.colors.card,
+                        shadowElevation = 4.dp,
+                        modifier = Modifier.padding(start = Spacing.md),
+                    ) {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                            )
                         }
                     }
-                    Text(
-                        "Places",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(start = Spacing.sm).weight(1f),
-                    )
                 }
-            }
-
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = Spacing.md),
-                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-            ) {
-                item {
-                    CategoryPill(
-                        label = "Area",
-                        icon = Icons.Filled.Pentagon,
-                        selected = mode == DrawMode.AREA,
-                        onClick = { mode = DrawMode.AREA; pending = null },
-                    )
-                }
-                items(PLACE_CATEGORIES) { (key, label) ->
-                    CategoryPill(
-                        label = label,
-                        icon = PlaceIcons.forKey(key),
-                        selected = mode == DrawMode.PIN && selectedIcon == key,
-                        onClick = { mode = DrawMode.PIN; area = emptyList(); selectedIcon = key },
-                    )
+                LazyRow(
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = Spacing.md),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                ) {
+                    item {
+                        CategoryPill(
+                            label = "Area",
+                            icon = Icons.Filled.Pentagon,
+                            selected = mode == DrawMode.AREA,
+                            onClick = { mode = DrawMode.AREA; pending = null },
+                        )
+                    }
+                    items(PLACE_CATEGORIES) { (key, label) ->
+                        CategoryPill(
+                            label = label,
+                            icon = PlaceIcons.forKey(key),
+                            selected = mode == DrawMode.PIN && selectedIcon == key,
+                            onClick = { mode = DrawMode.PIN; area = emptyList(); selectedIcon = key },
+                        )
+                    }
                 }
             }
 

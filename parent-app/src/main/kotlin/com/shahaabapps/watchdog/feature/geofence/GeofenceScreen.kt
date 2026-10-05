@@ -407,6 +407,16 @@ fun GeofenceScreen(
                 events = events,
                 onDelete = { showList = false; viewModel.deleteGeofence(it) },
                 onEdit = { showList = false; editingGeofence = it },
+                onFocus = { g ->
+                    showList = false
+                    scope.launch {
+                        runCatching {
+                            cameraPositionState.animate(
+                                CameraUpdateFactory.newLatLngZoom(LatLng(g.latitude, g.longitude), 16f),
+                            )
+                        }
+                    }
+                },
             )
         }
     }
@@ -717,6 +727,7 @@ private fun PlacesList(
     events: List<GeofenceEvent>,
     onDelete: (String) -> Unit,
     onEdit: (Geofence) -> Unit,
+    onFocus: (Geofence) -> Unit,
 ) {
     var pendingDelete by remember { mutableStateOf<Geofence?>(null) }
     pendingDelete?.let { target ->
@@ -738,7 +749,10 @@ private fun PlacesList(
                 verticalArrangement = Arrangement.spacedBy(Spacing.sm),
             ) {
                 items(geofences, key = { it.id }) { g ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().clickable { onFocus(g) }.padding(vertical = 4.dp),
+                    ) {
                         Icon(
                             PlaceIcons.forKey(g.icon),
                             contentDescription = null,

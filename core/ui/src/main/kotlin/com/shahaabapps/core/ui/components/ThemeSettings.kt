@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -31,6 +33,7 @@ import com.shahaabapps.core.ui.theme.Spacing
 import com.shahaabapps.core.ui.theme.ThemeMode
 
 /** The appearance + accent controls, shared by both apps' settings screens. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ThemeSettingsSection(
     mode: ThemeMode,
@@ -58,13 +61,27 @@ fun ThemeSettingsSection(
             color = AppTheme.colors.secondaryLabel,
             modifier = Modifier.padding(top = Spacing.sm),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
-            AccentPalette.entries.forEach { option ->
-                AccentSwatch(
-                    palette = option,
-                    selected = option == palette,
-                    onClick = { onPaletteChange(option) },
-                )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+            verticalArrangement = Arrangement.spacedBy(Spacing.md),
+        ) {
+            AccentPalette.entries.filter { !it.isCountry }.forEach { option ->
+                AccentSwatch(palette = option, selected = option == palette, onClick = { onPaletteChange(option) })
+            }
+        }
+
+        Text(
+            text = "COUNTRY THEMES",
+            style = MaterialTheme.typography.bodySmall,
+            color = AppTheme.colors.secondaryLabel,
+            modifier = Modifier.padding(top = Spacing.sm),
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+            verticalArrangement = Arrangement.spacedBy(Spacing.md),
+        ) {
+            AccentPalette.entries.filter { it.isCountry }.forEach { option ->
+                AccentSwatch(palette = option, selected = option == palette, onClick = { onPaletteChange(option) })
             }
         }
     }
@@ -139,7 +156,7 @@ private fun AccentSwatch(
                 .clickable(onClick = onClick),
         )
         Text(
-            text = palette.name.lowercase().replaceFirstChar { it.uppercase() },
+            text = palette.label,
             style = MaterialTheme.typography.bodySmall,
             color = AppTheme.colors.secondaryLabel,
             modifier = Modifier.padding(top = 4.dp),

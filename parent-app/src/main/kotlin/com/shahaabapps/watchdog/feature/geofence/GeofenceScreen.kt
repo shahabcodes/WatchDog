@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -73,7 +75,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -85,7 +86,6 @@ import com.shahaabapps.core.model.GeofenceTransition
 import com.shahaabapps.core.model.GeofenceTrigger
 import com.shahaabapps.core.ui.components.ConfirmDialog
 import com.shahaabapps.core.ui.components.CupertinoPrimaryButton
-import com.shahaabapps.core.ui.components.CupertinoSegmentedControl
 import com.shahaabapps.core.ui.components.CupertinoTextField
 import kotlinx.coroutines.launch
 import com.shahaabapps.core.ui.theme.AppTheme
@@ -93,6 +93,27 @@ import com.shahaabapps.core.ui.theme.Spacing
 
 private val DEFAULT_CENTER = LatLng(25.2854, 51.5310) // Doha fallback
 private enum class DrawMode { PIN, AREA }
+
+/** Quick place categories shown as Google-Maps-style pills on the map. */
+private val PLACE_CATEGORIES = listOf(
+    "home" to "Home",
+    "school" to "School",
+    "mosque" to "Mosque",
+    "gym" to "Gym",
+    "hospital" to "Hospital",
+    "food" to "Restaurant",
+    "shop" to "Shop",
+    "park" to "Park",
+    "airport" to "Airport",
+    "metro" to "Metro",
+    "place" to "Place",
+)
+
+private fun categoryName(key: String): String =
+    PLACE_CATEGORIES.firstOrNull { it.first == key }?.second ?: ""
+
+private fun categoryLabel(key: String): String =
+    "a ${categoryName(key).lowercase().ifBlank { "place" }}"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,6 +133,7 @@ fun GeofenceScreen(
     var showAreaSheet by remember { mutableStateOf(false) }
     var showList by remember { mutableStateOf(false) }
     var editingGeofence by remember { mutableStateOf<Geofence?>(null) }
+    var selectedIcon by remember { mutableStateOf("home") }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -226,12 +248,13 @@ fun GeofenceScreen(
             }
         }
 
-        // Top floating controls: back + mode toggle + hint
+        // Top floating controls: compact bar + Google-Maps-style category pills
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .then(if (showBack) Modifier.statusBarsPadding() else Modifier)
-                .padding(Spacing.md),
+                .fillMaxWidth()
+                .padding(top = Spacing.md),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
@@ -240,7 +263,7 @@ fun GeofenceScreen(
                 color = AppTheme.colors.card,
                 tonalElevation = 3.dp,
                 shadowElevation = 4.dp,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md),
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -256,20 +279,35 @@ fun GeofenceScreen(
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.padding(start = Spacing.sm).weight(1f),
                     )
-                    CupertinoSegmentedControl(
-                        options = listOf("Pin", "Area"),
-                        selectedIndex = if (mode == DrawMode.PIN) 0 else 1,
-                        onSelect = { i ->
-                            if (i == 0) { mode = DrawMode.PIN; area = emptyList() }
-                            else { mode = DrawMode.AREA; pending = null }
-                        },
-                        modifier = Modifier.width(168.dp),
+                }
+            }
+
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = Spacing.md),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+            ) {
+                item {
+                    CategoryPill(
+                        label = "Area",
+                        icon = Icons.Filled.Pentagon,
+                        selected = mode == DrawMode.AREA,
+                        onClick = { mode = DrawMode.AREA; pending = null },
+                    )
+                }
+                items(PLACE_CATEGORIES) { (key, label) ->
+                    CategoryPill(
+                        label = label,
+                        icon = PlaceIcons.forKey(key),
+                        selected = mode == DrawMode.PIN && selectedIcon == key,
+                        onClick = { mode = DrawMode.PIN; area = emptyList(); selectedIcon = key },
                     )
                 }
             }
+
             HintPill(
                 text = if (mode == DrawMode.PIN) {
-                    "Tap the map to drop a place"
+                    "Tap the map to drop ${categoryLabel(selectedIcon)}"
                 } else {
                     "Tap points to outline an area (3+)"
                 },
@@ -338,6 +376,8 @@ fun GeofenceScreen(
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(onDismissRequest = { showCircleSheet = false; pending = null }, sheetState = sheetState) {
             CircleEditor(
+                initialIcon = selectedIcon,
+                initialName = categoryName(selectedIcon),
                 onSave = { name, radius, trigger, icon ->
                     viewModel.saveGeofence(name, center.latitude, center.longitude, radius, trigger, icon)
                     showCircleSheet = false; pending = null
@@ -468,6 +508,35 @@ private fun VertexMarker(key: Int, position: LatLng, accent: Color) {
 }
 
 @Composable
+private fun CategoryPill(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+        color = if (selected) AppTheme.colors.accent else AppTheme.colors.card,
+        tonalElevation = 2.dp,
+        shadowElevation = 3.dp,
+        modifier = Modifier.clickable(onClick = onClick),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = if (selected) Color.White else AppTheme.colors.accent,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (selected) Color.White else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(start = 6.dp),
+            )
+        }
+    }
+}
+
+@Composable
 private fun HintPill(text: String) {
     Surface(
         shape = androidx.compose.foundation.shape.CircleShape,
@@ -483,10 +552,14 @@ private fun HintPill(text: String) {
 }
 
 @Composable
-private fun CircleEditor(onSave: (name: String, radius: Float, trigger: GeofenceTrigger, icon: String) -> Unit) {
-    var name by remember { mutableStateOf("") }
+private fun CircleEditor(
+    initialIcon: String = "place",
+    initialName: String = "",
+    onSave: (name: String, radius: Float, trigger: GeofenceTrigger, icon: String) -> Unit,
+) {
+    var name by remember { mutableStateOf(initialName) }
     var radius by remember { mutableStateOf(150f) }
-    var icon by remember { mutableStateOf("place") }
+    var icon by remember { mutableStateOf(initialIcon) }
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),

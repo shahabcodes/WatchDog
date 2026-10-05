@@ -8,6 +8,11 @@ older releases to save storage; this file and the git log are the version histor
 ## Unreleased / latest
 
 ### Added
+- **Google-Maps-style category pills** on the Places map (Home, Mosque, School,
+  Gym, Hospital, Restaurant, Shop, Park, Airport, Metro) — pick one, tap the map.
+- **Nationality themes**: Qatar, India, Pakistan, Canada, Australia, Ireland,
+  New Zealand (Settings → Appearance → Country themes).
+- More place icons (mosque, airport, metro) and an **Edit** option for places.
 - **Travel history**: Shield records places the child stays at for 5+ minutes;
   Watch Dog shows them as a timeline (via the live-location card's ⋯ menu).
 - **Live child location** on Watch Dog — a Family-Link-style map card on the

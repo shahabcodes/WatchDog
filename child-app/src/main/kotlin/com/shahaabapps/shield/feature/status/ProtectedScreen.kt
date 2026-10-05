@@ -142,17 +142,12 @@ private fun ShieldTopBar(name: String, onSettings: () -> Unit) {
                     fontSize = 13.sp,
                     color = AppTheme.colors.secondaryLabel,
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "Shield",
-                        fontSize = 30.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground,
-                    )
-                    AppTheme.palette.flag?.let { flag ->
-                        Text(flag, fontSize = 22.sp, modifier = Modifier.padding(start = Spacing.sm))
-                    }
-                }
+                Text(
+                    "Shield",
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
             }
             IconButton(onClick = onSettings) {
                 Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = AppTheme.colors.secondaryLabel)

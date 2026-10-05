@@ -48,6 +48,7 @@ internal object Palette {
  * light/dark mode — mirrors Browse Safe's Meadow / Blossom / Ocean themes.
  */
 enum class AccentPalette(
+    val label: String,
     val accentLight: Color,
     val accentDark: Color,
     val gradient: List<Color>,
@@ -57,27 +58,31 @@ enum class AccentPalette(
     val backgroundDark: Color = Palette.BackgroundDark,
     val variantLight: Color = Palette.SurfaceVariantLight,
     val variantDark: Color = Palette.SurfaceVariantDark,
-    /** A short label/flag shown when this theme is active (null for the neutral ones). */
-    val flag: String? = null,
+    /** Whether this is a nationality/country theme (grouped separately in settings). */
+    val isCountry: Boolean = false,
 ) {
     MEADOW(
+        label = "Meadow",
         accentLight = Color(0xFF1E8E5A),
         accentDark = Color(0xFF7FD1A3),
         gradient = listOf(Color(0xFF14B8A6), Color(0xFF12A57E), Color(0xFF1E8E5A)),
     ),
     BLOSSOM(
+        label = "Blossom",
         accentLight = Color(0xFFE5588E),
         accentDark = Color(0xFFF48FB1),
         gradient = listOf(Color(0xFFFF8FB6), Color(0xFFE5588E), Color(0xFFC13C72)),
     ),
     OCEAN(
+        label = "Ocean",
         accentLight = Color(0xFF2E6BE6),
         accentDark = Color(0xFF6FA0FF),
         gradient = listOf(Color(0xFF3B6FF6), Color(0xFF5B63F7), Color(0xFF7C4DFF)),
     ),
 
-    /** Qatar flag maroon — mirrors Browse Safe's Qatar country theme (#8A1538). */
+    // ----- Nationality themes (flag-inspired) -----
     QATAR(
+        label = "Qatar",
         accentLight = Color(0xFF8A1538),
         accentDark = Color(0xFFE08BA3),
         gradient = listOf(Color(0xFFA81E47), Color(0xFF8A1538), Color(0xFF6E102C)),
@@ -85,6 +90,72 @@ enum class AccentPalette(
         backgroundDark = Color(0xFF160A0E),
         variantLight = Color(0xFFF3DFE6),
         variantDark = Color(0xFF2A141A),
-        flag = "🇶🇦",
+        isCountry = true,
+    ),
+    INDIA(
+        label = "India",
+        accentLight = Color(0xFFE8710A),
+        accentDark = Color(0xFFFFB366),
+        gradient = listOf(Color(0xFFFF9933), Color(0xFFF37335), Color(0xFF138808)),
+        backgroundLight = Color(0xFFFFF6EC),
+        backgroundDark = Color(0xFF15100A),
+        variantLight = Color(0xFFFCE7CF),
+        variantDark = Color(0xFF2A2014),
+        isCountry = true,
+    ),
+    PAKISTAN(
+        label = "Pakistan",
+        accentLight = Color(0xFF046A38),
+        accentDark = Color(0xFF5FC98E),
+        gradient = listOf(Color(0xFF0A8F4E), Color(0xFF046A38), Color(0xFF023D20)),
+        backgroundLight = Color(0xFFEEF6F1),
+        backgroundDark = Color(0xFF0A140E),
+        variantLight = Color(0xFFD6EADE),
+        variantDark = Color(0xFF15241B),
+        isCountry = true,
+    ),
+    CANADA(
+        label = "Canada",
+        accentLight = Color(0xFFD52B1E),
+        accentDark = Color(0xFFF0877E),
+        gradient = listOf(Color(0xFFE63946), Color(0xFFD52B1E), Color(0xFFA01B12)),
+        backgroundLight = Color(0xFFFDF0EF),
+        backgroundDark = Color(0xFF170A09),
+        variantLight = Color(0xFFF7D9D6),
+        variantDark = Color(0xFF2A1513),
+        isCountry = true,
+    ),
+    AUSTRALIA(
+        label = "Australia",
+        accentLight = Color(0xFF00247D),
+        accentDark = Color(0xFF8FB0EA),
+        gradient = listOf(Color(0xFF1E4FB0), Color(0xFF00247D), Color(0xFF012169)),
+        backgroundLight = Color(0xFFEEF1F8),
+        backgroundDark = Color(0xFF0A0D16),
+        variantLight = Color(0xFFD6DEF0),
+        variantDark = Color(0xFF141A28),
+        isCountry = true,
+    ),
+    IRELAND(
+        label = "Ireland",
+        accentLight = Color(0xFF169B62),
+        accentDark = Color(0xFF6FD3A3),
+        gradient = listOf(Color(0xFF169B62), Color(0xFF3FB07A), Color(0xFFFF883E)),
+        backgroundLight = Color(0xFFEFF7F2),
+        backgroundDark = Color(0xFF0A140E),
+        variantLight = Color(0xFFD7EEE0),
+        variantDark = Color(0xFF15241B),
+        isCountry = true,
+    ),
+    NEW_ZEALAND(
+        label = "New Zealand",
+        accentLight = Color(0xFF012169),
+        accentDark = Color(0xFF86A6E8),
+        gradient = listOf(Color(0xFF1E4FB0), Color(0xFF012169), Color(0xFF00133F)),
+        backgroundLight = Color(0xFFEEF1F8),
+        backgroundDark = Color(0xFF080B14),
+        variantLight = Color(0xFFD4DDF0),
+        variantDark = Color(0xFF121826),
+        isCountry = true,
     ),
 }

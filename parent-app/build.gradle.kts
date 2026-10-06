@@ -11,12 +11,6 @@ android {
 
     defaultConfig {
         applicationId = "com.shahaabapps.watchdog"
-        // Google Maps key for the geofence map; supplied via env (CI) or a
-        // -PMAPS_API_KEY gradle property locally. Empty = map tiles won't load.
-        manifestPlaceholders["MAPS_API_KEY"] =
-            System.getenv("MAPS_API_KEY")
-                ?: (project.findProperty("MAPS_API_KEY") as String?)
-                ?: ""
     }
 }
 
@@ -36,12 +30,10 @@ dependencies {
     // QR scanning (parent scans the child's pairing code)
     implementation(libs.zxing.android.embedded)
 
-    // Map for drawing geofences
-    implementation(libs.maps.compose)
-    implementation(libs.play.services.maps)
-    implementation(libs.play.services.location)
     // OpenFreeMap tiles via MapLibre (free, no API key)
     implementation(libs.maplibre.android.sdk)
+    // Location + geofencing (Play Services)
+    implementation(libs.play.services.location)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

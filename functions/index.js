@@ -1,0 +1,101 @@
+const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { setGlobalOptions } = require("firebase-functions/v2");
+const { initializeApp } = require("firebase-admin/app");
+const { getFirestore } = require("firebase-admin/firestore");
+const { getMessaging } = require("firebase-admin/messaging");
+
+initializeApp();
+setGlobalOptions({ region: "us-central1", maxInstances: 10 });
+
+const db = getFirestore();
+
+/**
+ * When the child reports a geofence enter/exit event, push a notification to
+ * every linked parent's devices — honouring each place's enter/exit setting.
+ *
+ * Firestore trigger: children/{childId}/geofenceEvents/{eventId}
+ */
+exports.notifyGeofenceEvent = onDocumentCreated(
+  "children/{childId}/geofenceEvents/{eventId}",
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+    const data = snap.data() || {};
+    const childId = event.params.childId;
+    const transition = data.transition === "EXIT" ? "EXIT" : "ENTER";
+    const geofenceId = data.geofenceId || "";
+    let placeName = data.geofenceName || "a place";
+
+    // Child doc → linked parents + child name.
+    const childSnap = await db.doc(`children/${childId}`).get();
+    if (!childSnap.exists) return;
+    const child = childSnap.data() || {};
+    const parents = Array.isArray(child.linkedParents) ? child.linkedParents : [];
+    if (parents.length === 0) return;
+    const childName =
+      (child.profile && child.profile.name) ? child.profile.name : "Your child";
+
+    // Geofence → honour its trigger (ENTER / EXIT / ENTER_EXIT) and active flag.
+    if (geofenceId) {
+      const gfSnap = await db.doc(`children/${childId}/geofences/${geofenceId}`).get();
+      if (gfSnap.exists) {
+        const gf = gfSnap.data() || {};
+        if (gf.active === false) return;
+        const trig = gf.trigger || "ENTER_EXIT";
+        if (trig === "ENTER" && transition !== "ENTER") return;
+        if (trig === "EXIT" && transition !== "EXIT") return;
+        if (gf.name) placeName = gf.name;
+      }
+    }
+
+    const title =
+      transition === "EXIT"
+        ? `${childName} left ${placeName}`
+        : `${childName} arrived at ${placeName}`;
+    const body =
+      transition === "EXIT"
+        ? `${childName} just left ${placeName}.`
+        : `${childName} just arrived at ${placeName}.`;
+
+    // Gather FCM tokens across all linked parents.
+    const tokenDocs = [];
+    for (const parentId of parents) {
+      const toks = await db.collection(`users/${parentId}/fcmTokens`).get();
+      toks.forEach((d) => tokenDocs.push({ parentId, token: d.id }));
+    }
+    if (tokenDocs.length === 0) return;
+
+    const message = {
+      tokens: tokenDocs.map((t) => t.token),
+      notification: { title, body },
+      data: {
+        type: "geofence",
+        childId,
+        geofenceId,
+        transition,
+      },
+      android: {
+        priority: "high",
+        notification: { channelId: "geofence_alerts" },
+      },
+    };
+
+    const resp = await getMessaging().sendEachForMulticast(message);
+
+    // Prune tokens that are no longer valid.
+    const deletions = [];
+    resp.responses.forEach((r, i) => {
+      if (!r.success) {
+        const code = r.error && r.error.code;
+        if (
+          code === "messaging/registration-token-not-registered" ||
+          code === "messaging/invalid-argument"
+        ) {
+          const t = tokenDocs[i];
+          deletions.push(db.doc(`users/${t.parentId}/fcmTokens/${t.token}`).delete());
+        }
+      }
+    });
+    await Promise.all(deletions);
+  }
+);

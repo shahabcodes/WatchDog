@@ -58,7 +58,12 @@ private fun ParentAppRoot(
         ParentAppState.Loading -> LoadingScreen()
         ParentAppState.SignedOut -> AuthScreen()
         is ParentAppState.NeedsProfile -> ProfileSetupScreen(onSaved = { /* state reacts automatically */ })
-        is ParentAppState.Ready -> ParentShell(profile = current.profile)
+        is ParentAppState.Ready -> {
+            androidx.compose.runtime.LaunchedEffect(current.profile.id) {
+                viewModel.registerFcmToken(current.profile.id)
+            }
+            ParentShell(profile = current.profile)
+        }
     }
 }
 

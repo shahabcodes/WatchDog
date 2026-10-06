@@ -44,14 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.google.android.gms.maps.GoogleMapOptions
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.GoogleMap
-import com.google.maps.android.compose.MapUiSettings
-import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.rememberCameraPositionState
-import com.google.maps.android.compose.rememberMarkerState
+import androidx.compose.ui.platform.LocalDensity
 import com.shahaabapps.core.model.ChildLocation
 import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.components.CupertinoPrimaryButton
@@ -62,7 +55,9 @@ import com.shahaabapps.core.ui.components.StatTile
 import com.shahaabapps.core.ui.components.StatusChip
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
-import com.shahaabapps.watchdog.util.rememberCircleMarker
+import com.shahaabapps.watchdog.util.OpenFreeMap
+import com.shahaabapps.watchdog.util.drawMapMarker
+import com.shahaabapps.watchdog.util.rememberOpenFreeMapController
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -200,32 +195,26 @@ private fun LocationCard(
                 contentAlignment = Alignment.Center,
             ) {
                 if (location != null) {
-                    val pos = LatLng(location.latitude, location.longitude)
-                    val cameraState = rememberCameraPositionState {
-                        position = CameraPosition.fromLatLngZoom(pos, 15f)
+                    val controller = rememberOpenFreeMapController(location.latitude, location.longitude, 15.0)
+                    LaunchedEffect(location.latitude, location.longitude) {
+                        controller.moveTo(location.latitude, location.longitude, 15.0)
                     }
-                    LaunchedEffect(pos) {
-                        cameraState.position = CameraPosition.fromLatLngZoom(pos, 15f)
-                    }
-                    GoogleMap(
+                    val accent = AppTheme.colors.accent
+                    val markerPx = with(LocalDensity.current) { 22.dp.toPx() }
+                    OpenFreeMap(
+                        controller = controller,
                         modifier = Modifier.fillMaxSize(),
-                        cameraPositionState = cameraState,
-                        googleMapOptionsFactory = { GoogleMapOptions().liteMode(true) },
-                        uiSettings = MapUiSettings(
-                            zoomControlsEnabled = false,
-                            scrollGesturesEnabled = false,
-                            zoomGesturesEnabled = false,
-                            compassEnabled = false,
-                            mapToolbarEnabled = false,
-                        ),
-                    ) {
-                        Marker(
-                            state = rememberMarkerState(position = pos),
-                            icon = rememberCircleMarker(AppTheme.colors.accent),
-                            anchor = androidx.compose.ui.geometry.Offset(0.5f, 0.5f),
-                            title = childName.ifBlank { "Child" },
-                        )
-                    }
+                        gesturesEnabled = false,
+                        overlay = {
+                            drawMapMarker(
+                                controller = controller,
+                                lat = location.latitude,
+                                lng = location.longitude,
+                                accent = accent,
+                                diameterPx = markerPx,
+                            )
+                        },
+                    )
                     Box(modifier = Modifier.matchParentSize().clickable(onClick = onOpenMap))
                 } else {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {

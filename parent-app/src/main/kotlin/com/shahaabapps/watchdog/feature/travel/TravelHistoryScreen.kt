@@ -47,14 +47,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.GoogleMap
-import com.google.maps.android.compose.MapUiSettings
-import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.Polyline
-import com.google.maps.android.compose.rememberCameraPositionState
-import com.google.maps.android.compose.rememberMarkerState
+import androidx.compose.ui.platform.LocalDensity
 import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.components.Hero
 import com.shahaabapps.core.ui.components.HeroIconButton
@@ -62,7 +55,10 @@ import com.shahaabapps.core.ui.components.LoadingView
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
 import com.shahaabapps.watchdog.feature.geofence.PlaceIcons
-import com.shahaabapps.watchdog.util.rememberCircleMarker
+import com.shahaabapps.watchdog.util.OpenFreeMap
+import com.shahaabapps.watchdog.util.drawGeoPolyline
+import com.shahaabapps.watchdog.util.drawMapMarker
+import com.shahaabapps.watchdog.util.rememberOpenFreeMapController
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -256,19 +252,17 @@ private fun TravelMap(
     accent: Color,
     modifier: Modifier = Modifier,
 ) {
-    val trailLatLng = trail.map { LatLng(it.latitude, it.longitude) }
     val allLat = trail.map { it.latitude } + stops.map { it.stop.latitude }
     val allLng = trail.map { it.longitude } + stops.map { it.stop.longitude }
-    val center = LatLng(
-        if (allLat.isEmpty()) 25.2854 else allLat.average(),
-        if (allLng.isEmpty()) 51.5310 else allLng.average(),
-    )
-    val cameraState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(center, 13f)
+    val centerLat = if (allLat.isEmpty()) 25.2854 else allLat.average()
+    val centerLng = if (allLng.isEmpty()) 51.5310 else allLng.average()
+    val controller = rememberOpenFreeMapController(centerLat, centerLng, 13.0)
+    LaunchedEffect(centerLat, centerLng) {
+        controller.moveTo(centerLat, centerLng, 13.0)
     }
-    LaunchedEffect(center) {
-        cameraState.position = CameraPosition.fromLatLngZoom(center, 13f)
-    }
+    val trailPoints = trail.map { it.latitude to it.longitude }
+    val stopPoints = stops.map { it.stop.latitude to it.stop.longitude }
+    val markerPx = with(LocalDensity.current) { 20.dp.toPx() }
 
     CupertinoCard(modifier = modifier) {
         Box(
@@ -277,31 +271,18 @@ private fun TravelMap(
                 .height(240.dp)
                 .clip(RoundedCornerShape(14.dp)),
         ) {
-            GoogleMap(
+            OpenFreeMap(
+                controller = controller,
                 modifier = Modifier.fillMaxSize(),
-                cameraPositionState = cameraState,
-                uiSettings = MapUiSettings(
-                    zoomControlsEnabled = false,
-                    tiltGesturesEnabled = false,
-                    rotationGesturesEnabled = false,
-                    compassEnabled = false,
-                    mapToolbarEnabled = false,
-                ),
-            ) {
-                // The actual recorded path (GPS samples), drawn as a solid line.
-                if (trailLatLng.size >= 2) {
-                    Polyline(points = trailLatLng, color = accent, width = 9f)
-                }
-                val stopIcon = rememberCircleMarker(accent)
-                stops.forEach { item ->
-                    Marker(
-                        state = rememberMarkerState(position = LatLng(item.stop.latitude, item.stop.longitude)),
-                        icon = stopIcon,
-                        anchor = androidx.compose.ui.geometry.Offset(0.5f, 0.5f),
-                        title = item.placeName ?: timeLabel(item.stop.arrivalMillis),
-                    )
-                }
-            }
+                gesturesEnabled = true,
+                overlay = {
+                    // The actual recorded path (GPS samples), drawn as a solid line.
+                    drawGeoPolyline(controller, trailPoints, accent, 9f)
+                    stopPoints.forEach { (la, ln) ->
+                        drawMapMarker(controller, la, ln, accent, diameterPx = markerPx)
+                    }
+                },
+            )
         }
     }
 }

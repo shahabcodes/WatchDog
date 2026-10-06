@@ -55,19 +55,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.Circle
-import com.google.maps.android.compose.GoogleMap
-import com.google.maps.android.compose.GoogleMapComposable
-import com.google.maps.android.compose.MapUiSettings
-import com.google.maps.android.compose.MapsComposeExperimentalApi
-import com.google.maps.android.compose.MarkerComposable
-import com.google.maps.android.compose.Polygon
-import com.google.maps.android.compose.Polyline
-import com.google.maps.android.compose.rememberCameraPositionState
-import com.google.maps.android.compose.rememberMarkerState
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.platform.LocalDensity
+import com.shahaabapps.watchdog.util.OpenFreeMap
+import com.shahaabapps.watchdog.util.drawGeoCircle
+import com.shahaabapps.watchdog.util.drawGeoPolygon
+import com.shahaabapps.watchdog.util.drawGeoPolyline
+import com.shahaabapps.watchdog.util.drawMapMarker
+import com.shahaabapps.watchdog.util.drawVertex
+import com.shahaabapps.watchdog.util.rememberOpenFreeMapController
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -93,7 +90,7 @@ import kotlinx.coroutines.launch
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
 
-private val DEFAULT_CENTER = LatLng(25.2854, 51.5310) // Doha fallback
+private val DEFAULT_CENTER = 25.2854 to 51.5310 // Doha fallback (lat, lng)
 private enum class DrawMode { PIN, AREA }
 
 /** Quick place categories shown as Google-Maps-style pills on the map. */
@@ -129,8 +126,8 @@ fun GeofenceScreen(
     val childLocation by viewModel.childLocation.collectAsStateWithLifecycle()
 
     var mode by remember { mutableStateOf(DrawMode.PIN) }
-    var pending by remember { mutableStateOf<LatLng?>(null) }
-    var area by remember { mutableStateOf<List<LatLng>>(emptyList()) }
+    var pending by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    var area by remember { mutableStateOf<List<Pair<Double, Double>>>(emptyList()) }
     var showCircleSheet by remember { mutableStateOf(false) }
     var showAreaSheet by remember { mutableStateOf(false) }
     var showList by remember { mutableStateOf(false) }
@@ -155,100 +152,98 @@ fun GeofenceScreen(
         }
     }
 
-    val initialCenter = childLocation?.let { LatLng(it.latitude, it.longitude) }
-        ?: geofences.firstOrNull()?.let { LatLng(it.latitude, it.longitude) }
-        ?: events.firstOrNull()?.let { LatLng(it.latitude, it.longitude) }
+    val initialCenter = childLocation?.let { it.latitude to it.longitude }
+        ?: geofences.firstOrNull()?.let { it.latitude to it.longitude }
+        ?: events.firstOrNull()?.let { it.latitude to it.longitude }
         ?: DEFAULT_CENTER
-    val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(initialCenter, 14f)
-    }
+    val controller = rememberOpenFreeMapController(initialCenter.first, initialCenter.second, 14.0)
 
-    // Fly the camera to the child the first time their location arrives (if it
-    // wasn't available when the map first composed).
-    var centeredOnChild by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(childLocation) {
-        val loc = childLocation
-        if (loc != null && !centeredOnChild) {
-            centeredOnChild = true
-            runCatching {
-                cameraPositionState.animate(
-                    CameraUpdateFactory.newLatLngZoom(LatLng(loc.latitude, loc.longitude), 15f),
-                )
+    // Fly the camera to the child (or first place) once data arrives after the
+    // map is ready.
+    var didInitialCenter by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(childLocation, geofences, controller.tick.intValue) {
+        if (!didInitialCenter && controller.hasMap()) {
+            val target = childLocation?.let { it.latitude to it.longitude }
+                ?: geofences.firstOrNull()?.let { it.latitude to it.longitude }
+            if (target != null) {
+                didInitialCenter = true
+                runCatching { controller.animateTo(target.first, target.second, 15.0) }
             }
         }
     }
 
     val accent = AppTheme.colors.accent
+    val density = LocalDensity.current
+    val placePx = with(density) { 36.dp.toPx() }
+    val childPx = with(density) { 40.dp.toPx() }
+    val vertexPx = with(density) { 18.dp.toPx() }
+    val iconPainters: Map<String, Painter> =
+        PlaceIcons.options.associate { (key, vector) -> key to rememberVectorPainter(vector) }
+    val personPainter = rememberVectorPainter(Icons.Filled.Person)
+    fun painterFor(key: String): Painter? = iconPainters[key] ?: iconPainters["place"]
 
     Box(modifier = Modifier.fillMaxSize()) {
-        GoogleMap(
+        OpenFreeMap(
+            controller = controller,
             modifier = Modifier.fillMaxSize(),
-            cameraPositionState = cameraPositionState,
-            uiSettings = MapUiSettings(zoomControlsEnabled = false, mapToolbarEnabled = false),
-            onMapClick = { latLng ->
+            gesturesEnabled = true,
+            onMapClick = { lat, lng ->
                 when (mode) {
-                    DrawMode.PIN -> { pending = latLng; showCircleSheet = true }
-                    DrawMode.AREA -> { area = area + latLng }
+                    DrawMode.PIN -> { pending = lat to lng; showCircleSheet = true }
+                    DrawMode.AREA -> { area = area + (lat to lng) }
                 }
             },
-        ) {
-            // Existing geofences
-            geofences.forEach { g ->
-                if (g.shape == GeofenceShape.POLYGON && g.points.size >= 3) {
-                    Polygon(
-                        points = g.points.map { LatLng(it.latitude, it.longitude) },
-                        fillColor = accent.copy(alpha = 0.18f),
-                        strokeColor = accent,
-                        strokeWidth = 5f,
-                    )
+            overlay = {
+                // Existing geofences
+                geofences.forEach { g ->
+                    if (g.shape == GeofenceShape.POLYGON && g.points.size >= 3) {
+                        drawGeoPolygon(
+                            controller,
+                            g.points.map { it.latitude to it.longitude },
+                            fill = accent.copy(alpha = 0.18f),
+                            stroke = accent,
+                            strokeWidthPx = 5f,
+                        )
+                    } else {
+                        drawGeoCircle(
+                            controller,
+                            g.latitude, g.longitude, g.radiusMeters.toDouble(),
+                            fill = accent.copy(alpha = 0.15f),
+                            stroke = accent,
+                            strokeWidthPx = 4f,
+                        )
+                    }
+                    drawMapMarker(controller, g.latitude, g.longitude, accent, placePx, icon = painterFor(g.icon))
+                }
+
+                // In-progress drawing
+                if (mode == DrawMode.PIN) {
+                    pending?.let { (la, ln) ->
+                        drawMapMarker(controller, la, ln, accent, placePx, icon = painterFor(selectedIcon))
+                    }
                 } else {
-                    Circle(
-                        center = LatLng(g.latitude, g.longitude),
-                        radius = g.radiusMeters.toDouble(),
-                        fillColor = accent.copy(alpha = 0.15f),
-                        strokeColor = accent,
-                        strokeWidth = 4f,
-                    )
+                    when {
+                        area.size >= 3 -> drawGeoPolygon(controller, area, accent.copy(alpha = 0.22f), accent, 5f)
+                        area.size == 2 -> drawGeoPolyline(controller, area, accent, 6f)
+                    }
+                    area.forEach { (la, ln) -> drawVertex(controller, la, ln, accent, vertexPx) }
                 }
-                PlaceMarker(
-                    position = LatLng(g.latitude, g.longitude),
-                    title = g.name,
-                    accent = accent,
-                    icon = PlaceIcons.forKey(g.icon),
-                )
-            }
 
-            // In-progress drawing
-            if (mode == DrawMode.PIN) {
-                pending?.let { PlaceMarker(position = it, title = "New place", accent = accent) }
-            } else {
-                area.forEachIndexed { i, pt -> VertexMarker(key = i, position = pt, accent = accent) }
-                when {
-                    area.size >= 3 -> Polygon(
-                        points = area,
-                        fillColor = accent.copy(alpha = 0.22f),
-                        strokeColor = accent,
-                        strokeWidth = 5f,
-                    )
-                    area.size == 2 -> Polyline(points = area, color = accent, width = 6f)
+                // Child's live location
+                childLocation?.let { loc ->
+                    if (loc.accuracyMeters > 0f) {
+                        drawGeoCircle(
+                            controller,
+                            loc.latitude, loc.longitude, loc.accuracyMeters.toDouble(),
+                            fill = accent.copy(alpha = 0.12f),
+                            stroke = accent.copy(alpha = 0.4f),
+                            strokeWidthPx = 2f,
+                        )
+                    }
+                    drawMapMarker(controller, loc.latitude, loc.longitude, accent, childPx, icon = personPainter)
                 }
-            }
-
-            // Child's live location
-            childLocation?.let { loc ->
-                val pos = LatLng(loc.latitude, loc.longitude)
-                if (loc.accuracyMeters > 0f) {
-                    Circle(
-                        center = pos,
-                        radius = loc.accuracyMeters.toDouble(),
-                        fillColor = accent.copy(alpha = 0.12f),
-                        strokeColor = accent.copy(alpha = 0.4f),
-                        strokeWidth = 2f,
-                    )
-                }
-                ChildMarker(position = pos, accent = accent)
-            }
-        }
+            },
+        )
 
         // Top floating controls: a Google-Maps-style back circle + category pills
         Column(
@@ -378,7 +373,7 @@ fun GeofenceScreen(
                 initialIcon = selectedIcon,
                 initialName = categoryName(selectedIcon),
                 onSave = { name, radius, trigger, icon, active ->
-                    viewModel.saveGeofence(name, center.latitude, center.longitude, radius, trigger, icon, active)
+                    viewModel.saveGeofence(name, center.first, center.second, radius, trigger, icon, active)
                     showCircleSheet = false; pending = null
                 },
             )
@@ -391,7 +386,7 @@ fun GeofenceScreen(
         ModalBottomSheet(onDismissRequest = { showAreaSheet = false }, sheetState = sheetState) {
             AreaEditor(
                 onSave = { name, trigger, icon, active ->
-                    viewModel.saveArea(name, area.map { GeoPoint(it.latitude, it.longitude) }, trigger, icon, active)
+                    viewModel.saveArea(name, area.map { GeoPoint(it.first, it.second) }, trigger, icon, active)
                     showAreaSheet = false; area = emptyList()
                 },
             )
@@ -409,13 +404,7 @@ fun GeofenceScreen(
                 onEdit = { showList = false; editingGeofence = it },
                 onFocus = { g ->
                     showList = false
-                    scope.launch {
-                        runCatching {
-                            cameraPositionState.animate(
-                                CameraUpdateFactory.newLatLngZoom(LatLng(g.latitude, g.longitude), 16f),
-                            )
-                        }
-                    }
+                    runCatching { controller.animateTo(g.latitude, g.longitude, 16.0) }
                 },
             )
         }
@@ -436,84 +425,6 @@ fun GeofenceScreen(
         }
     }
 
-}
-
-@OptIn(MapsComposeExperimentalApi::class)
-@Composable
-@GoogleMapComposable
-private fun ChildMarker(position: LatLng, accent: Color) {
-    MarkerComposable(
-        "child",
-        accent,
-        position,
-        state = rememberMarkerState(position = position),
-        title = "Child's device",
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(Color.White)
-                .padding(3.dp)
-                .clip(CircleShape)
-                .background(accent),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Filled.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
-        }
-    }
-}
-
-@OptIn(MapsComposeExperimentalApi::class)
-@Composable
-@GoogleMapComposable
-private fun PlaceMarker(
-    position: LatLng,
-    title: String,
-    accent: Color,
-    icon: ImageVector = Icons.Filled.Place,
-) {
-    MarkerComposable(
-        position,
-        accent,
-        icon,
-        state = rememberMarkerState(position = position),
-        title = title,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(Color.White)
-                .padding(3.dp)
-                .clip(CircleShape)
-                .background(accent),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
-        }
-    }
-}
-
-@OptIn(MapsComposeExperimentalApi::class)
-@Composable
-@GoogleMapComposable
-private fun VertexMarker(key: Int, position: LatLng, accent: Color) {
-    MarkerComposable(
-        key, position,
-        state = rememberMarkerState(position = position),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(18.dp)
-                .clip(CircleShape)
-                .background(Color.White)
-                .border(1.dp, accent, CircleShape)
-                .padding(4.dp)
-                .clip(CircleShape)
-                .background(accent),
-        )
-    }
 }
 
 @Composable

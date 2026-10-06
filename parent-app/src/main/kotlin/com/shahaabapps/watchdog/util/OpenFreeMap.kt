@@ -52,6 +52,8 @@ class OpenFreeMapController internal constructor(
     internal val tick = mutableIntStateOf(0)
     internal val initial = Triple(initialLat, initialLng, initialZoom)
 
+    fun hasMap(): Boolean = map != null
+
     fun moveTo(lat: Double, lng: Double, zoom: Double) {
         map?.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(lat, lng), zoom))
     }

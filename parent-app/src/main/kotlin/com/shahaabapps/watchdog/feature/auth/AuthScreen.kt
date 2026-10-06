@@ -2,7 +2,6 @@ package com.shahaabapps.watchdog.feature.auth
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -727,25 +726,29 @@ private fun GradientButton(
     loading: Boolean,
     onClick: () -> Unit,
 ) {
-    val textColor by animateColorAsState(
-        targetValue = if (enabled) Color.White else Color.White.copy(alpha = 0.5f),
-        label = "btnText",
+    // Keep the button fully coloured while it's working; only fade when the
+    // form is genuinely incomplete.
+    val active = enabled || loading
+    val buttonAlpha by animateFloatAsState(
+        targetValue = if (active) 1f else 0.5f,
+        animationSpec = tween(180),
+        label = "btnAlpha",
     )
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(54.dp)
-            .shadow(if (enabled) 10.dp else 0.dp, RoundedCornerShape(16.dp), clip = false)
+            .shadow(if (active) 10.dp else 0.dp, RoundedCornerShape(16.dp), clip = false)
             .clip(RoundedCornerShape(16.dp))
+            .alpha(buttonAlpha)
             .background(Brush.linearGradient(gradient))
-            .alpha(if (enabled) 1f else 0.5f)
             .clickable(enabled = enabled && !loading, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         if (loading) {
             CircularProgressIndicator(color = Color.White, strokeWidth = 2.5.dp, modifier = Modifier.size(24.dp))
         } else {
-            Text(label, color = textColor, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+            Text(label, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }

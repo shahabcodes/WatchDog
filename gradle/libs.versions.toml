@@ -36,6 +36,7 @@ zxingEmbedded = "4.3.0"
 mapsCompose = "6.4.1"
 playServicesMaps = "19.0.0"
 playServicesLocation = "21.3.0"
+maplibre = "11.8.1"
 
 # Coroutines
 coroutines = "1.9.0"
@@ -102,6 +103,7 @@ zxing-android-embedded = { group = "com.journeyapps", name = "zxing-android-embe
 
 # --- Maps + location ---
 maps-compose = { group = "com.google.maps.android", name = "maps-compose", version.ref = "mapsCompose" }
+maplibre-android-sdk = { group = "org.maplibre.gl", name = "android-sdk", version.ref = "maplibre" }
 play-services-maps = { group = "com.google.android.gms", name = "play-services-maps", version.ref = "playServicesMaps" }
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
 

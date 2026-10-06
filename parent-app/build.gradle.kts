@@ -40,6 +40,8 @@ dependencies {
     implementation(libs.maps.compose)
     implementation(libs.play.services.maps)
     implementation(libs.play.services.location)
+    // OpenFreeMap tiles via MapLibre (free, no API key)
+    implementation(libs.maplibre.android.sdk)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

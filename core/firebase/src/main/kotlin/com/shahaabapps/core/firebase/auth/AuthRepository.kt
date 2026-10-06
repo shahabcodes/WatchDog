@@ -14,6 +14,9 @@ interface AuthRepository {
 
     fun currentUserIdOrNull(): String?
 
+    /** The signed-in user's email, or null (e.g. anonymous / signed out). */
+    fun currentUserEmail(): String?
+
     suspend fun signUpWithEmail(email: String, password: String): AppResult<String>
 
     suspend fun signInWithEmail(email: String, password: String): AppResult<String>

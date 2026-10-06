@@ -21,6 +21,8 @@ class FirebaseAuthRepository @Inject constructor(
 
     override fun currentUserIdOrNull(): String? = auth.currentUser?.uid
 
+    override fun currentUserEmail(): String? = auth.currentUser?.email
+
     override suspend fun signUpWithEmail(email: String, password: String): AppResult<String> =
         runCatchingResult {
             val result = auth.createUserWithEmailAndPassword(email, password).await()

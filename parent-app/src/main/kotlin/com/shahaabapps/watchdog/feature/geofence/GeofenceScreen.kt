@@ -89,6 +89,31 @@ import com.shahaabapps.core.ui.components.CupertinoTextField
 import kotlinx.coroutines.launch
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
+import com.shahaabapps.core.model.TrailPoint
+import com.shahaabapps.watchdog.feature.travel.TravelHistoryViewModel
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 private val DEFAULT_CENTER = 25.2854 to 51.5310 // Doha fallback (lat, lng)
 private enum class DrawMode { PIN, AREA }
@@ -182,65 +207,127 @@ fun GeofenceScreen(
     val personPainter = rememberVectorPainter(Icons.Filled.Person)
     fun painterFor(key: String): Painter? = iconPainters[key] ?: iconPainters["place"]
 
+    // ---- History / playback (reuses the travel data for this child) ----
+    val travelVm: TravelHistoryViewModel = hiltViewModel()
+    val travelState by travelVm.uiState.collectAsStateWithLifecycle()
+    var historyMode by remember { mutableStateOf(false) }
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showFromPicker by remember { mutableStateOf(false) }
+    var showToPicker by remember { mutableStateOf(false) }
+
+    val trail = remember(travelState.trail) { travelState.trail.sortedBy { it.timestampMillis } }
+    val startMs = trail.firstOrNull()?.timestampMillis ?: 0L
+    val endMs = trail.lastOrNull()?.timestampMillis ?: 0L
+    val rangeMs = (endMs - startMs).coerceAtLeast(0L)
+    val progress = remember { Animatable(0f) }
+    var playing by remember { mutableStateOf(false) }
+    var speed by remember { mutableStateOf(1f) }
+
+    // Reset playback whenever the day/data changes or we leave history.
+    LaunchedEffect(historyMode, travelState.date, trail.size) {
+        playing = false
+        runCatching { progress.snapTo(0f) }
+    }
+    // Drive playback: animate progress 0→1 over ~28s at 1x (scaled by speed).
+    LaunchedEffect(playing, speed) {
+        if (playing && rangeMs > 0L) {
+            val remaining = (1f - progress.value).coerceAtLeast(0f)
+            val durationMs = (28_000f * remaining / speed).toInt().coerceAtLeast(1)
+            runCatching { progress.animateTo(1f, tween(durationMs, easing = LinearEasing)) }
+            playing = false
+        }
+    }
+    // Center the map on the day's trail once, when entering history.
+    var historyCentered by remember { mutableStateOf(false) }
+    LaunchedEffect(historyMode) { if (!historyMode) historyCentered = false }
+    LaunchedEffect(historyMode, trail.size, controller.tick.intValue) {
+        if (historyMode && !historyCentered && trail.isNotEmpty() && controller.hasMap()) {
+            historyCentered = true
+            val cLat = trail.sumOf { it.latitude } / trail.size
+            val cLng = trail.sumOf { it.longitude } / trail.size
+            runCatching { controller.moveTo(cLat, cLng, 14.0) }
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         OpenFreeMap(
             controller = controller,
             modifier = Modifier.fillMaxSize(),
             gesturesEnabled = true,
             onMapClick = { lat, lng ->
-                when (mode) {
-                    DrawMode.PIN -> { pending = lat to lng; showCircleSheet = true }
-                    DrawMode.AREA -> { area = area + (lat to lng) }
+                if (!historyMode) {
+                    when (mode) {
+                        DrawMode.PIN -> { pending = lat to lng; showCircleSheet = true }
+                        DrawMode.AREA -> { area = area + (lat to lng) }
+                    }
                 }
             },
             overlay = {
-                // Existing geofences
+                // Saved places (faint in history mode, for context).
+                val placeAlpha = if (historyMode) 0.5f else 1f
                 geofences.forEach { g ->
                     if (g.shape == GeofenceShape.POLYGON && g.points.size >= 3) {
                         drawGeoPolygon(
                             controller,
                             g.points.map { it.latitude to it.longitude },
-                            fill = accent.copy(alpha = 0.18f),
-                            stroke = accent,
+                            fill = accent.copy(alpha = 0.18f * placeAlpha),
+                            stroke = accent.copy(alpha = placeAlpha),
                             strokeWidthPx = 5f,
                         )
                     } else {
                         drawGeoCircle(
                             controller,
                             g.latitude, g.longitude, g.radiusMeters.toDouble(),
-                            fill = accent.copy(alpha = 0.15f),
-                            stroke = accent,
+                            fill = accent.copy(alpha = 0.15f * placeAlpha),
+                            stroke = accent.copy(alpha = placeAlpha),
                             strokeWidthPx = 4f,
                         )
                     }
-                    drawMapMarker(controller, g.latitude, g.longitude, accent, placePx, icon = painterFor(g.icon))
+                    if (!historyMode) {
+                        drawMapMarker(controller, g.latitude, g.longitude, accent, placePx, icon = painterFor(g.icon))
+                    }
                 }
 
-                // In-progress drawing
-                if (mode == DrawMode.PIN) {
-                    pending?.let { (la, ln) ->
-                        drawMapMarker(controller, la, ln, accent, placePx, icon = painterFor(selectedIcon))
+                if (historyMode) {
+                    // Full recorded path (faded) + the travelled portion (solid) + moving dot.
+                    val allPts = trail.map { it.latitude to it.longitude }
+                    drawGeoPolyline(controller, allPts, accent.copy(alpha = 0.25f), 6f)
+                    val t = startMs + (progress.value * rangeMs).toLong()
+                    val travelled = trail.filter { it.timestampMillis <= t }.map { it.latitude to it.longitude }
+                    val cur = positionAt(trail, t)
+                    val travelledWithCur = if (cur != null) travelled + cur else travelled
+                    drawGeoPolyline(controller, travelledWithCur, accent, 8f)
+                    travelState.stops.forEach { s ->
+                        drawMapMarker(controller, s.stop.latitude, s.stop.longitude, accent.copy(alpha = 0.85f), placePx * 0.75f, icon = painterFor(s.placeIcon ?: "place"))
                     }
+                    cur?.let { (la, ln) -> drawMapMarker(controller, la, ln, accent, childPx, icon = personPainter) }
                 } else {
-                    when {
-                        area.size >= 3 -> drawGeoPolygon(controller, area, accent.copy(alpha = 0.22f), accent, 5f)
-                        area.size == 2 -> drawGeoPolyline(controller, area, accent, 6f)
+                    // In-progress drawing
+                    if (mode == DrawMode.PIN) {
+                        pending?.let { (la, ln) ->
+                            drawMapMarker(controller, la, ln, accent, placePx, icon = painterFor(selectedIcon))
+                        }
+                    } else {
+                        when {
+                            area.size >= 3 -> drawGeoPolygon(controller, area, accent.copy(alpha = 0.22f), accent, 5f)
+                            area.size == 2 -> drawGeoPolyline(controller, area, accent, 6f)
+                        }
+                        area.forEach { (la, ln) -> drawVertex(controller, la, ln, accent, vertexPx) }
                     }
-                    area.forEach { (la, ln) -> drawVertex(controller, la, ln, accent, vertexPx) }
-                }
 
-                // Child's live location
-                childLocation?.let { loc ->
-                    if (loc.accuracyMeters > 0f) {
-                        drawGeoCircle(
-                            controller,
-                            loc.latitude, loc.longitude, loc.accuracyMeters.toDouble(),
-                            fill = accent.copy(alpha = 0.12f),
-                            stroke = accent.copy(alpha = 0.4f),
-                            strokeWidthPx = 2f,
-                        )
+                    // Child's live location
+                    childLocation?.let { loc ->
+                        if (loc.accuracyMeters > 0f) {
+                            drawGeoCircle(
+                                controller,
+                                loc.latitude, loc.longitude, loc.accuracyMeters.toDouble(),
+                                fill = accent.copy(alpha = 0.12f),
+                                stroke = accent.copy(alpha = 0.4f),
+                                strokeWidthPx = 2f,
+                            )
+                        }
+                        drawMapMarker(controller, loc.latitude, loc.longitude, accent, childPx, icon = personPainter)
                     }
-                    drawMapMarker(controller, loc.latitude, loc.longitude, accent, childPx, icon = personPainter)
                 }
             },
         )
@@ -257,15 +344,11 @@ fun GeofenceScreen(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
             ) {
                 if (showBack) {
-                    Surface(
-                        shape = CircleShape,
-                        color = AppTheme.colors.card,
-                        shadowElevation = 4.dp,
-                        modifier = Modifier.padding(start = Spacing.md),
-                    ) {
+                    Surface(shape = CircleShape, color = AppTheme.colors.card, shadowElevation = 4.dp) {
                         IconButton(onClick = onBack) {
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack,
@@ -275,41 +358,80 @@ fun GeofenceScreen(
                         }
                     }
                 }
-                LazyRow(
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = Spacing.md),
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-                ) {
-                    item {
-                        CategoryPill(
-                            label = "Draw area",
-                            icon = Icons.Filled.Pentagon,
-                            selected = mode == DrawMode.AREA,
-                            onClick = { mode = DrawMode.AREA; pending = null },
-                        )
-                    }
-                    items(PLACE_CATEGORIES) { (key, label) ->
-                        CategoryPill(
-                            label = label,
-                            icon = PlaceIcons.forKey(key),
-                            selected = mode == DrawMode.PIN && selectedIcon == key,
-                            onClick = { mode = DrawMode.PIN; area = emptyList(); selectedIcon = key },
-                        )
+                CategoryPill(
+                    label = "Live",
+                    icon = Icons.Filled.MyLocation,
+                    selected = !historyMode,
+                    onClick = { historyMode = false },
+                )
+                CategoryPill(
+                    label = "History",
+                    icon = Icons.Filled.History,
+                    selected = historyMode,
+                    onClick = { historyMode = true },
+                )
+                if (!historyMode) {
+                    LazyRow(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    ) {
+                        item {
+                            CategoryPill(
+                                label = "Draw area",
+                                icon = Icons.Filled.Pentagon,
+                                selected = mode == DrawMode.AREA,
+                                onClick = { mode = DrawMode.AREA; pending = null },
+                            )
+                        }
+                        items(PLACE_CATEGORIES) { (key, label) ->
+                            CategoryPill(
+                                label = label,
+                                icon = PlaceIcons.forKey(key),
+                                selected = mode == DrawMode.PIN && selectedIcon == key,
+                                onClick = { mode = DrawMode.PIN; area = emptyList(); selectedIcon = key },
+                            )
+                        }
                     }
                 }
             }
 
-            HintPill(
-                text = if (mode == DrawMode.PIN) {
-                    "Tap the map to drop ${categoryLabel(selectedIcon)}"
-                } else {
-                    "Tap points to outline an area (3+)"
-                },
-            )
+            if (historyMode) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                ) {
+                    SelectorPill(Icons.Filled.CalendarMonth, dateLabel(travelState.date), { showDatePicker = true }, Modifier.weight(1f))
+                    SelectorPill(Icons.Filled.Schedule, minuteLabel(travelState.fromMinute), { showFromPicker = true }, Modifier.weight(1f))
+                    SelectorPill(Icons.Filled.Schedule, minuteLabel(travelState.toMinute), { showToPicker = true }, Modifier.weight(1f))
+                }
+            } else {
+                HintPill(
+                    text = if (mode == DrawMode.PIN) {
+                        "Tap the map to drop ${categoryLabel(selectedIcon)}"
+                    } else {
+                        "Tap points to outline an area (3+)"
+                    },
+                )
+            }
         }
 
-        // Area drawing controls (bottom)
-        if (mode == DrawMode.AREA && area.isNotEmpty()) {
+        // History playback bar (bottom)
+        if (historyMode) {
+            PlaybackBar(
+                progress = progress,
+                playing = playing,
+                hasTrail = trail.isNotEmpty() && rangeMs > 0L,
+                speed = speed,
+                timeLabel = {
+                    if (trail.isEmpty()) "No path this day"
+                    else timeLabel(startMs + (progress.value * rangeMs).toLong())
+                },
+                onPlayPause = { playing = !playing },
+                onScrub = { playing = false; scope.launch { progress.snapTo(it) } },
+                onCycleSpeed = { speed = when (speed) { 1f -> 2f; 2f -> 4f; else -> 1f } },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        } else if (mode == DrawMode.AREA && area.isNotEmpty()) {
             Surface(
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
                 color = AppTheme.colors.card,
@@ -425,6 +547,38 @@ fun GeofenceScreen(
         }
     }
 
+    // History date + time-range pickers
+    if (showDatePicker) {
+        val dpState = rememberDatePickerState(
+            initialSelectedDateMillis = travelState.date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    dpState.selectedDateMillis?.let {
+                        travelVm.setDate(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate())
+                    }
+                    showDatePicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("Cancel") } },
+        ) { DatePicker(state = dpState) }
+    }
+    if (showFromPicker) {
+        TimeRangePickerDialog(
+            initialMinutes = travelState.fromMinute,
+            onDismiss = { showFromPicker = false },
+            onConfirm = { travelVm.setTimeRange(it, travelState.toMinute); showFromPicker = false },
+        )
+    }
+    if (showToPicker) {
+        TimeRangePickerDialog(
+            initialMinutes = travelState.toMinute,
+            onDismiss = { showToPicker = false },
+            onConfirm = { travelVm.setTimeRange(travelState.fromMinute, it); showToPicker = false },
+        )
+    }
 }
 
 @Composable
@@ -753,3 +907,127 @@ private fun relativeTime(millis: Long): String {
         else -> "${mins / 1440} d ago"
     }
 }
+
+// ---- History / playback UI ----
+
+@Composable
+private fun PlaybackBar(
+    progress: Animatable<Float, *>,
+    playing: Boolean,
+    hasTrail: Boolean,
+    speed: Float,
+    timeLabel: () -> String,
+    onPlayPause: () -> Unit,
+    onScrub: (Float) -> Unit,
+    onCycleSpeed: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        color = AppTheme.colors.card,
+        tonalElevation = 3.dp,
+        shadowElevation = 6.dp,
+        modifier = modifier.padding(Spacing.md).fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+            ) {
+                IconButton(onClick = onPlayPause, enabled = hasTrail) {
+                    Icon(
+                        if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = if (playing) "Pause" else "Play",
+                        tint = if (hasTrail) AppTheme.colors.accent else AppTheme.colors.secondaryLabel,
+                    )
+                }
+                Text(timeLabel(), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Surface(
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    color = AppTheme.colors.accent.copy(alpha = 0.15f),
+                    modifier = Modifier.clickable(onClick = onCycleSpeed),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                        Icon(Icons.Filled.Speed, contentDescription = null, tint = AppTheme.colors.accent, modifier = Modifier.size(16.dp))
+                        Text("${speed.toInt()}x", style = MaterialTheme.typography.bodyMedium, color = AppTheme.colors.accent, modifier = Modifier.padding(start = 4.dp))
+                    }
+                }
+            }
+            Slider(value = progress.value, onValueChange = onScrub, enabled = hasTrail)
+        }
+    }
+}
+
+@Composable
+private fun SelectorPill(icon: ImageVector, text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        color = AppTheme.colors.card,
+        tonalElevation = 2.dp,
+        shadowElevation = 3.dp,
+        modifier = modifier.clickable(onClick = onClick),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+        ) {
+            Icon(icon, contentDescription = null, tint = AppTheme.colors.accent, modifier = Modifier.size(16.dp))
+            Text(text, style = MaterialTheme.typography.bodyMedium, maxLines = 1, modifier = Modifier.padding(start = 6.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimeRangePickerDialog(initialMinutes: Int, onDismiss: () -> Unit, onConfirm: (minutes: Int) -> Unit) {
+    val tpState = rememberTimePickerState(initialHour = initialMinutes / 60, initialMinute = initialMinutes % 60, is24Hour = false)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = { onConfirm(tpState.hour * 60 + tpState.minute) }) { Text("OK") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                TimePicker(state = tpState)
+            }
+        },
+    )
+}
+
+/** Interpolated position along the trail at playback time [t]. */
+private fun positionAt(trail: List<TrailPoint>, t: Long): Pair<Double, Double>? {
+    if (trail.isEmpty()) return null
+    if (t <= trail.first().timestampMillis) return trail.first().latitude to trail.first().longitude
+    if (t >= trail.last().timestampMillis) return trail.last().latitude to trail.last().longitude
+    for (i in 0 until trail.size - 1) {
+        val a = trail[i]
+        val b = trail[i + 1]
+        if (t in a.timestampMillis..b.timestampMillis) {
+            val span = (b.timestampMillis - a.timestampMillis).coerceAtLeast(1L)
+            val f = (t - a.timestampMillis).toDouble() / span
+            return (a.latitude + (b.latitude - a.latitude) * f) to (a.longitude + (b.longitude - a.longitude) * f)
+        }
+    }
+    return trail.last().latitude to trail.last().longitude
+}
+
+private val playbackTimeFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault())
+private val playbackDateFormatter = DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault())
+
+private fun timeLabel(millis: Long): String =
+    Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalTime().format(playbackTimeFormatter)
+
+private fun minuteLabel(min: Int): String {
+    val h = min / 60
+    val m = min % 60
+    val ampm = if (h < 12) "AM" else "PM"
+    val h12 = when {
+        h == 0 -> 12
+        h > 12 -> h - 12
+        else -> h
+    }
+    return "%d:%02d %s".format(h12, m, ampm)
+}
+
+private fun dateLabel(date: LocalDate): String =
+    if (date == LocalDate.now()) "Today" else date.format(playbackDateFormatter)

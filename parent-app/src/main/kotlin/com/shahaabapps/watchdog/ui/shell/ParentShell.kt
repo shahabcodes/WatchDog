@@ -28,7 +28,7 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -78,7 +78,6 @@ import com.shahaabapps.watchdog.feature.dashboard.QrImageDecoder
 import com.shahaabapps.watchdog.feature.geofence.GeofenceScreen
 import com.shahaabapps.watchdog.feature.overview.OverviewScreen
 import com.shahaabapps.watchdog.feature.settings.SettingsScreen
-import com.shahaabapps.watchdog.feature.travel.TravelHistoryScreen
 import com.shahaabapps.watchdog.feature.usage.UsageScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -86,7 +85,7 @@ import kotlinx.coroutines.withContext
 
 private enum class Tab(val route: String, val label: String, val icon: ImageVector) {
     OVERVIEW("overview", "Overview", Icons.Filled.GridView),
-    PLACES("places", "Places", Icons.Filled.Place),
+    MAP("map", "Map", Icons.Filled.Map),
     SCREENTIME("screentime", "Screen time", Icons.Filled.BarChart),
 }
 
@@ -180,15 +179,11 @@ fun ParentShell(
             val childArg = listOf(navArgument("childId") { type = NavType.StringType })
             composable("overview/{childId}", childArg) {
                 OverviewScreen(
-                    onOpenPlaces = { navController.navigate("${Tab.PLACES.route}/$currentChildId") { launchSingleTop = true } },
-                    onOpenTravel = { navController.navigate("travel/$currentChildId") },
+                    onOpenMap = { navController.navigate("${Tab.MAP.route}/$currentChildId") { launchSingleTop = true } },
                 )
             }
-            composable("places/{childId}", childArg) { GeofenceScreen(onBack = { }, showBack = false) }
+            composable("map/{childId}", childArg) { GeofenceScreen(onBack = { }, showBack = false) }
             composable("screentime/{childId}", childArg) { UsageScreen(onBack = { }, embedded = true) }
-            composable("travel/{childId}", childArg) {
-                TravelHistoryScreen(onBack = { navController.popBackStack() })
-            }
             composable("settings") {
                 SettingsScreen(onBack = { navController.popBackStack() })
             }

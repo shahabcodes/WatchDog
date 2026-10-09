@@ -1,14 +1,12 @@
 package com.shahaabapps.watchdog.feature.overview
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -19,20 +17,14 @@ import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Place
-import androidx.compose.material.icons.filled.Timeline
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,7 +36,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.ui.platform.LocalDensity
 import com.shahaabapps.core.model.ChildLocation
 import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.components.CupertinoPrimaryButton
@@ -55,15 +46,11 @@ import com.shahaabapps.core.ui.components.StatTile
 import com.shahaabapps.core.ui.components.StatusChip
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
-import com.shahaabapps.watchdog.util.OpenFreeMap
-import com.shahaabapps.watchdog.util.drawMapMarker
-import com.shahaabapps.watchdog.util.rememberOpenFreeMapController
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OverviewScreen(
-    onOpenPlaces: () -> Unit,
-    onOpenTravel: () -> Unit,
+    onOpenMap: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: OverviewViewModel = hiltViewModel(),
 ) {
@@ -109,24 +96,22 @@ fun OverviewScreen(
                 label = "Places",
                 icon = Icons.Filled.Place,
                 modifier = Modifier.weight(1f),
-                onClick = onOpenPlaces,
+                onClick = onOpenMap,
             )
             StatTile(
-                value = "View",
-                label = "Travel history",
-                icon = Icons.Filled.Timeline,
+                value = "Open",
+                label = "Map & history",
+                icon = Icons.Filled.Map,
                 modifier = Modifier.weight(1f),
-                onClick = onOpenTravel,
+                onClick = onOpenMap,
             )
         }
 
         SectionHeader("Location")
         LocationCard(
             location = childLocation,
-            childName = state.childName,
-            onOpenMap = onOpenPlaces,
+            onOpenMap = onOpenMap,
             onRing = { showRingSheet = true },
-            onOpenTravel = onOpenTravel,
         )
     }
 
@@ -147,91 +132,35 @@ fun OverviewScreen(
 @Composable
 private fun LocationCard(
     location: ChildLocation?,
-    childName: String,
     onOpenMap: () -> Unit,
     onRing: () -> Unit,
-    onOpenTravel: () -> Unit,
 ) {
-    CupertinoCard {
-        Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+    CupertinoCard(onClick = onOpenMap) {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Place, contentDescription = null, tint = AppTheme.colors.accent)
-                Column(modifier = Modifier.weight(1f).padding(start = Spacing.sm)) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(AppTheme.colors.accent.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        if (location != null) Icons.Filled.Place else Icons.Filled.LocationOff,
+                        contentDescription = null,
+                        tint = AppTheme.colors.accent,
+                    )
+                }
+                Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
                     Text("Live location", style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        text = location?.let { "Updated ${relativeTime(it.timestampMillis)}" }
+                        text = location?.let { "Updated ${relativeTime(it.timestampMillis)} · tap to open the map" }
                             ?: "Waiting for location…",
                         style = MaterialTheme.typography.bodySmall,
                         color = AppTheme.colors.secondaryLabel,
                     )
                 }
-                var menuOpen by remember { mutableStateOf(false) }
-                Box {
-                    IconButton(onClick = { menuOpen = true }) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "More", tint = AppTheme.colors.secondaryLabel)
-                    }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        DropdownMenuItem(
-                            text = { Text("Travel history") },
-                            onClick = { menuOpen = false; onOpenTravel() },
-                            leadingIcon = { Icon(Icons.Filled.Timeline, contentDescription = null) },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Open map") },
-                            onClick = { menuOpen = false; onOpenMap() },
-                            leadingIcon = { Icon(Icons.Filled.Map, contentDescription = null) },
-                        )
-                    }
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(170.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(AppTheme.colors.separator)
-                    .clickable(onClick = onOpenMap),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (location != null) {
-                    val controller = rememberOpenFreeMapController(location.latitude, location.longitude, 15.0)
-                    LaunchedEffect(location.latitude, location.longitude) {
-                        controller.moveTo(location.latitude, location.longitude, 15.0)
-                    }
-                    val accent = AppTheme.colors.accent
-                    val markerPx = with(LocalDensity.current) { 22.dp.toPx() }
-                    OpenFreeMap(
-                        controller = controller,
-                        modifier = Modifier.fillMaxSize(),
-                        gesturesEnabled = false,
-                        overlay = {
-                            drawMapMarker(
-                                controller = controller,
-                                lat = location.latitude,
-                                lng = location.longitude,
-                                accent = accent,
-                                diameterPx = markerPx,
-                            )
-                        },
-                    )
-                    Box(modifier = Modifier.matchParentSize().clickable(onClick = onOpenMap))
-                } else {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Filled.LocationOff,
-                            contentDescription = null,
-                            tint = AppTheme.colors.secondaryLabel,
-                            modifier = Modifier.size(32.dp),
-                        )
-                        Text(
-                            "No location yet",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = AppTheme.colors.secondaryLabel,
-                            modifier = Modifier.padding(top = Spacing.xs),
-                        )
-                    }
-                }
+                Icon(Icons.Filled.Map, contentDescription = null, tint = AppTheme.colors.secondaryLabel)
             }
 
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {

@@ -7,6 +7,7 @@ import com.shahaabapps.core.firebase.auth.AuthRepository
 import com.shahaabapps.core.firebase.child.ChildRepository
 import com.shahaabapps.core.model.ChildAccount
 import com.shahaabapps.core.model.PairingCodec
+import com.google.firebase.functions.FirebaseFunctions
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 
 sealed interface LinkState {
@@ -25,6 +27,13 @@ sealed interface LinkState {
     data object Linking : LinkState
     data class Success(val childName: String?) : LinkState
     data class Error(val message: String) : LinkState
+}
+
+sealed interface ReconnectState {
+    data object Idle : ReconnectState
+    data object Working : ReconnectState
+    data object Success : ReconnectState
+    data class Error(val message: String) : ReconnectState
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -93,4 +102,36 @@ class DashboardViewModel @Inject constructor(
         val parentId = authRepository.currentUserIdOrNull() ?: return
         viewModelScope.launch { childRepository.unlinkChild(childId, parentId) }
     }
+
+    private val _reconnectState = MutableStateFlow<ReconnectState>(ReconnectState.Idle)
+    val reconnectState: StateFlow<ReconnectState> = _reconnectState.asStateFlow()
+
+    /**
+     * Reconnect a reinstalled Shield: [oldChildId] is the stale child in the list,
+     * [contents] is the QR scanned from the freshly reinstalled device. A Cloud
+     * Function migrates the old data onto the new device's id.
+     */
+    fun reconnectChild(oldChildId: String, contents: String?) {
+        val pairing = PairingCodec.decode(contents)
+        if (pairing == null) {
+            _reconnectState.value = ReconnectState.Error("That QR code isn't a valid pairing code.")
+            return
+        }
+        _reconnectState.value = ReconnectState.Working
+        viewModelScope.launch {
+            val data = hashMapOf(
+                "oldChildId" to oldChildId,
+                "newChildId" to pairing.childId,
+                "code" to pairing.code,
+            )
+            _reconnectState.value = runCatching {
+                FirebaseFunctions.getInstance().getHttpsCallable("reconnectChild").call(data).await()
+            }.fold(
+                onSuccess = { ReconnectState.Success },
+                onFailure = { ReconnectState.Error(it.message ?: "Couldn't reconnect this device.") },
+            )
+        }
+    }
+
+    fun clearReconnectState() { _reconnectState.value = ReconnectState.Idle }
 }

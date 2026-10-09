@@ -29,6 +29,8 @@ import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -74,6 +76,7 @@ import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
 import com.shahaabapps.watchdog.feature.dashboard.DashboardViewModel
 import com.shahaabapps.watchdog.feature.dashboard.LinkState
+import com.shahaabapps.watchdog.feature.dashboard.ReconnectState
 import com.shahaabapps.watchdog.feature.dashboard.QrImageDecoder
 import com.shahaabapps.watchdog.feature.geofence.GeofenceScreen
 import com.shahaabapps.watchdog.feature.overview.OverviewScreen
@@ -190,6 +193,7 @@ fun ParentShell(
             composable("manage") {
                 ManageChildrenScreen(
                     children = children,
+                    viewModel = viewModel,
                     onRemove = { viewModel.removeChild(it) },
                     onAdd = { navController.navigate("add") },
                     onBack = { navController.popBackStack() },
@@ -420,11 +424,29 @@ private fun SimpleHeader(title: String, onBack: () -> Unit) {
 @Composable
 private fun ManageChildrenScreen(
     children: List<ChildAccount>,
+    viewModel: DashboardViewModel,
     onRemove: (String) -> Unit,
     onAdd: () -> Unit,
     onBack: () -> Unit,
 ) {
     var confirm by remember { mutableStateOf<ChildAccount?>(null) }
+    var pendingReconnectId by remember { mutableStateOf<String?>(null) }
+    val reconnectState by viewModel.reconnectState.collectAsStateWithLifecycle()
+
+    val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
+        val id = pendingReconnectId
+        if (id != null) viewModel.reconnectChild(id, result.contents)
+        pendingReconnectId = null
+    }
+    fun launchReconnectScan(childId: String) {
+        pendingReconnectId = childId
+        scanLauncher.launch(
+            ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                .setPrompt("Scan the reinstalled Shield's code").setBeepEnabled(false)
+                .setOrientationLocked(false),
+        )
+    }
+
     confirm?.let { child ->
         com.shahaabapps.core.ui.components.ConfirmDialog(
             title = "Remove ${child.profile.name.ifBlank { "this child" }}?",
@@ -433,6 +455,28 @@ private fun ManageChildrenScreen(
             onConfirm = { onRemove(child.childId); confirm = null },
             onDismiss = { confirm = null },
         )
+    }
+
+    when (val rs = reconnectState) {
+        is ReconnectState.Working -> androidx.compose.material3.AlertDialog(
+            onDismissRequest = { },
+            confirmButton = {},
+            title = { Text("Reconnecting…") },
+            text = { Row(verticalAlignment = Alignment.CenterVertically) { androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(22.dp)); Text("  Migrating this child's data.") } },
+        )
+        is ReconnectState.Success -> androidx.compose.material3.AlertDialog(
+            onDismissRequest = viewModel::clearReconnectState,
+            confirmButton = { androidx.compose.material3.TextButton(onClick = viewModel::clearReconnectState) { Text("Done") } },
+            title = { Text("Device reconnected") },
+            text = { Text("The reinstalled device is linked again with all its places, rules and settings.") },
+        )
+        is ReconnectState.Error -> androidx.compose.material3.AlertDialog(
+            onDismissRequest = viewModel::clearReconnectState,
+            confirmButton = { androidx.compose.material3.TextButton(onClick = viewModel::clearReconnectState) { Text("OK") } },
+            title = { Text("Couldn't reconnect") },
+            text = { Text(rs.message) },
+        )
+        ReconnectState.Idle -> Unit
     }
 
     Column(modifier = Modifier.fillMaxSize().background(AppTheme.colors.groupedBackground)) {
@@ -455,17 +499,38 @@ private fun ManageChildrenScreen(
                                 color = if (online) AppTheme.colors.success else AppTheme.colors.secondaryLabel,
                             )
                         }
-                        androidx.compose.material3.IconButton(onClick = { confirm = child }) {
-                            androidx.compose.material3.Icon(
-                                Icons.Filled.Delete,
-                                contentDescription = "Remove",
-                                tint = AppTheme.colors.destructive,
-                            )
+                        var menu by remember { mutableStateOf(false) }
+                        Box {
+                            androidx.compose.material3.IconButton(onClick = { menu = true }) {
+                                androidx.compose.material3.Icon(
+                                    Icons.Filled.MoreVert,
+                                    contentDescription = "More",
+                                    tint = AppTheme.colors.secondaryLabel,
+                                )
+                            }
+                            androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text("Reconnect device") },
+                                    onClick = { menu = false; launchReconnectScan(child.childId) },
+                                    leadingIcon = { androidx.compose.material3.Icon(Icons.Filled.QrCodeScanner, contentDescription = null, tint = AppTheme.colors.accent) },
+                                )
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text("Remove", color = AppTheme.colors.destructive) },
+                                    onClick = { menu = false; confirm = child },
+                                    leadingIcon = { androidx.compose.material3.Icon(Icons.Filled.Delete, contentDescription = null, tint = AppTheme.colors.destructive) },
+                                )
+                            }
                         }
                     }
                 }
             }
             item {
+                Text(
+                    "Reinstalled a child's phone? Use \"Reconnect device\" on that child to scan its new code — its places, rules and history move over automatically.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.secondaryLabel,
+                    modifier = Modifier.padding(vertical = Spacing.sm),
+                )
                 CupertinoPrimaryButton(
                     text = "Add a child",
                     onClick = onAdd,

@@ -1,4 +1,5 @@
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
@@ -8,6 +9,76 @@ initializeApp();
 setGlobalOptions({ region: "us-central1", maxInstances: 10 });
 
 const db = getFirestore();
+
+/**
+ * Reconnect a reinstalled Shield: migrate the old child's data (geofences, rules,
+ * protection, history, etc.) onto the new device's ID, move the parent links over,
+ * and delete the old child record. Called by a linked parent after scanning the
+ * reinstalled device's pairing code.
+ */
+exports.reconnectChild = onCall(async (request) => {
+  const parentId = request.auth && request.auth.uid;
+  if (!parentId) throw new HttpsError("unauthenticated", "Sign in required.");
+
+  const data = request.data || {};
+  const oldChildId = data.oldChildId;
+  const newChildId = data.newChildId;
+  const code = data.code;
+  if (!oldChildId || !newChildId || !code) {
+    throw new HttpsError("invalid-argument", "Missing oldChildId, newChildId or code.");
+  }
+  if (oldChildId === newChildId) {
+    throw new HttpsError("invalid-argument", "This device is already connected.");
+  }
+
+  const oldRef = db.doc(`children/${oldChildId}`);
+  const newRef = db.doc(`children/${newChildId}`);
+  const [oldSnap, newSnap] = await Promise.all([oldRef.get(), newRef.get()]);
+  if (!oldSnap.exists) throw new HttpsError("not-found", "The original child was not found.");
+  if (!newSnap.exists) throw new HttpsError("not-found", "The reinstalled device was not found.");
+
+  const oldData = oldSnap.data() || {};
+  const newData = newSnap.data() || {};
+  const parents = Array.isArray(oldData.linkedParents) ? oldData.linkedParents : [];
+  if (!parents.includes(parentId)) {
+    throw new HttpsError("permission-denied", "You are not linked to this child.");
+  }
+  if ((newData.pairingCode || "") !== code) {
+    throw new HttpsError("permission-denied", "That pairing code does not match the scanned device.");
+  }
+
+  // Copy every subcollection from the old child onto the new one.
+  const SUBS = [
+    "geofences", "appRules", "inventory", "usage", "live",
+    "trail", "travelHistory", "geofenceEvents", "settings",
+  ];
+  for (const sub of SUBS) {
+    const docs = await oldRef.collection(sub).get();
+    let batch = db.batch();
+    let n = 0;
+    for (const d of docs.docs) {
+      batch.set(newRef.collection(sub).doc(d.id), d.data());
+      if (++n >= 400) { await batch.commit(); batch = db.batch(); n = 0; }
+    }
+    if (n > 0) await batch.commit();
+  }
+
+  // Carry over the old profile + parent links onto the new child record.
+  await newRef.set(
+    {
+      profile: oldData.profile || newData.profile || {},
+      linkedParents: parents,
+      pairingActive: false,
+      role: "CHILD",
+    },
+    { merge: true },
+  );
+
+  // Remove the old child and all of its data.
+  await db.recursiveDelete(oldRef);
+
+  return { ok: true };
+});
 
 /**
  * When the child reports a geofence enter/exit event, push a notification to

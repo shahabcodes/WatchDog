@@ -19,6 +19,8 @@ import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.BatteryStd
 import androidx.compose.material.icons.filled.LocationOff
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -41,9 +43,12 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shahaabapps.core.model.ChildLocation
+import androidx.compose.ui.text.input.KeyboardType
 import com.shahaabapps.core.ui.components.AppIcon
 import com.shahaabapps.core.ui.components.CupertinoCard
+import com.shahaabapps.core.ui.components.CupertinoListRow
 import com.shahaabapps.core.ui.components.CupertinoPrimaryButton
+import com.shahaabapps.core.ui.components.CupertinoSwitch
 import com.shahaabapps.core.ui.components.CupertinoTextButton
 import com.shahaabapps.core.ui.components.CupertinoTextField
 import com.shahaabapps.core.ui.components.SectionHeader
@@ -61,7 +66,10 @@ fun OverviewScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val childLocation by viewModel.childLocation.collectAsStateWithLifecycle()
+    val protectionVm: com.shahaabapps.watchdog.feature.protection.ProtectionViewModel = hiltViewModel()
+    val protection by protectionVm.settings.collectAsStateWithLifecycle()
     var showRingSheet by remember { mutableStateOf(false) }
+    var showProtectionSheet by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -119,6 +127,9 @@ fun OverviewScreen(
             onRing = { showRingSheet = true },
         )
 
+        SectionHeader("Protection")
+        ProtectionCard(blocked = protection.uninstallBlocked, onClick = { showProtectionSheet = true })
+
         SectionHeader("App usage today")
         UsageChart(state.topApps)
         Spacer(Modifier.height(Spacing.md))
@@ -134,6 +145,99 @@ fun OverviewScreen(
                 },
             )
         }
+    }
+
+    if (showProtectionSheet) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(onDismissRequest = { showProtectionSheet = false }, sheetState = sheetState) {
+            ProtectionEditor(
+                initial = protection,
+                onSave = { blocked, pin ->
+                    protectionVm.save(blocked, pin)
+                    showProtectionSheet = false
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProtectionCard(blocked: Boolean, onClick: () -> Unit) {
+    CupertinoCard(onClick = onClick) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(AppTheme.colors.accent.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    if (blocked) Icons.Filled.Lock else Icons.Filled.LockOpen,
+                    contentDescription = null,
+                    tint = AppTheme.colors.accent,
+                )
+            }
+            Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
+                Text("Prevent uninstall", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    if (blocked) "On · a PIN is required to remove Shield" else "Off · tap to protect Shield",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.secondaryLabel,
+                )
+            }
+            StatusChip(
+                text = if (blocked) "On" else "Off",
+                color = if (blocked) AppTheme.colors.success else AppTheme.colors.secondaryLabel,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProtectionEditor(
+    initial: com.shahaabapps.core.model.ProtectionSettings,
+    onSave: (blocked: Boolean, pin: String) -> Unit,
+) {
+    var blocked by remember { mutableStateOf(initial.uninstallBlocked) }
+    var pin by remember { mutableStateOf(initial.pin) }
+    val pinValid = pin.length == 4 && pin.all { it.isDigit() }
+
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl),
+        verticalArrangement = Arrangement.spacedBy(Spacing.md),
+    ) {
+        Text("Prevent uninstall", style = MaterialTheme.typography.headlineMedium)
+        Text(
+            "Stops the child from removing Shield from their phone. Shield becomes a device admin and blocks the uninstall screen. To remove it, a parent enters the PIN below on the child's device.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = AppTheme.colors.secondaryLabel,
+        )
+        CupertinoCard {
+            CupertinoListRow(
+                title = "Prevent uninstall",
+                subtitle = "Protect Shield on the child's phone",
+                showDivider = false,
+                trailing = { CupertinoSwitch(checked = blocked, onCheckedChange = { blocked = it }) },
+            )
+        }
+        if (blocked) {
+            Text("Removal PIN (4 digits)", style = MaterialTheme.typography.titleMedium)
+            CupertinoTextField(
+                value = pin,
+                onValueChange = { if (it.length <= 4 && it.all { c -> c.isDigit() }) pin = it },
+                placeholder = "e.g. 1234",
+                keyboardType = KeyboardType.NumberPassword,
+            )
+            if (pin.isNotEmpty() && !pinValid) {
+                Text("Enter exactly 4 digits.", color = AppTheme.colors.destructive, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        CupertinoPrimaryButton(
+            text = "Save",
+            enabled = !blocked || pinValid,
+            onClick = { onSave(blocked, if (blocked) pin else "") },
+        )
     }
 }
 

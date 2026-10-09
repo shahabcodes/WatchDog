@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.QrCodeScanner
@@ -432,11 +433,25 @@ private fun ManageChildrenScreen(
     var confirm by remember { mutableStateOf<ChildAccount?>(null) }
     var pendingReconnectId by remember { mutableStateOf<String?>(null) }
     val reconnectState by viewModel.reconnectState.collectAsStateWithLifecycle()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
 
     val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
         val id = pendingReconnectId
         if (id != null) viewModel.reconnectChild(id, result.contents)
         pendingReconnectId = null
+    }
+    val imagePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        val id = pendingReconnectId
+        pendingReconnectId = null
+        if (uri != null && id != null) {
+            scope.launch {
+                val contents = withContext(Dispatchers.IO) { QrImageDecoder.decodeFromUri(context, uri) }
+                viewModel.reconnectChild(id, contents)
+            }
+        }
     }
     fun launchReconnectScan(childId: String) {
         pendingReconnectId = childId
@@ -445,6 +460,10 @@ private fun ManageChildrenScreen(
                 .setPrompt("Scan the reinstalled Shield's code").setBeepEnabled(false)
                 .setOrientationLocked(false),
         )
+    }
+    fun launchReconnectFromGallery(childId: String) {
+        pendingReconnectId = childId
+        imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
     }
 
     confirm?.let { child ->
@@ -510,9 +529,14 @@ private fun ManageChildrenScreen(
                             }
                             androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                 androidx.compose.material3.DropdownMenuItem(
-                                    text = { Text("Reconnect device") },
+                                    text = { Text("Reconnect · scan code") },
                                     onClick = { menu = false; launchReconnectScan(child.childId) },
                                     leadingIcon = { androidx.compose.material3.Icon(Icons.Filled.QrCodeScanner, contentDescription = null, tint = AppTheme.colors.accent) },
+                                )
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text("Reconnect · from gallery") },
+                                    onClick = { menu = false; launchReconnectFromGallery(child.childId) },
+                                    leadingIcon = { androidx.compose.material3.Icon(Icons.Filled.Image, contentDescription = null, tint = AppTheme.colors.accent) },
                                 )
                                 androidx.compose.material3.DropdownMenuItem(
                                     text = { Text("Remove", color = AppTheme.colors.destructive) },

@@ -58,6 +58,14 @@
             android:taskAffinity=""
             android:theme="@style/Theme.ChildApp" />
 
+        <!-- Parent enters the removal PIN to allow uninstalling Shield. -->
+        <activity
+            android:name=".enforcement.PinUnlockActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.ChildApp" />
+
         <!-- Full-screen alarm shown when the parent rings the device. -->
         <activity
             android:name=".location.RingActivity"

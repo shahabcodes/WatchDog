@@ -5,6 +5,7 @@ import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
 import com.shahaabapps.core.firebase.auth.AuthRepository
 import com.shahaabapps.core.firebase.child.ChildRepository
+import com.shahaabapps.core.firebase.protection.ProtectionRepository
 import com.shahaabapps.core.firebase.rules.AppRulesRepository
 import com.shahaabapps.core.model.AppRule
 import dagger.hilt.android.AndroidEntryPoint
@@ -27,6 +28,7 @@ class EnforcementService : AccessibilityService() {
     @Inject lateinit var authRepository: AuthRepository
     @Inject lateinit var childRepository: ChildRepository
     @Inject lateinit var usageTracker: UsageTracker
+    @Inject lateinit var protectionRepository: ProtectionRepository
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -53,12 +55,26 @@ class EnforcementService : AccessibilityService() {
                 supervised = child?.isLinked == true
             }
         }
+        serviceScope.launch {
+            protectionRepository.observe(childId).collectLatest { settings ->
+                ProtectionLocalStore.setBlocked(this@EnforcementService, settings.uninstallBlocked)
+                // Parent turned protection off → release device admin so the app
+                // can be uninstalled again.
+                if (!settings.uninstallBlocked && DeviceAdmin.isActive(this@EnforcementService)) {
+                    DeviceAdmin.remove(this@EnforcementService)
+                }
+            }
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
-        if (!supervised) return // device no longer supervised — no restrictions
         val packageName = event.packageName?.toString() ?: return
+
+        // Uninstall protection runs independently of app-limit enforcement.
+        guardUninstall(packageName, event.className?.toString())
+
+        if (!supervised) return // device no longer supervised — no restrictions
         if (packageName == this.packageName) return
 
         val rule = rulesByPackage[packageName] ?: return
@@ -82,6 +98,22 @@ class EnforcementService : AccessibilityService() {
             putExtra(BlockActivity.EXTRA_REASON, reason)
         }
         startActivity(intent)
+    }
+
+    /**
+     * When uninstall protection is on and device admin is active, bounce the user
+     * out of the uninstall dialog or the "deactivate device admin" screen — unless
+     * a parent has unlocked a removal window with the PIN.
+     */
+    private fun guardUninstall(packageName: String, className: String?) {
+        if (!ProtectionLocalStore.isBlocked(this)) return
+        if (!DeviceAdmin.isActive(this)) return
+        if (ProtectionLocalStore.isUnlocked(this)) return
+        if (ProtectionLocalStore.isUninstallScreen(packageName, className) ||
+            ProtectionLocalStore.isAdminRemovalScreen(packageName, className)
+        ) {
+            performGlobalAction(GLOBAL_ACTION_HOME)
+        }
     }
 
     override fun onInterrupt() = Unit

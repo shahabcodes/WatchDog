@@ -49,6 +49,21 @@ fun ProtectionSetupCard(
             if (adminActive) {
                 Text("Uninstall protection", style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
                 StatusChip(text = "Active", color = AppTheme.colors.success)
+                CupertinoListRow(
+                    title = "Allow removal",
+                    subtitle = "Parent PIN required",
+                    showDivider = false,
+                    trailing = {
+                        Text(
+                            text = "Enter PIN",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = AppTheme.colors.accent,
+                            modifier = Modifier
+                                .clickable { context.startActivity(android.content.Intent(context, PinUnlockActivity::class.java)) }
+                                .padding(horizontal = Spacing.sm, vertical = 4.dp),
+                        )
+                    },
+                )
             } else {
                 Text("Protect this app", style = MaterialTheme.typography.titleMedium)
                 Text(

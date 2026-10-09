@@ -2,4 +2,5 @@
 <resources>
     <string name="app_name">Shield</string>
     <string name="accessibility_description">Shield uses this to see which app is open so it can apply the time limits and blocks set by a parent. It does not read screen content.</string>
+    <string name="device_admin_description">Lets Watch Dog stop Shield from being uninstalled. A parent turns this off with a PIN.</string>
 </resources>

@@ -26,25 +26,36 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         val event = GeofencingEvent.fromIntent(intent) ?: return
         if (event.hasError()) return
 
-        val transition = when (event.geofenceTransition) {
-            GmsGeofence.GEOFENCE_TRANSITION_ENTER -> GeofenceTransition.ENTER
-            GmsGeofence.GEOFENCE_TRANSITION_EXIT -> GeofenceTransition.EXIT
-            else -> return
-        }
+        val gmsTransition = event.geofenceTransition
         val childId = authRepository.currentUserIdOrNull() ?: return
         val triggering = event.triggeringGeofences ?: return
         val lat = event.triggeringLocation?.latitude ?: 0.0
         val lng = event.triggeringLocation?.longitude ?: 0.0
         val now = System.currentTimeMillis()
 
+        // Map Play Services transitions to our model, honouring the inner/outer
+        // geofence design: DWELL on the inner fence = "arrived", EXIT on the
+        // outer (radius + buffer) fence = "left". Raw ENTER is ignored.
+        val reports = triggering.mapNotNull { gf ->
+            val reqId = gf.requestId
+            when {
+                gmsTransition == GmsGeofence.GEOFENCE_TRANSITION_DWELL && !reqId.endsWith(EXIT_GEOFENCE_SUFFIX) ->
+                    reqId to GeofenceTransition.ENTER
+                gmsTransition == GmsGeofence.GEOFENCE_TRANSITION_EXIT && reqId.endsWith(EXIT_GEOFENCE_SUFFIX) ->
+                    reqId.removeSuffix(EXIT_GEOFENCE_SUFFIX) to GeofenceTransition.EXIT
+                else -> null
+            }
+        }
+        if (reports.isEmpty()) return
+
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                triggering.forEach { gf ->
+                reports.forEach { (geofenceId, transition) ->
                     geofenceRepository.reportEvent(
                         childId,
                         GeofenceEvent(
-                            geofenceId = gf.requestId,
+                            geofenceId = geofenceId,
                             transition = transition,
                             latitude = lat,
                             longitude = lng,

@@ -13,6 +13,15 @@ import com.shahaabapps.core.model.GeofenceTrigger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 
+/** Suffix marking the outer "exit" geofence (radius + buffer). */
+const val EXIT_GEOFENCE_SUFFIX = "#exit"
+
+/** How far beyond a place's boundary the child must go before a "left" alert fires. */
+const val EXIT_BUFFER_METERS = 100f
+
+/** How long the child must stay inside before an "arrived" alert fires (dwell). */
+const val DWELL_DELAY_MS = 60_000
+
 /** Registers the parent's geofences with Play Services. */
 class GeofenceRegistrar @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -35,25 +44,43 @@ class GeofenceRegistrar @Inject constructor(
         val active = geofences.filter { it.active && it.id.isNotBlank() }
         if (active.isEmpty()) return
 
-        val gmsGeofences = active.map { g ->
-            GmsGeofence.Builder()
-                .setRequestId(g.id)
-                .setCircularRegion(g.latitude, g.longitude, g.radiusMeters)
-                .setExpirationDuration(GmsGeofence.NEVER_EXPIRE)
-                .setTransitionTypes(transitionMask(g.trigger))
-                .build()
+        val gmsGeofences = buildList {
+            active.forEach { g ->
+                val wantsEnter = g.trigger == GeofenceTrigger.ENTER || g.trigger == GeofenceTrigger.ENTER_EXIT
+                val wantsExit = g.trigger == GeofenceTrigger.EXIT || g.trigger == GeofenceTrigger.ENTER_EXIT
+
+                // Inner geofence → "arrived" via DWELL (must stay inside a short
+                // while), so passing by doesn't trigger an alert.
+                if (wantsEnter) {
+                    add(
+                        GmsGeofence.Builder()
+                            .setRequestId(g.id)
+                            .setCircularRegion(g.latitude, g.longitude, g.radiusMeters)
+                            .setExpirationDuration(GmsGeofence.NEVER_EXPIRE)
+                            .setTransitionTypes(GmsGeofence.GEOFENCE_TRANSITION_DWELL)
+                            .setLoiteringDelay(DWELL_DELAY_MS)
+                            .build(),
+                    )
+                }
+                // Outer geofence (radius + 100 m) → "left" only once clearly away,
+                // which avoids GPS-jitter alerts right at the boundary.
+                if (wantsExit) {
+                    add(
+                        GmsGeofence.Builder()
+                            .setRequestId(g.id + EXIT_GEOFENCE_SUFFIX)
+                            .setCircularRegion(g.latitude, g.longitude, g.radiusMeters + EXIT_BUFFER_METERS)
+                            .setExpirationDuration(GmsGeofence.NEVER_EXPIRE)
+                            .setTransitionTypes(GmsGeofence.GEOFENCE_TRANSITION_EXIT)
+                            .build(),
+                    )
+                }
+            }
         }
+        if (gmsGeofences.isEmpty()) return
         val request = GeofencingRequest.Builder()
             .setInitialTrigger(0)
             .addGeofences(gmsGeofences)
             .build()
         runCatching { client.addGeofences(request, pendingIntent) }
-    }
-
-    private fun transitionMask(trigger: GeofenceTrigger): Int = when (trigger) {
-        GeofenceTrigger.ENTER -> GmsGeofence.GEOFENCE_TRANSITION_ENTER
-        GeofenceTrigger.EXIT -> GmsGeofence.GEOFENCE_TRANSITION_EXIT
-        GeofenceTrigger.ENTER_EXIT ->
-            GmsGeofence.GEOFENCE_TRANSITION_ENTER or GmsGeofence.GEOFENCE_TRANSITION_EXIT
     }
 }

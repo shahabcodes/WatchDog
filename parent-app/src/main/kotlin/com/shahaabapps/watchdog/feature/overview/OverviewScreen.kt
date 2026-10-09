@@ -1,5 +1,6 @@
 package com.shahaabapps.watchdog.feature.overview
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,7 +38,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -131,7 +137,7 @@ fun OverviewScreen(
         ProtectionCard(blocked = protection.uninstallBlocked, onClick = { showProtectionSheet = true })
 
         SectionHeader("App usage today")
-        UsageChart(state.topApps)
+        UsageChart(state.screenTimeMinutes, state.topApps)
         Spacer(Modifier.height(Spacing.md))
     }
 
@@ -289,8 +295,16 @@ private fun LocationCard(
     }
 }
 
+private val USAGE_PALETTE = listOf(
+    Color(0xFF4285F4),
+    Color(0xFF34A853),
+    Color(0xFFFBBC04),
+    Color(0xFFEA4335),
+    Color(0xFFA142F4),
+)
+
 @Composable
-private fun UsageChart(apps: List<AppUsageItem>) {
+private fun UsageChart(totalMinutes: Int, apps: List<AppUsageItem>) {
     CupertinoCard {
         if (apps.isEmpty()) {
             Text(
@@ -301,6 +315,7 @@ private fun UsageChart(apps: List<AppUsageItem>) {
         } else {
             val maxMinutes = apps.maxOf { it.minutes }.coerceAtLeast(1)
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                UsageDonut(totalMinutes = totalMinutes, apps = apps)
                 apps.forEach { item ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         AppIcon(base64 = item.iconBase64, label = item.label, size = 32.dp)
@@ -341,6 +356,73 @@ private fun UsageChart(apps: List<AppUsageItem>) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun UsageDonut(totalMinutes: Int, apps: List<AppUsageItem>) {
+    if (totalMinutes <= 0) return
+    val sumTop = apps.sumOf { it.minutes }
+    val other = (totalMinutes - sumTop).coerceAtLeast(0)
+    val otherColor = AppTheme.colors.secondaryLabel.copy(alpha = 0.3f)
+    val segments = buildList {
+        apps.forEachIndexed { i, a -> add(USAGE_PALETTE[i % USAGE_PALETTE.size] to a.minutes) }
+        if (other > 0) add(otherColor to other)
+    }
+    val total = segments.sumOf { it.second }.coerceAtLeast(1)
+
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+        Box(modifier = Modifier.size(120.dp), contentAlignment = Alignment.Center) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val strokePx = 20.dp.toPx()
+                val diameter = size.minDimension - strokePx
+                val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
+                var start = -90f
+                segments.forEach { (color, minutes) ->
+                    val sweep = 360f * minutes / total
+                    drawArc(
+                        color = color,
+                        startAngle = start,
+                        sweepAngle = (sweep - 2f).coerceAtLeast(0f),
+                        useCenter = false,
+                        topLeft = topLeft,
+                        size = Size(diameter, diameter),
+                        style = Stroke(width = strokePx, cap = StrokeCap.Round),
+                    )
+                    start += sweep
+                }
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(formatDuration(totalMinutes), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("today", style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
+            }
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            apps.forEachIndexed { i, a ->
+                LegendRow(USAGE_PALETTE[i % USAGE_PALETTE.size], a.label, formatDuration(a.minutes))
+            }
+            if (other > 0) LegendRow(otherColor, "Other", formatDuration(other))
+        }
+    }
+}
+
+@Composable
+private fun LegendRow(color: Color, label: String, value: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .clip(RoundedCornerShape(50))
+                .background(color),
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).padding(start = Spacing.sm),
+        )
+        Text(value, style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
     }
 }
 

@@ -68,6 +68,7 @@ import com.shahaabapps.watchdog.util.drawLiveDot
 import com.shahaabapps.watchdog.util.drawMapMarker
 import com.shahaabapps.watchdog.util.drawVertex
 import com.shahaabapps.watchdog.util.rememberOpenFreeMapController
+import com.shahaabapps.core.ui.components.rememberReducedMotion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -94,6 +95,10 @@ import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.History
@@ -213,6 +218,7 @@ fun GeofenceScreen(
     val routeGreenCasing = Color(0xFF1E8E3E)
     val routeCorePx = with(density) { 7.dp.toPx() }
     val routeCasingPx = with(density) { 11.dp.toPx() }
+    val livePulse = liveLocationPulse(animate = !rememberReducedMotion())
     val iconPainters: Map<String, Painter> =
         PlaceIcons.options.associate { (key, vector) -> key to rememberVectorPainter(vector) }
     fun painterFor(key: String): Painter? = iconPainters[key] ?: iconPainters["place"]
@@ -338,7 +344,7 @@ fun GeofenceScreen(
                                 strokeWidthPx = 2f,
                             )
                         }
-                        drawLiveDot(controller, loc.latitude, loc.longitude, accent, childPx * 0.5f)
+                        drawLiveDot(controller, loc.latitude, loc.longitude, accent, childPx * 0.5f, pulse = livePulse)
                     }
                 }
             },
@@ -969,6 +975,20 @@ private fun PlacesList(
             }
         }
     }
+}
+
+/** A repeating 0→1 pulse for the live-location dot; 0 (static) when reduced motion. */
+@Composable
+private fun liveLocationPulse(animate: Boolean): Float {
+    if (!animate) return 0f
+    val transition = rememberInfiniteTransition(label = "livePulse")
+    val pulse by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1900, easing = LinearEasing), RepeatMode.Restart),
+        label = "pulse",
+    )
+    return pulse
 }
 
 private fun relativeTime(millis: Long): String {

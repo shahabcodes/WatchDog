@@ -276,6 +276,8 @@ fun DrawScope.drawMapMarker(
 ) {
     val o = controller.toScreen(lat, lng) ?: return
     val r = diameterPx / 2f
+    // Soft drop shadow for depth.
+    drawCircle(color = Color.Black.copy(alpha = 0.16f), radius = r * 0.98f, center = Offset(o.x, o.y + r * 0.32f))
     drawCircle(color = ring, radius = r, center = o)
     drawCircle(color = accent, radius = r * 0.84f, center = o)
     if (icon != null) {
@@ -293,9 +295,15 @@ fun DrawScope.drawLiveDot(
     accent: Color,
     coreDiameterPx: Float,
     haloDiameterPx: Float = coreDiameterPx * 2.8f,
+    pulse: Float = 0f,
 ) {
     val o = controller.toScreen(lat, lng) ?: return
     val core = coreDiameterPx / 2f
+    // Expanding pulse ring (0..1), fading as it grows.
+    if (pulse > 0f) {
+        val pr = core * 1.1f + pulse * coreDiameterPx * 1.8f
+        drawCircle(color = accent.copy(alpha = 0.32f * (1f - pulse)), radius = pr, center = o)
+    }
     drawCircle(
         brush = Brush.radialGradient(
             listOf(accent.copy(alpha = 0.26f), accent.copy(alpha = 0.08f), Color.Transparent),

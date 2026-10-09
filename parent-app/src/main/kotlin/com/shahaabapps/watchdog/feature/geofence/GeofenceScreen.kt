@@ -210,8 +210,8 @@ fun GeofenceScreen(
     val routeCore = Color(0xFF4285F4)
     val routeCasing = Color(0xFF1967D2)
     val routeFaded = Color(0xFFB9C4D4)
-    val routeCorePx = with(density) { 6.dp.toPx() }
-    val routeCasingPx = with(density) { 9.dp.toPx() }
+    val routeCorePx = with(density) { 7.dp.toPx() }
+    val routeCasingPx = with(density) { 11.dp.toPx() }
     val iconPainters: Map<String, Painter> =
         PlaceIcons.options.associate { (key, vector) -> key to rememberVectorPainter(vector) }
     fun painterFor(key: String): Painter? = iconPainters[key] ?: iconPainters["place"]

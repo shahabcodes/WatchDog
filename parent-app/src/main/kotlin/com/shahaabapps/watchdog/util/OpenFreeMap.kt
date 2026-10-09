@@ -216,7 +216,11 @@ fun DrawScope.drawGeoPolyline(
     drawPath(path, color = color, style = Stroke(width = widthPx, cap = StrokeCap.Round, join = StrokeJoin.Round))
 }
 
-/** A Google-Maps-style route line: a darker casing with a lighter core on top. */
+/**
+ * A Google-Maps-navigation-style route line: a darker casing under a lighter
+ * core, smoothed into a flowing curve (Catmull-Rom spline) instead of jagged
+ * straight segments, with rounded caps/joins.
+ */
 fun DrawScope.drawGeoRoute(
     controller: OpenFreeMapController,
     points: List<Pair<Double, Double>>,
@@ -226,13 +230,37 @@ fun DrawScope.drawGeoRoute(
     casingWidthPx: Float,
 ) {
     if (points.size < 2) return
-    val path = Path()
-    points.forEachIndexed { i, (la, ln) ->
+    val screen = ArrayList<Offset>(points.size)
+    for ((la, ln) in points) {
         val o = controller.toScreen(la, ln) ?: return
-        if (i == 0) path.moveTo(o.x, o.y) else path.lineTo(o.x, o.y)
+        screen.add(o)
     }
+    val path = smoothPath(screen)
     drawPath(path, color = casing, style = Stroke(width = casingWidthPx, cap = StrokeCap.Round, join = StrokeJoin.Round))
     drawPath(path, color = core, style = Stroke(width = coreWidthPx, cap = StrokeCap.Round, join = StrokeJoin.Round))
+}
+
+/** Builds a smooth curve through [pts] using a Catmull-Rom → cubic Bézier conversion. */
+private fun smoothPath(pts: List<Offset>): Path {
+    val path = Path()
+    if (pts.isEmpty()) return path
+    path.moveTo(pts[0].x, pts[0].y)
+    if (pts.size < 3) {
+        for (i in 1 until pts.size) path.lineTo(pts[i].x, pts[i].y)
+        return path
+    }
+    for (i in 0 until pts.size - 1) {
+        val p0 = pts[if (i - 1 < 0) 0 else i - 1]
+        val p1 = pts[i]
+        val p2 = pts[i + 1]
+        val p3 = pts[if (i + 2 >= pts.size) pts.size - 1 else i + 2]
+        val c1x = p1.x + (p2.x - p0.x) / 6f
+        val c1y = p1.y + (p2.y - p0.y) / 6f
+        val c2x = p2.x - (p3.x - p1.x) / 6f
+        val c2y = p2.y - (p3.y - p1.y) / 6f
+        path.cubicTo(c1x, c1y, c2x, c2y, p2.x, p2.y)
+    }
+    return path
 }
 
 /** A circular themed badge with a tinted icon, like the old Google map markers. */

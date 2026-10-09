@@ -209,7 +209,6 @@ fun GeofenceScreen(
     // Google-style route colours for history playback.
     val routeCore = Color(0xFF4285F4)
     val routeCasing = Color(0xFF1967D2)
-    val routeFaded = Color(0xFFB9C4D4)
     val routeCorePx = with(density) { 7.dp.toPx() }
     val routeCasingPx = with(density) { 11.dp.toPx() }
     val iconPainters: Map<String, Painter> =
@@ -301,7 +300,7 @@ fun GeofenceScreen(
                     // Full recorded path (faded) + the travelled portion as a blue
                     // Google-Maps-style route + moving dot.
                     val allPts = trail.map { it.latitude to it.longitude }
-                    drawGeoRoute(controller, allPts, core = routeFaded, casing = routeFaded.copy(alpha = 0.6f), coreWidthPx = routeCorePx, casingWidthPx = routeCasingPx)
+                    drawGeoRoute(controller, allPts, core = routeCore.copy(alpha = 0.35f), casing = routeCasing.copy(alpha = 0.22f), coreWidthPx = routeCorePx, casingWidthPx = routeCasingPx)
                     val t = startMs + (progress.value * rangeMs).toLong()
                     val travelled = trail.filter { it.timestampMillis <= t }.map { it.latitude to it.longitude }
                     val cur = positionAt(trail, t)

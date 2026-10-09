@@ -138,6 +138,21 @@ fun ParentShell(
 
     val selectedChild = children.firstOrNull { it.childId == currentChildId } ?: children.first()
 
+    // If the selected child no longer exists (e.g. after a reconnect replaced its
+    // id, or a remove), move the UI to a child that does — otherwise the screens
+    // keep observing a deleted child and show "offline / no data".
+    androidx.compose.runtime.LaunchedEffect(children, currentChildId, currentTab) {
+        if (children.isNotEmpty() &&
+            Tab.entries.any { it.route == currentTab } &&
+            children.none { it.childId == currentChildId }
+        ) {
+            navController.navigate("$currentTab/${children.first().childId}") {
+                popUpTo("${Tab.OVERVIEW.route}/{childId}") { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+    }
+
     Scaffold(
         containerColor = AppTheme.colors.groupedBackground,
         topBar = {

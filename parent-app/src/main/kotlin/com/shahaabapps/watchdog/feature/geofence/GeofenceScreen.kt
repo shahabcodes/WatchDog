@@ -206,9 +206,11 @@ fun GeofenceScreen(
     val placePx = with(density) { 36.dp.toPx() }
     val childPx = with(density) { 40.dp.toPx() }
     val vertexPx = with(density) { 18.dp.toPx() }
-    // Google-style route colours for history playback.
+    // Google-style route colours for history playback: blue path, green fill.
     val routeCore = Color(0xFF4285F4)
     val routeCasing = Color(0xFF1967D2)
+    val routeGreen = Color(0xFF34A853)
+    val routeGreenCasing = Color(0xFF1E8E3E)
     val routeCorePx = with(density) { 7.dp.toPx() }
     val routeCasingPx = with(density) { 11.dp.toPx() }
     val iconPainters: Map<String, Painter> =
@@ -300,16 +302,17 @@ fun GeofenceScreen(
                     // Full recorded path (faded) + the travelled portion as a blue
                     // Google-Maps-style route + moving dot.
                     val allPts = trail.map { it.latitude to it.longitude }
-                    drawGeoRoute(controller, allPts, core = routeCore.copy(alpha = 0.35f), casing = routeCasing.copy(alpha = 0.22f), coreWidthPx = routeCorePx, casingWidthPx = routeCasingPx)
+                    // Full route in navigation blue; travelled portion fills in green.
+                    drawGeoRoute(controller, allPts, core = routeCore, casing = routeCasing, coreWidthPx = routeCorePx, casingWidthPx = routeCasingPx)
                     val t = startMs + (progress.value * rangeMs).toLong()
                     val travelled = trail.filter { it.timestampMillis <= t }.map { it.latitude to it.longitude }
                     val cur = positionAt(trail, t)
                     val travelledWithCur = if (cur != null) travelled + cur else travelled
-                    drawGeoRoute(controller, travelledWithCur, core = routeCore, casing = routeCasing, coreWidthPx = routeCorePx, casingWidthPx = routeCasingPx)
+                    drawGeoRoute(controller, travelledWithCur, core = routeGreen, casing = routeGreenCasing, coreWidthPx = routeCorePx, casingWidthPx = routeCasingPx)
                     travelState.stops.forEach { s ->
                         drawMapMarker(controller, s.stop.latitude, s.stop.longitude, accent.copy(alpha = 0.85f), placePx * 0.75f, icon = painterFor(s.placeIcon ?: "place"))
                     }
-                    cur?.let { (la, ln) -> drawLiveDot(controller, la, ln, routeCore, childPx * 0.5f) }
+                    cur?.let { (la, ln) -> drawLiveDot(controller, la, ln, routeGreen, childPx * 0.5f) }
                 } else {
                     // In-progress drawing
                     if (mode == DrawMode.PIN) {

@@ -12,12 +12,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Login
-import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.BatteryStd
@@ -39,10 +36,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shahaabapps.core.model.ChildLocation
+import com.shahaabapps.core.ui.components.AppIcon
 import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.components.CupertinoPrimaryButton
 import com.shahaabapps.core.ui.components.CupertinoTextButton
@@ -62,7 +61,6 @@ fun OverviewScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val childLocation by viewModel.childLocation.collectAsStateWithLifecycle()
-    val recentActivity by viewModel.recentActivity.collectAsStateWithLifecycle()
     var showRingSheet by remember { mutableStateOf(false) }
 
     Column(
@@ -121,8 +119,8 @@ fun OverviewScreen(
             onRing = { showRingSheet = true },
         )
 
-        SectionHeader("Recent activity")
-        ActivityCard(recentActivity)
+        SectionHeader("App usage today")
+        UsageChart(state.topApps)
         Spacer(Modifier.height(Spacing.md))
     }
 
@@ -188,45 +186,52 @@ private fun LocationCard(
 }
 
 @Composable
-private fun ActivityCard(activity: List<ActivityItem>) {
+private fun UsageChart(apps: List<AppUsageItem>) {
     CupertinoCard {
-        if (activity.isEmpty()) {
+        if (apps.isEmpty()) {
             Text(
-                "No place activity yet. Arrivals and departures from your saved places will appear here.",
+                "No app usage recorded today yet. The top apps by screen time will appear here.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = AppTheme.colors.secondaryLabel,
             )
         } else {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                activity.forEach { item ->
+            val maxMinutes = apps.maxOf { it.minutes }.coerceAtLeast(1)
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                apps.forEach { item ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    (if (item.entered) AppTheme.colors.success else AppTheme.colors.warn)
-                                        .copy(alpha = 0.15f),
-                                ),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                if (item.entered) Icons.AutoMirrored.Filled.Login else Icons.AutoMirrored.Filled.Logout,
-                                contentDescription = null,
-                                tint = if (item.entered) AppTheme.colors.success else AppTheme.colors.warn,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
+                        AppIcon(base64 = item.iconBase64, label = item.label, size = 32.dp)
                         Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
-                            Text(
-                                "${if (item.entered) "Arrived at" else "Left"} ${item.placeName}",
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                            Text(
-                                relativeTime(item.timeMillis),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = AppTheme.colors.secondaryLabel,
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    item.label,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Text(
+                                    formatDuration(item.minutes),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = AppTheme.colors.secondaryLabel,
+                                    modifier = Modifier.padding(start = Spacing.sm),
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp)
+                                    .height(8.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .background(AppTheme.colors.secondaryLabel.copy(alpha = 0.15f)),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(item.minutes.toFloat() / maxMinutes)
+                                        .height(8.dp)
+                                        .clip(RoundedCornerShape(50))
+                                        .background(AppTheme.colors.accent),
+                                )
+                            }
                         }
                     }
                 }

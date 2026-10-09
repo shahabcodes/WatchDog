@@ -216,6 +216,25 @@ fun DrawScope.drawGeoPolyline(
     drawPath(path, color = color, style = Stroke(width = widthPx, cap = StrokeCap.Round, join = StrokeJoin.Round))
 }
 
+/** A Google-Maps-style route line: a darker casing with a lighter core on top. */
+fun DrawScope.drawGeoRoute(
+    controller: OpenFreeMapController,
+    points: List<Pair<Double, Double>>,
+    core: Color,
+    casing: Color,
+    coreWidthPx: Float,
+    casingWidthPx: Float,
+) {
+    if (points.size < 2) return
+    val path = Path()
+    points.forEachIndexed { i, (la, ln) ->
+        val o = controller.toScreen(la, ln) ?: return
+        if (i == 0) path.moveTo(o.x, o.y) else path.lineTo(o.x, o.y)
+    }
+    drawPath(path, color = casing, style = Stroke(width = casingWidthPx, cap = StrokeCap.Round, join = StrokeJoin.Round))
+    drawPath(path, color = core, style = Stroke(width = coreWidthPx, cap = StrokeCap.Round, join = StrokeJoin.Round))
+}
+
 /** A circular themed badge with a tinted icon, like the old Google map markers. */
 fun DrawScope.drawMapMarker(
     controller: OpenFreeMapController,

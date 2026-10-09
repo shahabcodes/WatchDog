@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pentagon
 import androidx.compose.material.icons.filled.Place
@@ -62,6 +63,7 @@ import com.shahaabapps.watchdog.util.OpenFreeMap
 import com.shahaabapps.watchdog.util.drawGeoCircle
 import com.shahaabapps.watchdog.util.drawGeoPolygon
 import com.shahaabapps.watchdog.util.drawGeoPolyline
+import com.shahaabapps.watchdog.util.drawGeoRoute
 import com.shahaabapps.watchdog.util.drawLiveDot
 import com.shahaabapps.watchdog.util.drawMapMarker
 import com.shahaabapps.watchdog.util.drawVertex
@@ -159,6 +161,7 @@ fun GeofenceScreen(
     var showList by remember { mutableStateOf(false) }
     var editingGeofence by remember { mutableStateOf<Geofence?>(null) }
     var selectedIcon by remember { mutableStateOf("home") }
+    var showCategorySheet by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -203,6 +206,12 @@ fun GeofenceScreen(
     val placePx = with(density) { 36.dp.toPx() }
     val childPx = with(density) { 40.dp.toPx() }
     val vertexPx = with(density) { 18.dp.toPx() }
+    // Google-style route colours for history playback.
+    val routeCore = Color(0xFF4285F4)
+    val routeCasing = Color(0xFF1967D2)
+    val routeFaded = Color(0xFFB9C4D4)
+    val routeCorePx = with(density) { 6.dp.toPx() }
+    val routeCasingPx = with(density) { 9.dp.toPx() }
     val iconPainters: Map<String, Painter> =
         PlaceIcons.options.associate { (key, vector) -> key to rememberVectorPainter(vector) }
     fun painterFor(key: String): Painter? = iconPainters[key] ?: iconPainters["place"]
@@ -289,18 +298,19 @@ fun GeofenceScreen(
                 }
 
                 if (historyMode) {
-                    // Full recorded path (faded) + the travelled portion (solid) + moving dot.
+                    // Full recorded path (faded) + the travelled portion as a blue
+                    // Google-Maps-style route + moving dot.
                     val allPts = trail.map { it.latitude to it.longitude }
-                    drawGeoPolyline(controller, allPts, accent.copy(alpha = 0.25f), 6f)
+                    drawGeoRoute(controller, allPts, core = routeFaded, casing = routeFaded.copy(alpha = 0.6f), coreWidthPx = routeCorePx, casingWidthPx = routeCasingPx)
                     val t = startMs + (progress.value * rangeMs).toLong()
                     val travelled = trail.filter { it.timestampMillis <= t }.map { it.latitude to it.longitude }
                     val cur = positionAt(trail, t)
                     val travelledWithCur = if (cur != null) travelled + cur else travelled
-                    drawGeoPolyline(controller, travelledWithCur, accent, 8f)
+                    drawGeoRoute(controller, travelledWithCur, core = routeCore, casing = routeCasing, coreWidthPx = routeCorePx, casingWidthPx = routeCasingPx)
                     travelState.stops.forEach { s ->
                         drawMapMarker(controller, s.stop.latitude, s.stop.longitude, accent.copy(alpha = 0.85f), placePx * 0.75f, icon = painterFor(s.placeIcon ?: "place"))
                     }
-                    cur?.let { (la, ln) -> drawLiveDot(controller, la, ln, accent, childPx * 0.5f) }
+                    cur?.let { (la, ln) -> drawLiveDot(controller, la, ln, routeCore, childPx * 0.5f) }
                 } else {
                     // In-progress drawing
                     if (mode == DrawMode.PIN) {
@@ -370,6 +380,14 @@ fun GeofenceScreen(
                     selected = historyMode,
                     onClick = { historyMode = true },
                 )
+                if (!historyMode) {
+                    // One compact chip; tap to pick what to add (keeps the map clear).
+                    AddPlaceChip(
+                        mode = mode,
+                        selectedIcon = selectedIcon,
+                        onClick = { showCategorySheet = true },
+                    )
+                }
             }
 
             if (historyMode) {
@@ -382,27 +400,6 @@ fun GeofenceScreen(
                     SelectorPill(Icons.Filled.Schedule, minuteLabel(travelState.toMinute), { showToPicker = true }, Modifier.weight(1f))
                 }
             } else {
-                // Category pills wrap across multiple rows.
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md),
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-                    verticalArrangement = Arrangement.spacedBy(Spacing.sm),
-                ) {
-                    CategoryPill(
-                        label = "Draw area",
-                        icon = Icons.Filled.Pentagon,
-                        selected = mode == DrawMode.AREA,
-                        onClick = { mode = DrawMode.AREA; pending = null },
-                    )
-                    PLACE_CATEGORIES.forEach { (key, label) ->
-                        CategoryPill(
-                            label = label,
-                            icon = PlaceIcons.forKey(key),
-                            selected = mode == DrawMode.PIN && selectedIcon == key,
-                            onClick = { mode = DrawMode.PIN; area = emptyList(); selectedIcon = key },
-                        )
-                    }
-                }
                 HintPill(
                     text = if (mode == DrawMode.PIN) {
                         "Tap the map to drop ${categoryLabel(selectedIcon)}"
@@ -482,6 +479,21 @@ fun GeofenceScreen(
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 88.dp),
         )
+    }
+
+    // "What do you want to add?" sheet (compact picker on the map)
+    if (showCategorySheet) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(onDismissRequest = { showCategorySheet = false }, sheetState = sheetState) {
+            CategorySheet(
+                mode = mode,
+                selectedIcon = selectedIcon,
+                onPickCategory = { key ->
+                    mode = DrawMode.PIN; area = emptyList(); selectedIcon = key; showCategorySheet = false
+                },
+                onPickArea = { mode = DrawMode.AREA; pending = null; showCategorySheet = false },
+            )
+        }
     }
 
     // Circle naming sheet
@@ -576,6 +588,69 @@ fun GeofenceScreen(
             onDismiss = { showToPicker = false },
             onConfirm = { travelVm.setTimeRange(travelState.fromMinute, it); showToPicker = false },
         )
+    }
+}
+
+/** Compact chip showing the current add-selection; tap to open the full picker. */
+@Composable
+private fun AddPlaceChip(mode: DrawMode, selectedIcon: String, onClick: () -> Unit) {
+    val icon = if (mode == DrawMode.AREA) Icons.Filled.Pentagon else PlaceIcons.forKey(selectedIcon)
+    val label = if (mode == DrawMode.AREA) "Draw area" else categoryName(selectedIcon).ifBlank { "Add place" }
+    Surface(
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+        color = AppTheme.colors.accent,
+        tonalElevation = 2.dp,
+        shadowElevation = 3.dp,
+        modifier = Modifier.clickable(onClick = onClick),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+        ) {
+            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White,
+                modifier = Modifier.padding(start = 6.dp),
+            )
+            Icon(Icons.Filled.ExpandMore, contentDescription = "Change", tint = Color.White, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CategorySheet(
+    mode: DrawMode,
+    selectedIcon: String,
+    onPickCategory: (String) -> Unit,
+    onPickArea: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl),
+        verticalArrangement = Arrangement.spacedBy(Spacing.md),
+    ) {
+        Text("What do you want to add?", style = MaterialTheme.typography.headlineMedium)
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+        ) {
+            CategoryPill(
+                label = "Draw area",
+                icon = Icons.Filled.Pentagon,
+                selected = mode == DrawMode.AREA,
+                onClick = onPickArea,
+            )
+            PLACE_CATEGORIES.forEach { (key, label) ->
+                CategoryPill(
+                    label = label,
+                    icon = PlaceIcons.forKey(key),
+                    selected = mode == DrawMode.PIN && selectedIcon == key,
+                    onClick = { onPickCategory(key) },
+                )
+            }
+        }
     }
 }
 

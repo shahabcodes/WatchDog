@@ -74,6 +74,8 @@ fun OverviewScreen(
     val childLocation by viewModel.childLocation.collectAsStateWithLifecycle()
     val protectionVm: com.shahaabapps.watchdog.feature.protection.ProtectionViewModel = hiltViewModel()
     val protection by protectionVm.settings.collectAsStateWithLifecycle()
+    val pendingVm: com.shahaabapps.watchdog.feature.protection.PendingAppsViewModel = hiltViewModel()
+    val pendingApps by pendingVm.pending.collectAsStateWithLifecycle()
     var showRingSheet by remember { mutableStateOf(false) }
     var showProtectionSheet by remember { mutableStateOf(false) }
 
@@ -133,6 +135,15 @@ fun OverviewScreen(
             onRing = { showRingSheet = true },
         )
 
+        if (pendingApps.isNotEmpty()) {
+            SectionHeader("New apps to review")
+            PendingAppsCard(
+                apps = pendingApps,
+                onAllow = { pendingVm.allow(it) },
+                onKeepBlocked = { pendingVm.keepBlocked(it) },
+            )
+        }
+
         SectionHeader("Protection")
         ProtectionCard(blocked = protection.uninstallBlocked, onClick = { showProtectionSheet = true })
 
@@ -158,11 +169,50 @@ fun OverviewScreen(
         ModalBottomSheet(onDismissRequest = { showProtectionSheet = false }, sheetState = sheetState) {
             ProtectionEditor(
                 initial = protection,
-                onSave = { blocked, pin ->
-                    protectionVm.save(blocked, pin)
+                onSave = { settings ->
+                    protectionVm.save(settings)
                     showProtectionSheet = false
                 },
             )
+        }
+    }
+}
+
+@Composable
+private fun PendingAppsCard(
+    apps: List<com.shahaabapps.core.model.PendingApp>,
+    onAllow: (String) -> Unit,
+    onKeepBlocked: (String) -> Unit,
+) {
+    CupertinoCard {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+            apps.forEach { app ->
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(AppTheme.colors.warn.copy(alpha = 0.15f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(Icons.Filled.Apps, contentDescription = null, tint = AppTheme.colors.warn)
+                        }
+                        Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
+                            Text(app.label.ifBlank { app.packageName }, style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                "Just installed · blocked for now",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AppTheme.colors.secondaryLabel,
+                            )
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                        CupertinoPrimaryButton(text = "Allow", onClick = { onAllow(app.packageName) }, modifier = Modifier.weight(1f))
+                        CupertinoTextButton(text = "Keep blocked", onClick = { onKeepBlocked(app.packageName) }, modifier = Modifier.weight(1f))
+                    }
+                }
+            }
         }
     }
 }
@@ -203,26 +253,22 @@ private fun ProtectionCard(blocked: Boolean, onClick: () -> Unit) {
 @Composable
 private fun ProtectionEditor(
     initial: com.shahaabapps.core.model.ProtectionSettings,
-    onSave: (blocked: Boolean, pin: String) -> Unit,
+    onSave: (com.shahaabapps.core.model.ProtectionSettings) -> Unit,
 ) {
     var blocked by remember { mutableStateOf(initial.uninstallBlocked) }
     var pin by remember { mutableStateOf(initial.pin) }
+    var blockNewApps by remember { mutableStateOf(initial.blockNewApps) }
     val pinValid = pin.length == 4 && pin.all { it.isDigit() }
 
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
-        Text("Prevent uninstall", style = MaterialTheme.typography.headlineMedium)
-        Text(
-            "Stops the child from removing Shield from their phone. Shield becomes a device admin and blocks the uninstall screen. To remove it, a parent enters the PIN below on the child's device.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = AppTheme.colors.secondaryLabel,
-        )
+        Text("Protection", style = MaterialTheme.typography.headlineMedium)
         CupertinoCard {
             CupertinoListRow(
                 title = "Prevent uninstall",
-                subtitle = "Protect Shield on the child's phone",
+                subtitle = "Shield can't be removed without the PIN",
                 showDivider = false,
                 trailing = { CupertinoSwitch(checked = blocked, onCheckedChange = { blocked = it }) },
             )
@@ -239,10 +285,26 @@ private fun ProtectionEditor(
                 Text("Enter exactly 4 digits.", color = AppTheme.colors.destructive, style = MaterialTheme.typography.bodySmall)
             }
         }
+        CupertinoCard {
+            CupertinoListRow(
+                title = "Block new apps",
+                subtitle = "Newly installed apps are blocked until you approve them",
+                showDivider = false,
+                trailing = { CupertinoSwitch(checked = blockNewApps, onCheckedChange = { blockNewApps = it }) },
+            )
+        }
         CupertinoPrimaryButton(
             text = "Save",
             enabled = !blocked || pinValid,
-            onClick = { onSave(blocked, if (blocked) pin else "") },
+            onClick = {
+                onSave(
+                    com.shahaabapps.core.model.ProtectionSettings(
+                        uninstallBlocked = blocked,
+                        pin = if (blocked) pin else "",
+                        blockNewApps = blockNewApps,
+                    ),
+                )
+            },
         )
     }
 }

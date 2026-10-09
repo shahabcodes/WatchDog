@@ -35,6 +35,7 @@ class FirebaseProtectionRepository @Inject constructor(
                 ProtectionSettings(
                     uninstallBlocked = snapshot?.getBoolean("uninstallBlocked") ?: false,
                     pin = snapshot?.getString("pin") ?: "",
+                    blockNewApps = snapshot?.getBoolean("blockNewApps") ?: false,
                 ),
             )
         }
@@ -47,6 +48,7 @@ class FirebaseProtectionRepository @Inject constructor(
                 mapOf(
                     "uninstallBlocked" to settings.uninstallBlocked,
                     "pin" to settings.pin,
+                    "blockNewApps" to settings.blockNewApps,
                     "updatedAtMillis" to System.currentTimeMillis(),
                 ),
             ).await()

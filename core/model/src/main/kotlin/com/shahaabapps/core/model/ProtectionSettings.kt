@@ -10,4 +10,13 @@ package com.shahaabapps.core.model
 data class ProtectionSettings(
     val uninstallBlocked: Boolean = false,
     val pin: String = "",
+    /** When true, newly installed apps are auto-blocked until the parent approves. */
+    val blockNewApps: Boolean = false,
+)
+
+/** An app installed on the child device that was auto-blocked, awaiting parent review. */
+data class PendingApp(
+    val packageName: String = "",
+    val label: String = "",
+    val installedAtMillis: Long = 0L,
 )

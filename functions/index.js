@@ -170,3 +170,61 @@ exports.notifyGeofenceEvent = onDocumentCreated(
     await Promise.all(deletions);
   }
 );
+
+/**
+ * When the child auto-blocks a newly installed app, push a review prompt to the
+ * linked parents.
+ *
+ * Firestore trigger: children/{childId}/pendingApps/{pkg}
+ */
+exports.notifyNewApp = onDocumentCreated(
+  "children/{childId}/pendingApps/{pkg}",
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+    const data = snap.data() || {};
+    const childId = event.params.childId;
+    const label = data.label || "An app";
+
+    const childSnap = await db.doc(`children/${childId}`).get();
+    if (!childSnap.exists) return;
+    const child = childSnap.data() || {};
+    const parents = Array.isArray(child.linkedParents) ? child.linkedParents : [];
+    if (parents.length === 0) return;
+    const childName =
+      (child.profile && child.profile.name) ? child.profile.name : "your child";
+
+    const title = `New app on ${childName}'s phone`;
+    const body = `${label} was just installed and we've blocked it. Tap to allow it or keep it blocked.`;
+
+    const tokenDocs = [];
+    for (const parentId of parents) {
+      const toks = await db.collection(`users/${parentId}/fcmTokens`).get();
+      toks.forEach((d) => tokenDocs.push({ parentId, token: d.id }));
+    }
+    if (tokenDocs.length === 0) return;
+
+    const message = {
+      tokens: tokenDocs.map((t) => t.token),
+      notification: { title, body },
+      data: { type: "newApp", childId, package: event.params.pkg },
+      android: { priority: "high", notification: { channelId: "geofence_alerts" } },
+    };
+    const resp = await getMessaging().sendEachForMulticast(message);
+
+    const deletions = [];
+    resp.responses.forEach((r, i) => {
+      if (!r.success) {
+        const code = r.error && r.error.code;
+        if (
+          code === "messaging/registration-token-not-registered" ||
+          code === "messaging/invalid-argument"
+        ) {
+          const t = tokenDocs[i];
+          deletions.push(db.doc(`users/${t.parentId}/fcmTokens/${t.token}`).delete());
+        }
+      }
+    });
+    await Promise.all(deletions);
+  }
+);

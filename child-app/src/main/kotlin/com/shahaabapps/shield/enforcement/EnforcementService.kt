@@ -1,13 +1,18 @@
 package com.shahaabapps.shield.enforcement
 
 import android.accessibilityservice.AccessibilityService
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.view.accessibility.AccessibilityEvent
 import com.shahaabapps.core.firebase.auth.AuthRepository
 import com.shahaabapps.core.firebase.child.ChildRepository
+import com.shahaabapps.core.firebase.protection.PendingAppsRepository
 import com.shahaabapps.core.firebase.protection.ProtectionRepository
 import com.shahaabapps.core.firebase.rules.AppRulesRepository
 import com.shahaabapps.core.model.AppRule
+import com.shahaabapps.core.model.PendingApp
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,8 +34,21 @@ class EnforcementService : AccessibilityService() {
     @Inject lateinit var childRepository: ChildRepository
     @Inject lateinit var usageTracker: UsageTracker
     @Inject lateinit var protectionRepository: ProtectionRepository
+    @Inject lateinit var pendingAppsRepository: PendingAppsRepository
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** Detects newly installed apps so they can be auto-blocked (when enabled). */
+    private val packageAddedReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != Intent.ACTION_PACKAGE_ADDED) return
+            if (intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) return
+            if (!ProtectionLocalStore.isBlockNewApps(this@EnforcementService)) return
+            val pkg = intent.data?.schemeSpecificPart ?: return
+            if (pkg == this@EnforcementService.packageName) return
+            handleNewApp(pkg)
+        }
+    }
 
     @Volatile
     private var rulesByPackage: Map<String, AppRule> = emptyMap()
@@ -58,12 +76,37 @@ class EnforcementService : AccessibilityService() {
         serviceScope.launch {
             protectionRepository.observe(childId).collectLatest { settings ->
                 ProtectionLocalStore.setBlocked(this@EnforcementService, settings.uninstallBlocked)
+                ProtectionLocalStore.setBlockNewApps(this@EnforcementService, settings.blockNewApps)
                 // Parent turned protection off → release device admin so the app
                 // can be uninstalled again.
                 if (!settings.uninstallBlocked && DeviceAdmin.isActive(this@EnforcementService)) {
                     DeviceAdmin.remove(this@EnforcementService)
                 }
             }
+        }
+
+        runCatching {
+            registerReceiver(
+                packageAddedReceiver,
+                IntentFilter(Intent.ACTION_PACKAGE_ADDED).apply { addDataScheme("package") },
+            )
+        }
+    }
+
+    private fun handleNewApp(pkg: String) {
+        val childId = authRepository.currentUserIdOrNull() ?: return
+        val pm = packageManager
+        // Only user-facing (launchable) apps.
+        pm.getLaunchIntentForPackage(pkg) ?: return
+        val label = runCatching {
+            pm.getApplicationInfo(pkg, 0).loadLabel(pm).toString()
+        }.getOrDefault(pkg)
+        serviceScope.launch {
+            appRulesRepository.saveAppRule(
+                childId,
+                AppRule(packageName = pkg, appLabel = label, blocked = true),
+            )
+            pendingAppsRepository.add(childId, PendingApp(pkg, label, System.currentTimeMillis()))
         }
     }
 
@@ -120,6 +163,7 @@ class EnforcementService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        runCatching { unregisterReceiver(packageAddedReceiver) }
         serviceScope.cancel()
     }
 }

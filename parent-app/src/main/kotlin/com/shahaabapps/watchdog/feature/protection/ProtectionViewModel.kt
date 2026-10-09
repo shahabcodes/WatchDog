@@ -23,9 +23,9 @@ class ProtectionViewModel @Inject constructor(
     val settings: StateFlow<ProtectionSettings> = protectionRepository.observe(childId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ProtectionSettings())
 
-    fun save(uninstallBlocked: Boolean, pin: String) {
+    fun save(settings: ProtectionSettings) {
         viewModelScope.launch {
-            protectionRepository.save(childId, ProtectionSettings(uninstallBlocked, pin))
+            protectionRepository.save(childId, settings)
         }
     }
 }

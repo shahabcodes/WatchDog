@@ -9,6 +9,7 @@ import com.shahaabapps.core.firebase.geofence.GeofenceRepository
 import com.shahaabapps.core.firebase.rules.AppRulesRepository
 import com.shahaabapps.core.firebase.usage.UsageRepository
 import com.shahaabapps.core.model.ChildLocation
+import com.shahaabapps.core.model.GeofenceTransition
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -25,7 +26,17 @@ data class OverviewUiState(
     val screenTimeMinutes: Int = 0,
     val limitedOrBlocked: Int = 0,
     val placesCount: Int = 0,
+    val batteryPercent: Int = 0,
+    val lastSeenMillis: Long = 0L,
+    val deviceModel: String = "",
     val loading: Boolean = true,
+)
+
+/** One recent geofence enter/exit, for the dashboard activity feed. */
+data class ActivityItem(
+    val placeName: String,
+    val entered: Boolean,
+    val timeMillis: Long,
 )
 
 @HiltViewModel
@@ -70,9 +81,26 @@ class OverviewViewModel @Inject constructor(
             screenTimeMinutes = screenTime,
             limitedOrBlocked = rules.count { it.blocked || it.dailyLimitMinutes != null },
             placesCount = geofences.size,
+            batteryPercent = child?.device?.batteryPercent ?: 0,
+            lastSeenMillis = lastSeen,
+            deviceModel = child?.device?.model ?: "",
             loading = false,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), OverviewUiState())
+
+    val recentActivity: StateFlow<List<ActivityItem>> = combine(
+        geofenceRepository.observeRecentEvents(childId, 6),
+        geofenceRepository.observeGeofences(childId),
+    ) { events, geofences ->
+        val names = geofences.associate { it.id to it.name }
+        events.map { e ->
+            ActivityItem(
+                placeName = names[e.geofenceId] ?: e.geofenceName.ifBlank { "a place" },
+                entered = e.transition == GeofenceTransition.ENTER,
+                timeMillis = e.timestampMillis,
+            )
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun ringDevice(message: String) {
         viewModelScope.launch { deviceRepository.sendRing(childId, message) }

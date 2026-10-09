@@ -5,16 +5,22 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Login
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.BatteryStd
 import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Place
@@ -56,6 +62,7 @@ fun OverviewScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val childLocation by viewModel.childLocation.collectAsStateWithLifecycle()
+    val recentActivity by viewModel.recentActivity.collectAsStateWithLifecycle()
     var showRingSheet by remember { mutableStateOf(false) }
 
     Column(
@@ -99,20 +106,24 @@ fun OverviewScreen(
                 onClick = onOpenMap,
             )
             StatTile(
-                value = "Open",
-                label = "Map & history",
-                icon = Icons.Filled.Map,
+                value = if (state.batteryPercent > 0) "${state.batteryPercent}%" else "—",
+                label = "Battery",
+                icon = Icons.Filled.BatteryStd,
                 modifier = Modifier.weight(1f),
-                onClick = onOpenMap,
             )
         }
 
         SectionHeader("Location")
         LocationCard(
             location = childLocation,
+            deviceModel = state.deviceModel,
             onOpenMap = onOpenMap,
             onRing = { showRingSheet = true },
         )
+
+        SectionHeader("Recent activity")
+        ActivityCard(recentActivity)
+        Spacer(Modifier.height(Spacing.md))
     }
 
     if (showRingSheet) {
@@ -132,6 +143,7 @@ fun OverviewScreen(
 @Composable
 private fun LocationCard(
     location: ChildLocation?,
+    deviceModel: String,
     onOpenMap: () -> Unit,
     onRing: () -> Unit,
 ) {
@@ -154,8 +166,12 @@ private fun LocationCard(
                 Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
                     Text("Live location", style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        text = location?.let { "Updated ${relativeTime(it.timestampMillis)} · tap to open the map" }
-                            ?: "Waiting for location…",
+                        text = location?.let {
+                            buildString {
+                                append("Updated ${relativeTime(it.timestampMillis)}")
+                                if (deviceModel.isNotBlank()) append(" · $deviceModel")
+                            }
+                        } ?: "Waiting for location…",
                         style = MaterialTheme.typography.bodySmall,
                         color = AppTheme.colors.secondaryLabel,
                     )
@@ -166,6 +182,54 @@ private fun LocationCard(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 CupertinoPrimaryButton(text = "Ring device", onClick = onRing, modifier = Modifier.weight(1f))
                 CupertinoTextButton(text = "Open map", onClick = onOpenMap, modifier = Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActivityCard(activity: List<ActivityItem>) {
+    CupertinoCard {
+        if (activity.isEmpty()) {
+            Text(
+                "No place activity yet. Arrivals and departures from your saved places will appear here.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = AppTheme.colors.secondaryLabel,
+            )
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                activity.forEach { item ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    (if (item.entered) AppTheme.colors.success else AppTheme.colors.warn)
+                                        .copy(alpha = 0.15f),
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                if (item.entered) Icons.AutoMirrored.Filled.Login else Icons.AutoMirrored.Filled.Logout,
+                                contentDescription = null,
+                                tint = if (item.entered) AppTheme.colors.success else AppTheme.colors.warn,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
+                            Text(
+                                "${if (item.entered) "Arrived at" else "Left"} ${item.placeName}",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Text(
+                                relativeTime(item.timeMillis),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AppTheme.colors.secondaryLabel,
+                            )
+                        }
+                    }
+                }
             }
         }
     }

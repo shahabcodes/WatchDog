@@ -237,6 +237,31 @@ fun DrawScope.drawMapMarker(
     }
 }
 
+/** A Google-Maps-style "current location" dot: soft halo + white-bordered core. */
+fun DrawScope.drawLiveDot(
+    controller: OpenFreeMapController,
+    lat: Double,
+    lng: Double,
+    accent: Color,
+    coreDiameterPx: Float,
+    haloDiameterPx: Float = coreDiameterPx * 2.8f,
+) {
+    val o = controller.toScreen(lat, lng) ?: return
+    val core = coreDiameterPx / 2f
+    drawCircle(
+        brush = Brush.radialGradient(
+            listOf(accent.copy(alpha = 0.26f), accent.copy(alpha = 0.08f), Color.Transparent),
+            center = o,
+            radius = haloDiameterPx / 2f,
+        ),
+        radius = haloDiameterPx / 2f,
+        center = o,
+    )
+    drawCircle(color = Color.White, radius = core * 1.5f, center = o)
+    drawCircle(color = accent, radius = core, center = o)
+    drawCircle(color = Color.White.copy(alpha = 0.85f), radius = core * 0.32f, center = o)
+}
+
 /** A small hollow vertex dot for area drawing. */
 fun DrawScope.drawVertex(
     controller: OpenFreeMapController,

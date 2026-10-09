@@ -3,6 +3,8 @@ package com.shahaabapps.watchdog.feature.geofence
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -24,7 +25,6 @@ import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pentagon
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -62,6 +62,7 @@ import com.shahaabapps.watchdog.util.OpenFreeMap
 import com.shahaabapps.watchdog.util.drawGeoCircle
 import com.shahaabapps.watchdog.util.drawGeoPolygon
 import com.shahaabapps.watchdog.util.drawGeoPolyline
+import com.shahaabapps.watchdog.util.drawLiveDot
 import com.shahaabapps.watchdog.util.drawMapMarker
 import com.shahaabapps.watchdog.util.drawVertex
 import com.shahaabapps.watchdog.util.rememberOpenFreeMapController
@@ -139,7 +140,7 @@ private fun categoryName(key: String): String =
 private fun categoryLabel(key: String): String =
     "a ${categoryName(key).lowercase().ifBlank { "place" }}"
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun GeofenceScreen(
     onBack: () -> Unit,
@@ -204,7 +205,6 @@ fun GeofenceScreen(
     val vertexPx = with(density) { 18.dp.toPx() }
     val iconPainters: Map<String, Painter> =
         PlaceIcons.options.associate { (key, vector) -> key to rememberVectorPainter(vector) }
-    val personPainter = rememberVectorPainter(Icons.Filled.Person)
     fun painterFor(key: String): Painter? = iconPainters[key] ?: iconPainters["place"]
 
     // ---- History / playback (reuses the travel data for this child) ----
@@ -300,7 +300,7 @@ fun GeofenceScreen(
                     travelState.stops.forEach { s ->
                         drawMapMarker(controller, s.stop.latitude, s.stop.longitude, accent.copy(alpha = 0.85f), placePx * 0.75f, icon = painterFor(s.placeIcon ?: "place"))
                     }
-                    cur?.let { (la, ln) -> drawMapMarker(controller, la, ln, accent, childPx, icon = personPainter) }
+                    cur?.let { (la, ln) -> drawLiveDot(controller, la, ln, accent, childPx * 0.5f) }
                 } else {
                     // In-progress drawing
                     if (mode == DrawMode.PIN) {
@@ -326,7 +326,7 @@ fun GeofenceScreen(
                                 strokeWidthPx = 2f,
                             )
                         }
-                        drawMapMarker(controller, loc.latitude, loc.longitude, accent, childPx, icon = personPainter)
+                        drawLiveDot(controller, loc.latitude, loc.longitude, accent, childPx * 0.5f)
                     }
                 }
             },
@@ -370,29 +370,6 @@ fun GeofenceScreen(
                     selected = historyMode,
                     onClick = { historyMode = true },
                 )
-                if (!historyMode) {
-                    LazyRow(
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-                    ) {
-                        item {
-                            CategoryPill(
-                                label = "Draw area",
-                                icon = Icons.Filled.Pentagon,
-                                selected = mode == DrawMode.AREA,
-                                onClick = { mode = DrawMode.AREA; pending = null },
-                            )
-                        }
-                        items(PLACE_CATEGORIES) { (key, label) ->
-                            CategoryPill(
-                                label = label,
-                                icon = PlaceIcons.forKey(key),
-                                selected = mode == DrawMode.PIN && selectedIcon == key,
-                                onClick = { mode = DrawMode.PIN; area = emptyList(); selectedIcon = key },
-                            )
-                        }
-                    }
-                }
             }
 
             if (historyMode) {
@@ -405,6 +382,27 @@ fun GeofenceScreen(
                     SelectorPill(Icons.Filled.Schedule, minuteLabel(travelState.toMinute), { showToPicker = true }, Modifier.weight(1f))
                 }
             } else {
+                // Category pills wrap across multiple rows.
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+                ) {
+                    CategoryPill(
+                        label = "Draw area",
+                        icon = Icons.Filled.Pentagon,
+                        selected = mode == DrawMode.AREA,
+                        onClick = { mode = DrawMode.AREA; pending = null },
+                    )
+                    PLACE_CATEGORIES.forEach { (key, label) ->
+                        CategoryPill(
+                            label = label,
+                            icon = PlaceIcons.forKey(key),
+                            selected = mode == DrawMode.PIN && selectedIcon == key,
+                            onClick = { mode = DrawMode.PIN; area = emptyList(); selectedIcon = key },
+                        )
+                    }
+                }
                 HintPill(
                     text = if (mode == DrawMode.PIN) {
                         "Tap the map to drop ${categoryLabel(selectedIcon)}"

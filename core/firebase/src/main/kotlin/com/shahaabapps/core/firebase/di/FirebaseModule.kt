@@ -12,6 +12,8 @@ import com.shahaabapps.core.firebase.geofence.FirebaseGeofenceRepository
 import com.shahaabapps.core.firebase.geofence.GeofenceRepository
 import com.shahaabapps.core.firebase.messaging.FirebaseMessagingTokenRepository
 import com.shahaabapps.core.firebase.messaging.MessagingTokenRepository
+import com.shahaabapps.core.firebase.protection.FirebaseProtectionRepository
+import com.shahaabapps.core.firebase.protection.ProtectionRepository
 import com.shahaabapps.core.firebase.rules.AppRulesRepository
 import com.shahaabapps.core.firebase.rules.FirebaseAppRulesRepository
 import com.shahaabapps.core.firebase.usage.FirebaseUsageRepository
@@ -82,4 +84,8 @@ interface FirebaseBindsModule {
     @Binds
     @Singleton
     fun bindMessagingTokenRepository(impl: FirebaseMessagingTokenRepository): MessagingTokenRepository
+
+    @Binds
+    @Singleton
+    fun bindProtectionRepository(impl: FirebaseProtectionRepository): ProtectionRepository
 }

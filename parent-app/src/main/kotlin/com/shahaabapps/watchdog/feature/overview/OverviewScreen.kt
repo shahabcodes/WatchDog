@@ -1,7 +1,7 @@
 package com.shahaabapps.watchdog.feature.overview
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,10 +9,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -38,14 +40,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shahaabapps.core.model.ChildLocation
@@ -91,16 +90,12 @@ fun OverviewScreen(
             .padding(horizontal = Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().padding(top = Spacing.md),
-        ) {
-            SectionHeader("Today", modifier = Modifier.weight(1f))
-            StatusChip(
-                text = if (state.online) "Online" else "Offline",
-                color = if (state.online) AppTheme.colors.success else AppTheme.colors.secondaryLabel,
-            )
-        }
+        GreetingHero(
+            childName = state.childName,
+            online = state.online,
+            onOpenMap = onOpenMap,
+            modifier = Modifier.padding(top = Spacing.md),
+        )
 
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             StatTile(
@@ -375,6 +370,66 @@ private val USAGE_PALETTE = listOf(
 )
 
 @Composable
+private fun GreetingHero(
+    childName: String,
+    online: Boolean,
+    onOpenMap: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    androidx.compose.material3.Surface(
+        shape = RoundedCornerShape(26.dp),
+        shadowElevation = 4.dp,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Box(
+            modifier = Modifier.background(
+                androidx.compose.ui.graphics.Brush.linearGradient(
+                    listOf(Color(0xFFA78BFA), Color(0xFFF0A6CA)),
+                ),
+            ),
+        ) {
+            // Soft decorative blob.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(end = 8.dp, top = 8.dp)
+                    .size(96.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.12f)),
+            )
+            Column(modifier = Modifier.padding(Spacing.lg)) {
+                Text("Keeping an eye out 👀", color = Color.White.copy(alpha = 0.9f), fontSize = 13.sp)
+                Text(
+                    childName.ifBlank { "Your child" },
+                    color = Color.White,
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Box(modifier = Modifier.padding(top = 8.dp)) {
+                    StatusChip(
+                        text = if (online) "Online" else "Offline",
+                        color = if (online) AppTheme.colors.success else AppTheme.colors.secondaryLabel,
+                    )
+                }
+                androidx.compose.material3.Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Color.White,
+                    modifier = Modifier.padding(top = Spacing.md).clickable(onClick = onOpenMap),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    ) {
+                        Icon(Icons.Filled.Map, contentDescription = null, tint = Color(0xFF8B5CF6), modifier = Modifier.size(18.dp))
+                        Text("Open map", color = Color(0xFF8B5CF6), fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 6.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun UsageChart(totalMinutes: Int, apps: List<AppUsageItem>) {
     CupertinoCard {
         if (apps.isEmpty()) {
@@ -384,116 +439,55 @@ private fun UsageChart(totalMinutes: Int, apps: List<AppUsageItem>) {
                 color = AppTheme.colors.secondaryLabel,
             )
         } else {
-            val maxMinutes = apps.maxOf { it.minutes }.coerceAtLeast(1)
+            val sumTop = apps.sumOf { it.minutes }
+            val other = (totalMinutes - sumTop).coerceAtLeast(0)
+            val otherColor = AppTheme.colors.secondaryLabel.copy(alpha = 0.25f)
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                UsageDonut(totalMinutes = totalMinutes, apps = apps)
-                apps.forEach { item ->
+                Text("Screen time", style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
+                Text(formatDuration(totalMinutes), fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                // Multi-colour stacked usage bar.
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(12.dp)
+                        .clip(RoundedCornerShape(50)),
+                ) {
+                    apps.forEachIndexed { i, a ->
+                        Box(
+                            modifier = Modifier
+                                .weight(a.minutes.toFloat().coerceAtLeast(0.01f))
+                                .fillMaxHeight()
+                                .background(USAGE_PALETTE[i % USAGE_PALETTE.size]),
+                        )
+                    }
+                    if (other > 0) {
+                        Box(modifier = Modifier.weight(other.toFloat()).fillMaxHeight().background(otherColor))
+                    }
+                }
+                apps.forEachIndexed { i, item ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        AppIcon(base64 = item.iconBase64, label = item.label, size = 32.dp)
-                        Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    item.label,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                Text(
-                                    formatDuration(item.minutes),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = AppTheme.colors.secondaryLabel,
-                                    modifier = Modifier.padding(start = Spacing.sm),
-                                )
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 4.dp)
-                                    .height(8.dp)
-                                    .clip(RoundedCornerShape(50))
-                                    .background(AppTheme.colors.secondaryLabel.copy(alpha = 0.15f)),
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth(item.minutes.toFloat() / maxMinutes)
-                                        .height(8.dp)
-                                        .clip(RoundedCornerShape(50))
-                                        .background(AppTheme.colors.accent),
-                                )
-                            }
-                        }
+                        Box(
+                            modifier = Modifier.size(10.dp).clip(RoundedCornerShape(50))
+                                .background(USAGE_PALETTE[i % USAGE_PALETTE.size]),
+                        )
+                        AppIcon(base64 = item.iconBase64, label = item.label, size = 28.dp, modifier = Modifier.padding(start = Spacing.sm))
+                        Text(
+                            item.label,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f).padding(start = Spacing.sm),
+                        )
+                        Text(
+                            formatDuration(item.minutes),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = AppTheme.colors.secondaryLabel,
+                        )
                     }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun UsageDonut(totalMinutes: Int, apps: List<AppUsageItem>) {
-    if (totalMinutes <= 0) return
-    val sumTop = apps.sumOf { it.minutes }
-    val other = (totalMinutes - sumTop).coerceAtLeast(0)
-    val otherColor = AppTheme.colors.secondaryLabel.copy(alpha = 0.3f)
-    val segments = buildList {
-        apps.forEachIndexed { i, a -> add(USAGE_PALETTE[i % USAGE_PALETTE.size] to a.minutes) }
-        if (other > 0) add(otherColor to other)
-    }
-    val total = segments.sumOf { it.second }.coerceAtLeast(1)
-
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
-        Box(modifier = Modifier.size(120.dp), contentAlignment = Alignment.Center) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val strokePx = 20.dp.toPx()
-                val diameter = size.minDimension - strokePx
-                val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
-                var start = -90f
-                segments.forEach { (color, minutes) ->
-                    val sweep = 360f * minutes / total
-                    drawArc(
-                        color = color,
-                        startAngle = start,
-                        sweepAngle = (sweep - 2f).coerceAtLeast(0f),
-                        useCenter = false,
-                        topLeft = topLeft,
-                        size = Size(diameter, diameter),
-                        style = Stroke(width = strokePx, cap = StrokeCap.Round),
-                    )
-                    start += sweep
-                }
-            }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(formatDuration(totalMinutes), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("today", style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
-            }
-        }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            apps.forEachIndexed { i, a ->
-                LegendRow(USAGE_PALETTE[i % USAGE_PALETTE.size], a.label, formatDuration(a.minutes))
-            }
-            if (other > 0) LegendRow(otherColor, "Other", formatDuration(other))
-        }
-    }
-}
-
-@Composable
-private fun LegendRow(color: Color, label: String, value: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(10.dp)
-                .clip(RoundedCornerShape(50))
-                .background(color),
-        )
-        Text(
-            label,
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f).padding(start = Spacing.sm),
-        )
-        Text(value, style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
     }
 }
 

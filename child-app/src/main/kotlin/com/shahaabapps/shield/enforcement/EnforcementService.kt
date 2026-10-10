@@ -5,13 +5,17 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.telecom.TelecomManager
 import android.view.accessibility.AccessibilityEvent
 import com.shahaabapps.core.firebase.auth.AuthRepository
 import com.shahaabapps.core.firebase.child.ChildRepository
+import com.shahaabapps.core.firebase.focus.FocusRepository
 import com.shahaabapps.core.firebase.protection.PendingAppsRepository
 import com.shahaabapps.core.firebase.protection.ProtectionRepository
 import com.shahaabapps.core.firebase.rules.AppRulesRepository
 import com.shahaabapps.core.model.AppRule
+import com.shahaabapps.core.model.FocusSettings
 import com.shahaabapps.core.model.PendingApp
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -20,6 +24,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import java.time.LocalDateTime
 import javax.inject.Inject
 
 /**
@@ -35,8 +40,16 @@ class EnforcementService : AccessibilityService() {
     @Inject lateinit var usageTracker: UsageTracker
     @Inject lateinit var protectionRepository: ProtectionRepository
     @Inject lateinit var pendingAppsRepository: PendingAppsRepository
+    @Inject lateinit var focusRepository: FocusRepository
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    @Volatile
+    private var focus: FocusSettings = FocusSettings()
+
+    /** Apps that must keep working during a focus window (home, phone, system UI). */
+    @Volatile
+    private var focusExempt: Set<String> = emptySet()
 
     /** Detects newly installed apps so they can be auto-blocked (when enabled). */
     private val packageAddedReceiver = object : BroadcastReceiver() {
@@ -73,6 +86,10 @@ class EnforcementService : AccessibilityService() {
                 supervised = child?.isLinked == true
             }
         }
+        serviceScope.launch {
+            focusRepository.observe(childId).collectLatest { focus = it }
+        }
+        focusExempt = computeFocusExempt()
         serviceScope.launch {
             protectionRepository.observe(childId).collectLatest { settings ->
                 ProtectionLocalStore.setBlocked(this@EnforcementService, settings.uninstallBlocked)
@@ -120,12 +137,53 @@ class EnforcementService : AccessibilityService() {
         if (!supervised) return // device no longer supervised — no restrictions
         if (packageName == this.packageName) return
 
+        // Focus windows (Bedtime / School) block everything except essentials.
+        val focusReason = activeFocusReason()
+        if (focusReason != null && packageName !in focusExempt) {
+            blockApp(packageName, appLabelFor(packageName), focusReason)
+            return
+        }
+
         val rule = rulesByPackage[packageName] ?: return
         val usedMinutes = usageTracker.todayForegroundMinutes(packageName)
         val decision = RuleEvaluator.evaluate(rule, usedMinutes)
         if (decision.block) {
             blockApp(packageName, rule.appLabel.ifBlank { packageName }, decision.reason)
         }
+    }
+
+    /** Returns a child-facing reason when a focus window is active now, else null. */
+    private fun activeFocusReason(): String? {
+        val now = LocalDateTime.now()
+        val minute = now.hour * 60 + now.minute
+        val iso = now.dayOfWeek.value // 1=Mon..7=Sun
+        return when {
+            focus.bedtime.activeAt(minute, iso) -> "Bedtime — time to wind down 😴"
+            focus.school.activeAt(minute, iso) -> "School time — stay focused 📚"
+            else -> null
+        }
+    }
+
+    private fun appLabelFor(packageName: String): String {
+        rulesByPackage[packageName]?.appLabel?.takeIf { it.isNotBlank() }?.let { return it }
+        return runCatching {
+            packageManager.getApplicationInfo(packageName, 0).loadLabel(packageManager).toString()
+        }.getOrDefault(packageName)
+    }
+
+    private fun computeFocusExempt(): Set<String> {
+        val exempt = mutableSetOf("android", "com.android.systemui", "com.android.phone")
+        // Home launcher — the child can always reach the home screen.
+        runCatching {
+            val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+            packageManager.resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY)
+                ?.activityInfo?.packageName?.let { exempt += it }
+        }
+        // Default dialer — emergency and normal calls must still work.
+        runCatching {
+            getSystemService(TelecomManager::class.java)?.defaultDialerPackage?.let { exempt += it }
+        }
+        return exempt
     }
 
     private fun blockApp(packageName: String, label: String, reason: String?) {

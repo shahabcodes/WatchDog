@@ -75,8 +75,11 @@ fun OverviewScreen(
     val protection by protectionVm.settings.collectAsStateWithLifecycle()
     val pendingVm: com.shahaabapps.watchdog.feature.protection.PendingAppsViewModel = hiltViewModel()
     val pendingApps by pendingVm.pending.collectAsStateWithLifecycle()
+    val focusVm: com.shahaabapps.watchdog.feature.focus.FocusViewModel = hiltViewModel()
+    val focus by focusVm.settings.collectAsStateWithLifecycle()
     var showRingSheet by remember { mutableStateOf(false) }
     var showProtectionSheet by remember { mutableStateOf(false) }
+    var showFocusSheet by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -148,6 +151,9 @@ fun OverviewScreen(
             )
         }
 
+        SectionHeader("Focus modes")
+        com.shahaabapps.watchdog.feature.focus.FocusCard(settings = focus, onEdit = { showFocusSheet = true })
+
         SectionHeader("Protection")
         ProtectionCard(blocked = protection.uninstallBlocked, onClick = { showProtectionSheet = true })
 
@@ -176,6 +182,19 @@ fun OverviewScreen(
                 onSave = { settings ->
                     protectionVm.save(settings)
                     showProtectionSheet = false
+                },
+            )
+        }
+    }
+
+    if (showFocusSheet) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(onDismissRequest = { showFocusSheet = false }, sheetState = sheetState) {
+            com.shahaabapps.watchdog.feature.focus.FocusEditor(
+                initial = focus,
+                onSave = { settings ->
+                    focusVm.save(settings)
+                    showFocusSheet = false
                 },
             )
         }

@@ -20,6 +20,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Ask to be exempt from battery optimization so the OS doesn't kill the
+         location/enforcement services in the background. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- Allows listing the device's launchable apps (to report to the parent)
          without the broad QUERY_ALL_PACKAGES permission. -->

@@ -46,6 +46,7 @@ import com.shahaabapps.shield.enforcement.EnforcementSetupCard
 import com.shahaabapps.shield.enforcement.ProtectionSetupCard
 import com.shahaabapps.shield.feature.settings.SettingsScreen
 import com.shahaabapps.shield.location.AlertsSetupCard
+import com.shahaabapps.shield.location.BatterySetupCard
 import com.shahaabapps.shield.location.LocationSetupCard
 
 @Composable
@@ -122,6 +123,7 @@ fun ProtectedScreen(
 
             EnforcementSetupCard()
             LocationSetupCard()
+            BatterySetupCard()
             AlertsSetupCard()
             ProtectionSetupCard()
         }

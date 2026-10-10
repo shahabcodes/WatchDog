@@ -378,6 +378,46 @@ private fun LocationCard(
                 Icon(Icons.Filled.Map, contentDescription = null, tint = AppTheme.colors.secondaryLabel)
             }
 
+            if (location != null) {
+                val accent = AppTheme.colors.accent
+                val density = androidx.compose.ui.platform.LocalDensity.current
+                val dotPx = with(density) { 12.dp.toPx() }
+                val miniMap = com.shahaabapps.watchdog.util.rememberOpenFreeMapController(
+                    location.latitude, location.longitude, 15.5,
+                )
+                // Keep the mini-map centred on the child as new fixes arrive.
+                androidx.compose.runtime.LaunchedEffect(location.latitude, location.longitude) {
+                    runCatching { miniMap.animateTo(location.latitude, location.longitude, 15.5) }
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(170.dp)
+                        .clip(RoundedCornerShape(16.dp)),
+                ) {
+                    com.shahaabapps.watchdog.util.OpenFreeMap(
+                        controller = miniMap,
+                        modifier = Modifier.fillMaxSize(),
+                        gesturesEnabled = false,
+                        onMapClick = { _, _ -> onOpenMap() },
+                        overlay = {
+                            if (location.accuracyMeters > 0f) {
+                                com.shahaabapps.watchdog.util.drawGeoCircle(
+                                    miniMap,
+                                    location.latitude, location.longitude, location.accuracyMeters.toDouble(),
+                                    fill = accent.copy(alpha = 0.12f),
+                                    stroke = accent.copy(alpha = 0.4f),
+                                    strokeWidthPx = 2f,
+                                )
+                            }
+                            com.shahaabapps.watchdog.util.drawLiveDot(
+                                miniMap, location.latitude, location.longitude, accent, dotPx,
+                            )
+                        },
+                    )
+                }
+            }
+
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 CupertinoPrimaryButton(text = "Ring device", onClick = onRing, modifier = Modifier.weight(1f))
                 CupertinoTextButton(text = "Open map", onClick = onOpenMap, modifier = Modifier.weight(1f))

@@ -79,6 +79,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.shahaabapps.core.model.GeoPoint
 import com.shahaabapps.core.model.Geofence
@@ -218,8 +219,8 @@ fun GeofenceScreen(
     val routeCasing = Color(0xFF1967D2)
     val routeGreen = Color(0xFF34A853)
     val routeGreenCasing = Color(0xFF1E8E3E)
-    val routeCorePx = with(density) { 7.dp.toPx() }
-    val routeCasingPx = with(density) { 11.dp.toPx() }
+    val routeCorePx = with(density) { 4.dp.toPx() }
+    val routeCasingPx = with(density) { 6.dp.toPx() }
     val livePulse = liveLocationPulse(animate = !rememberReducedMotion())
     val iconPainters: Map<String, Painter> =
         PlaceIcons.options.associate { (key, vector) -> key to rememberVectorPainter(vector) }
@@ -1007,6 +1008,12 @@ private fun HistoryTimeline(
     accent: Color,
     onFocus: (Double, Double) -> Unit,
 ) {
+    // Collapsed by default so the map stays large; tap the header to expand.
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val chevronRotation by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        label = "timelineChevron",
+    )
     Surface(
         shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         color = AppTheme.colors.card,
@@ -1021,19 +1028,43 @@ private fun HistoryTimeline(
                     .clip(CircleShape)
                     .background(AppTheme.colors.secondaryLabel.copy(alpha = 0.3f)),
             )
-            Text("Location timeline", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = Spacing.sm))
-            if (stops.isEmpty()) {
-                Text(
-                    "No stops recorded for this window. Pick another day or widen the time range.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = AppTheme.colors.secondaryLabel,
-                    modifier = Modifier.padding(vertical = Spacing.sm),
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(top = Spacing.sm),
+            ) {
+                Text("Location timeline", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                if (stops.isNotEmpty()) {
+                    Text(
+                        "${stops.size} stop${if (stops.size == 1) "" else "s"}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AppTheme.colors.secondaryLabel,
+                        modifier = Modifier.padding(end = Spacing.sm),
+                    )
+                }
+                Icon(
+                    Icons.Filled.ExpandMore,
+                    contentDescription = if (expanded) "Collapse" else "Expand",
+                    tint = AppTheme.colors.secondaryLabel,
+                    modifier = Modifier.rotate(chevronRotation),
                 )
-            } else {
-                LazyColumn(modifier = Modifier.heightIn(max = 240.dp), contentPadding = PaddingValues(top = Spacing.sm)) {
-                    itemsIndexed(stops, key = { _, it -> it.stop.id }) { i, item ->
-                        TimelineRow(item = item, accent = accent, isLast = i == stops.lastIndex) {
-                            onFocus(item.stop.latitude, item.stop.longitude)
+            }
+            if (expanded) {
+                if (stops.isEmpty()) {
+                    Text(
+                        "No stops recorded for this window. Pick another day or widen the time range.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = AppTheme.colors.secondaryLabel,
+                        modifier = Modifier.padding(vertical = Spacing.sm),
+                    )
+                } else {
+                    LazyColumn(modifier = Modifier.heightIn(max = 200.dp), contentPadding = PaddingValues(top = Spacing.sm)) {
+                        itemsIndexed(stops, key = { _, it -> it.stop.id }) { i, item ->
+                            TimelineRow(item = item, accent = accent, isLast = i == stops.lastIndex) {
+                                onFocus(item.stop.latitude, item.stop.longitude)
+                            }
                         }
                     }
                 }

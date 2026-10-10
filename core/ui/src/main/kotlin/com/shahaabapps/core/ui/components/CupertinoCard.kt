@@ -4,16 +4,16 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.shahaabapps.core.ui.theme.AppTheme
-import com.shahaabapps.core.ui.theme.Shapes
 import com.shahaabapps.core.ui.theme.Spacing
 
 /**
- * A rounded, subtly elevated content card in the modern iOS style.
+ * A rounded, softly elevated content card — friendly, pastel-era styling.
  */
 @Composable
 fun CupertinoCard(
@@ -22,10 +22,10 @@ fun CupertinoCard(
     content: @Composable () -> Unit,
 ) {
     Surface(
-        shape = Shapes.card,
+        shape = RoundedCornerShape(22.dp),
         color = AppTheme.colors.card,
         tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
+        shadowElevation = 3.dp,
         modifier = modifier
             .fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),

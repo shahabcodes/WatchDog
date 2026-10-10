@@ -82,6 +82,11 @@ fun OverviewScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .background(
+                androidx.compose.ui.graphics.Brush.verticalGradient(
+                    listOf(Color(0xFFFDEEF3), Color(0xFFEFF6F3), AppTheme.colors.groupedBackground),
+                ),
+            )
             .verticalScroll(rememberScrollState())
             .padding(horizontal = Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
@@ -102,12 +107,14 @@ fun OverviewScreen(
                 value = formatDuration(state.screenTimeMinutes),
                 label = "Screen time",
                 icon = Icons.Filled.BarChart,
+                tint = Color(0xFF14B8A6),
                 modifier = Modifier.weight(1f),
             )
             StatTile(
                 value = state.limitedOrBlocked.toString(),
                 label = "Apps limited",
                 icon = Icons.Filled.Apps,
+                tint = Color(0xFFF59E0B),
                 modifier = Modifier.weight(1f),
             )
         }
@@ -116,6 +123,7 @@ fun OverviewScreen(
                 value = state.placesCount.toString(),
                 label = "Places",
                 icon = Icons.Filled.Place,
+                tint = Color(0xFF3B6FF6),
                 modifier = Modifier.weight(1f),
                 onClick = onOpenMap,
             )
@@ -123,6 +131,7 @@ fun OverviewScreen(
                 value = if (state.batteryPercent > 0) "${state.batteryPercent}%" else "—",
                 label = "Battery",
                 icon = Icons.Filled.BatteryStd,
+                tint = Color(0xFFE5588E),
                 modifier = Modifier.weight(1f),
             )
         }

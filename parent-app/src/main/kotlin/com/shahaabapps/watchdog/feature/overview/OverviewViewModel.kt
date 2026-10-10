@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -24,6 +25,13 @@ data class AppUsageItem(
     val label: String,
     val iconBase64: String?,
     val minutes: Int,
+)
+
+/** One day's total screen time, for the weekly trend chart. */
+data class DayUsage(
+    val date: LocalDate,
+    val minutes: Int,
+    val isToday: Boolean,
 )
 
 data class OverviewUiState(
@@ -50,10 +58,26 @@ class OverviewViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val childId: String = checkNotNull(savedStateHandle["childId"])
-    private val today: String = LocalDate.now().toString()
+    private val todayDate: LocalDate = LocalDate.now()
+    private val today: String = todayDate.toString()
 
     val childLocation: StateFlow<ChildLocation?> = deviceRepository.observeLocation(childId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Last 7 days of total screen time, oldest first, with zero-filled gaps. */
+    val weekly: StateFlow<List<DayUsage>> =
+        usageRepository.observeDailyTotals(childId, todayDate.minusDays(6).toString())
+            .map { totals ->
+                (0L..6L).map { offset ->
+                    val date = todayDate.minusDays(6 - offset)
+                    DayUsage(
+                        date = date,
+                        minutes = totals[date.toString()] ?: 0,
+                        isToday = date == todayDate,
+                    )
+                }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     // Re-evaluate online/offline on a tick (the child doc only changes every
     // heartbeat, so without this it would never flip back to offline).

@@ -2,6 +2,7 @@ package com.shahaabapps.core.firebase.usage
 
 import com.shahaabapps.core.common.AppResult
 import com.shahaabapps.core.common.runCatchingResult
+import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -35,6 +36,25 @@ class FirebaseUsageRepository @Inject constructor(
             val apps = (snapshot?.get("apps") as? Map<String, Any?>).orEmpty()
                 .mapValues { (it.value as? Number)?.toInt() ?: 0 }
             trySend(apps)
+        }
+        awaitClose { registration.remove() }
+    }
+
+    override fun observeDailyTotals(childId: String, sinceDate: String): Flow<Map<String, Int>> = callbackFlow {
+        val query = firestore.collection("children").document(childId).collection("usage")
+            .orderBy(FieldPath.documentId())
+            .startAt(sinceDate)
+        val registration = query.addSnapshotListener { snapshot, error ->
+            if (error != null || snapshot == null) {
+                trySend(emptyMap()); return@addSnapshotListener
+            }
+            val totals = snapshot.documents.associate { doc ->
+                @Suppress("UNCHECKED_CAST")
+                val apps = (doc.get("apps") as? Map<String, Any?>).orEmpty()
+                val total = apps.values.sumOf { (it as? Number)?.toInt() ?: 0 }
+                doc.id to total
+            }
+            trySend(totals)
         }
         awaitClose { registration.remove() }
     }

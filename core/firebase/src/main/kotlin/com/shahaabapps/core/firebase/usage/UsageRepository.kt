@@ -14,4 +14,10 @@ interface UsageRepository {
 
     /** Parent: observe a day's usage (package -> minutes). */
     fun observeUsage(childId: String, date: String): Flow<Map<String, Int>>
+
+    /**
+     * Parent: observe total screen-time minutes per day from [sinceDate] (inclusive,
+     * yyyy-MM-dd) onward, as a map of date -> total minutes. Days with no data are absent.
+     */
+    fun observeDailyTotals(childId: String, sinceDate: String): Flow<Map<String, Int>>
 }

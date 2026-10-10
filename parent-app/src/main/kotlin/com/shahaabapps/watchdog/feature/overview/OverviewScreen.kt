@@ -71,6 +71,7 @@ fun OverviewScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val childLocation by viewModel.childLocation.collectAsStateWithLifecycle()
+    val weekly by viewModel.weekly.collectAsStateWithLifecycle()
     val protectionVm: com.shahaabapps.watchdog.feature.protection.ProtectionViewModel = hiltViewModel()
     val protection by protectionVm.settings.collectAsStateWithLifecycle()
     val pendingVm: com.shahaabapps.watchdog.feature.protection.PendingAppsViewModel = hiltViewModel()
@@ -156,6 +157,11 @@ fun OverviewScreen(
 
         SectionHeader("Protection")
         ProtectionCard(blocked = protection.uninstallBlocked, onClick = { showProtectionSheet = true })
+
+        if (weekly.any { it.minutes > 0 }) {
+            SectionHeader("This week")
+            WeeklyTrendChart(weekly)
+        }
 
         SectionHeader("App usage today")
         UsageChart(state.screenTimeMinutes, state.topApps)
@@ -551,5 +557,72 @@ private fun formatDuration(minutes: Int): String {
         h > 0 && m > 0 -> "${h}h ${m}m"
         h > 0 -> "${h}h"
         else -> "${m}m"
+    }
+}
+
+private val WEEK_LETTERS = listOf("M", "T", "W", "T", "F", "S", "S")
+
+@Composable
+private fun WeeklyTrendChart(days: List<DayUsage>) {
+    val max = (days.maxOfOrNull { it.minutes } ?: 0).coerceAtLeast(1)
+    val total = days.sumOf { it.minutes }
+    val activeDays = days.count { it.minutes > 0 }.coerceAtLeast(1)
+    val average = total / activeDays
+
+    CupertinoCard {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Daily average", style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
+                    Text(formatDuration(average), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+                }
+                Text("${formatDuration(total)} total", style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().height(132.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                days.forEach { day ->
+                    val barColor = if (day.isToday) Color(0xFF7C6FF0) else Color(0xFF7C6FF0).copy(alpha = 0.22f)
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Bottom,
+                    ) {
+                        if (day.minutes > 0) {
+                            Text(
+                                formatDuration(day.minutes),
+                                fontSize = 9.sp,
+                                color = AppTheme.colors.secondaryLabel,
+                                modifier = Modifier.padding(bottom = 4.dp),
+                            )
+                        }
+                        // Bar area: fixed height box, bar grows from the bottom.
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(96.dp),
+                            contentAlignment = Alignment.BottomCenter,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .fillMaxHeight(fraction = (day.minutes.toFloat() / max).coerceIn(0.03f, 1f))
+                                    .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 3.dp, bottomEnd = 3.dp))
+                                    .background(barColor),
+                            )
+                        }
+                        Text(
+                            WEEK_LETTERS[day.date.dayOfWeek.value - 1],
+                            fontSize = 11.sp,
+                            fontWeight = if (day.isToday) FontWeight.Bold else FontWeight.Normal,
+                            color = if (day.isToday) Color(0xFF7C6FF0) else AppTheme.colors.secondaryLabel,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
+                }
+            }
+        }
     }
 }

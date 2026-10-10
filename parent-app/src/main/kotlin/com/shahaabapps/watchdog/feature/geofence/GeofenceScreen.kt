@@ -308,15 +308,17 @@ fun GeofenceScreen(
                 }
 
                 if (historyMode) {
-                    // Full recorded path (faded) + the travelled portion as a blue
-                    // Google-Maps-style route + moving dot.
-                    val allPts = trail.map { it.latitude to it.longitude }
-                    // Full route in navigation blue; travelled portion fills in green.
-                    drawGeoRoute(controller, allPts, core = routeCore, casing = routeCasing, coreWidthPx = routeCorePx, casingWidthPx = routeCasingPx)
+                    // Google-Maps-style playback: split the path at the dot — the road
+                    // ahead in blue, the travelled portion behind in green. The two
+                    // meet at the dot and never overlap (no doubled/ghosted casing).
                     val t = startMs + (progress.value * rangeMs).toLong()
-                    val travelled = trail.filter { it.timestampMillis <= t }.map { it.latitude to it.longitude }
                     val cur = positionAt(trail, t)
+                    val travelled = trail.filter { it.timestampMillis <= t }.map { it.latitude to it.longitude }
+                    val remaining = trail.filter { it.timestampMillis > t }.map { it.latitude to it.longitude }
                     val travelledWithCur = if (cur != null) travelled + cur else travelled
+                    val remainingWithCur = if (cur != null) listOf(cur) + remaining else remaining
+                    // Road ahead (blue) first, travelled (green) on top so the join is clean.
+                    drawGeoRoute(controller, remainingWithCur, core = routeCore, casing = routeCasing, coreWidthPx = routeCorePx, casingWidthPx = routeCasingPx)
                     drawGeoRoute(controller, travelledWithCur, core = routeGreen, casing = routeGreenCasing, coreWidthPx = routeCorePx, casingWidthPx = routeCasingPx)
                     travelState.stops.forEach { s ->
                         drawMapMarker(controller, s.stop.latitude, s.stop.longitude, accent.copy(alpha = 0.85f), placePx * 0.75f, icon = painterFor(s.placeIcon ?: "place"))

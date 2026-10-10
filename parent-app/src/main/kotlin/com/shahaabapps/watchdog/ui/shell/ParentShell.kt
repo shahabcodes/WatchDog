@@ -6,6 +6,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -309,21 +312,47 @@ private fun ChildChipRow(
 
 @Composable
 private fun ParentBottomBar(currentTab: String, onSelect: (Tab) -> Unit) {
-    NavigationBar(containerColor = AppTheme.colors.card) {
-        Tab.entries.forEach { tab ->
-            NavigationBarItem(
-                selected = currentTab == tab.route,
-                onClick = { onSelect(tab) },
-                icon = { Icon(tab.icon, contentDescription = tab.label) },
-                label = { Text(tab.label, fontSize = 11.sp) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = AppTheme.colors.accent,
-                    selectedTextColor = AppTheme.colors.accent,
-                    indicatorColor = AppTheme.colors.accent.copy(alpha = 0.14f),
-                    unselectedIconColor = AppTheme.colors.secondaryLabel,
-                    unselectedTextColor = AppTheme.colors.secondaryLabel,
-                ),
-            )
+    // Floating, rounded pill bar with a pastel highlight on the active tab.
+    Surface(
+        shape = RoundedCornerShape(28.dp),
+        color = AppTheme.colors.card,
+        shadowElevation = 12.dp,
+        modifier = Modifier
+            .navigationBarsPadding()
+            .padding(horizontal = Spacing.lg, vertical = Spacing.sm)
+            .fillMaxWidth(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            modifier = Modifier.fillMaxWidth().padding(6.dp),
+        ) {
+            Tab.entries.forEach { tab ->
+                val selected = currentTab == tab.route
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(if (selected) AppTheme.colors.accent.copy(alpha = 0.15f) else Color.Transparent)
+                        .clickable { onSelect(tab) }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                ) {
+                    Icon(
+                        tab.icon,
+                        contentDescription = tab.label,
+                        tint = if (selected) AppTheme.colors.accent else AppTheme.colors.secondaryLabel,
+                    )
+                    if (selected) {
+                        Text(
+                            tab.label,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = AppTheme.colors.accent,
+                            modifier = Modifier.padding(start = 6.dp),
+                        )
+                    }
+                }
+            }
         }
     }
 }

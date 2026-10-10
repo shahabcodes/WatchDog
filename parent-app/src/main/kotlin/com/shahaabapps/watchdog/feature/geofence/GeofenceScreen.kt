@@ -12,8 +12,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Login
@@ -418,22 +420,29 @@ fun GeofenceScreen(
             }
         }
 
-        // History playback bar (bottom)
+        // History playback bar + timeline (bottom)
         if (historyMode) {
-            PlaybackBar(
-                progress = progress,
-                playing = playing,
-                hasTrail = trail.isNotEmpty() && rangeMs > 0L,
-                speed = speed,
-                timeLabel = {
-                    if (trail.isEmpty()) "No path this day"
-                    else timeLabel(startMs + (progress.value * rangeMs).toLong())
-                },
-                onPlayPause = { playing = !playing },
-                onScrub = { playing = false; scope.launch { progress.snapTo(it) } },
-                onCycleSpeed = { speed = when (speed) { 1f -> 2f; 2f -> 4f; else -> 1f } },
-                modifier = Modifier.align(Alignment.BottomCenter),
-            )
+            Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+                PlaybackBar(
+                    progress = progress,
+                    playing = playing,
+                    hasTrail = trail.isNotEmpty() && rangeMs > 0L,
+                    speed = speed,
+                    timeLabel = {
+                        if (trail.isEmpty()) "No path this day"
+                        else timeLabel(startMs + (progress.value * rangeMs).toLong())
+                    },
+                    onPlayPause = { playing = !playing },
+                    onScrub = { playing = false; scope.launch { progress.snapTo(it) } },
+                    onCycleSpeed = { speed = when (speed) { 1f -> 2f; 2f -> 4f; else -> 1f } },
+                    modifier = Modifier,
+                )
+                HistoryTimeline(
+                    stops = travelState.stops,
+                    accent = accent,
+                    onFocus = { la, ln -> runCatching { controller.animateTo(la, ln, 16.0) } },
+                )
+            }
         } else if (mode == DrawMode.AREA && area.isNotEmpty()) {
             Surface(
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
@@ -989,6 +998,89 @@ private fun liveLocationPulse(animate: Boolean): Float {
         label = "pulse",
     )
     return pulse
+}
+
+/** A Parenpal-style location-history timeline of the day's stops (rail + dots). */
+@Composable
+private fun HistoryTimeline(
+    stops: List<com.shahaabapps.watchdog.feature.travel.TravelStopItem>,
+    accent: Color,
+    onFocus: (Double, Double) -> Unit,
+) {
+    Surface(
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        color = AppTheme.colors.card,
+        shadowElevation = 8.dp,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.md)) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .size(width = 36.dp, height = 4.dp)
+                    .clip(CircleShape)
+                    .background(AppTheme.colors.secondaryLabel.copy(alpha = 0.3f)),
+            )
+            Text("Location timeline", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = Spacing.sm))
+            if (stops.isEmpty()) {
+                Text(
+                    "No stops recorded for this window. Pick another day or widen the time range.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = AppTheme.colors.secondaryLabel,
+                    modifier = Modifier.padding(vertical = Spacing.sm),
+                )
+            } else {
+                LazyColumn(modifier = Modifier.heightIn(max = 240.dp), contentPadding = PaddingValues(top = Spacing.sm)) {
+                    itemsIndexed(stops, key = { _, it -> it.stop.id }) { i, item ->
+                        TimelineRow(item = item, accent = accent, isLast = i == stops.lastIndex) {
+                            onFocus(item.stop.latitude, item.stop.longitude)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimelineRow(
+    item: com.shahaabapps.watchdog.feature.travel.TravelStopItem,
+    accent: Color,
+    isLast: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(
+                modifier = Modifier.size(30.dp).clip(CircleShape).background(accent.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(PlaceIcons.forKey(item.placeIcon ?: "place"), contentDescription = null, tint = accent, modifier = Modifier.size(16.dp))
+            }
+            if (!isLast) {
+                Box(modifier = Modifier.width(2.dp).heightIn(min = 26.dp).background(AppTheme.colors.separator))
+            }
+        }
+        Column(modifier = Modifier.weight(1f).padding(start = Spacing.md, bottom = Spacing.sm)) {
+            Text(timeLabel(item.stop.arrivalMillis), style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
+            Text(item.placeName ?: "Stop", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                "${durationShort(item.stop.durationMinutes)} · ${timeLabel(item.stop.arrivalMillis)} – ${timeLabel(item.stop.departureMillis)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = AppTheme.colors.secondaryLabel,
+            )
+        }
+    }
+}
+
+private fun durationShort(minutes: Long): String {
+    val h = minutes / 60
+    val m = minutes % 60
+    return when {
+        h > 0 && m > 0 -> "${h}h ${m}m"
+        h > 0 -> "${h}h"
+        else -> "${m}m"
+    }
 }
 
 private fun relativeTime(millis: Long): String {

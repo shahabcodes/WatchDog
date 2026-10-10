@@ -33,16 +33,38 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         val lng = event.triggeringLocation?.longitude ?: 0.0
         val now = System.currentTimeMillis()
 
+        // Accuracy gate: near a small place, a fuzzy fix can appear inside/outside
+        // when it isn't. Ignore transitions from untrustworthy fixes.
+        val triggerLoc = event.triggeringLocation
+        if (triggerLoc != null && triggerLoc.hasAccuracy() && triggerLoc.accuracy > ACCURACY_MAX_METERS) return
+
         // Map Play Services transitions to our model, honouring the inner/outer
         // geofence design: DWELL on the inner fence = "arrived", EXIT on the
         // outer (radius + buffer) fence = "left". Raw ENTER is ignored.
+        //
+        // A "left" alert only fires if we previously recorded an "arrived" for the
+        // same place — so merely passing within the outer fence (and leaving it)
+        // without ever dwelling inside no longer reports a spurious departure.
         val reports = triggering.mapNotNull { gf ->
             val reqId = gf.requestId
             when {
-                gmsTransition == GmsGeofence.GEOFENCE_TRANSITION_DWELL && !reqId.endsWith(EXIT_GEOFENCE_SUFFIX) ->
-                    reqId to GeofenceTransition.ENTER
-                gmsTransition == GmsGeofence.GEOFENCE_TRANSITION_EXIT && reqId.endsWith(EXIT_GEOFENCE_SUFFIX) ->
-                    reqId.removeSuffix(EXIT_GEOFENCE_SUFFIX) to GeofenceTransition.EXIT
+                gmsTransition == GmsGeofence.GEOFENCE_TRANSITION_DWELL && !reqId.endsWith(EXIT_GEOFENCE_SUFFIX) -> {
+                    if (GeofenceStateStore.isInside(context, reqId)) {
+                        null // already inside — don't re-announce arrival
+                    } else {
+                        GeofenceStateStore.setInside(context, reqId, true)
+                        reqId to GeofenceTransition.ENTER
+                    }
+                }
+                gmsTransition == GmsGeofence.GEOFENCE_TRANSITION_EXIT && reqId.endsWith(EXIT_GEOFENCE_SUFFIX) -> {
+                    val baseId = reqId.removeSuffix(EXIT_GEOFENCE_SUFFIX)
+                    if (!GeofenceStateStore.isInside(context, baseId)) {
+                        null // never arrived — this is a pass-by, not a departure
+                    } else {
+                        GeofenceStateStore.setInside(context, baseId, false)
+                        baseId to GeofenceTransition.EXIT
+                    }
+                }
                 else -> null
             }
         }
@@ -67,5 +89,10 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                 pendingResult.finish()
             }
         }
+    }
+
+    private companion object {
+        // A fix fuzzier than this can't be trusted to decide inside/outside.
+        const val ACCURACY_MAX_METERS = 120f
     }
 }

@@ -33,10 +33,11 @@ interface ChildRepository {
     suspend fun linkChild(childId: String, code: String, parentId: String): AppResult<Unit>
 
     /**
-     * Child presence heartbeat: stamps `device.lastSeenMillis` (and model). The
-     * parent derives online/offline from how fresh this is.
+     * Child presence heartbeat: stamps `device.lastSeenMillis`, model and battery
+     * level. The parent derives online/offline from how fresh this is.
+     * [batteryPercent] of 0 means "unknown" and is not written.
      */
-    suspend fun heartbeat(childId: String, model: String): AppResult<Unit>
+    suspend fun heartbeat(childId: String, model: String, batteryPercent: Int = 0): AppResult<Unit>
 
     /** A linked parent removes (unlinks) themselves from a child. */
     suspend fun unlinkChild(childId: String, parentId: String): AppResult<Unit>

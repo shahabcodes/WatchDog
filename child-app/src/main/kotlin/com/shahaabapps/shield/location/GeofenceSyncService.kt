@@ -107,10 +107,11 @@ class GeofenceSyncService : Service() {
                 }
             }
         }
-        // Presence heartbeat: keep lastSeen fresh so the parent shows "Online".
+        // Presence heartbeat: keep lastSeen fresh so the parent shows "Online",
+        // and report the current battery level.
         scope.launch {
             while (true) {
-                runCatching { childRepository.heartbeat(childId, android.os.Build.MODEL) }
+                runCatching { childRepository.heartbeat(childId, android.os.Build.MODEL, batteryPercent()) }
                 kotlinx.coroutines.delay(HEARTBEAT_MS)
             }
         }
@@ -243,6 +244,13 @@ class GeofenceSyncService : Service() {
                 )
             }
         }
+    }
+
+    /** Current battery level 0-100, or 0 if unavailable. */
+    private fun batteryPercent(): Int {
+        val bm = getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager ?: return 0
+        val pct = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        return if (pct in 1..100) pct else 0
     }
 
     private fun today(millis: Long): String =

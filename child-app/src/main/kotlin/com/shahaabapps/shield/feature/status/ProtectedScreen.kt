@@ -66,7 +66,11 @@ fun ProtectedScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(AppTheme.colors.groupedBackground)
+            .background(
+                androidx.compose.ui.graphics.Brush.verticalGradient(
+                    listOf(Color(0xFFEDE9FE), Color(0xFFEFF6F3), AppTheme.colors.groupedBackground),
+                ),
+            )
             .verticalScroll(rememberScrollState()),
     ) {
         ShieldTopBar(name = child.profile.name, onSettings = { showSettings = true })
@@ -132,7 +136,7 @@ fun ProtectedScreen(
 
 @Composable
 private fun ShieldTopBar(name: String, onSettings: () -> Unit) {
-    Surface(color = AppTheme.colors.card) {
+    Surface(color = Color.Transparent) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier

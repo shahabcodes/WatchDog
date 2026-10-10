@@ -59,6 +59,13 @@ class GeofenceSyncService : Service() {
     private var stopArrivalMillis = 0L
     private var stopLastMillis = 0L
 
+    // Jitter filtering: the last accepted (trusted) position, a smoothing window
+    // for a steady marker while stationary, and a tentative move awaiting confirmation.
+    private var accepted: android.location.Location? = null
+    private var acceptedTime = 0L
+    private val smoothWindow = ArrayDeque<android.location.Location>()
+    private var tentativeMove: android.location.Location? = null
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         try {
             startForegroundCompat()
@@ -125,6 +132,13 @@ class GeofenceSyncService : Service() {
         val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
         if (fine != PackageManager.PERMISSION_GRANTED && coarse != PackageManager.PERMISSION_GRANTED) return
 
+        // Reset the jitter filter so the first fresh fix is trusted (no line drawn
+        // from a stale position left over from a previous run).
+        accepted = null
+        acceptedTime = 0L
+        tentativeMove = null
+        smoothWindow.clear()
+
         // Publish the last-known location right away so the parent sees something
         // immediately (location callbacks only fire on a *new* computed fix).
         runCatching {
@@ -152,21 +166,63 @@ class GeofenceSyncService : Service() {
         runCatching { fusedClient.requestLocationUpdates(request, callback, Looper.getMainLooper()) }
     }
 
+    /**
+     * Filters out GPS jitter/drift so a stationary device (e.g. sleeping) doesn't
+     * fake movement: drops low-accuracy and teleport fixes, holds the marker steady
+     * (smoothed centroid) while within the accuracy noise, and only records real
+     * movement to the trail after a one-fix confirmation.
+     */
     private fun publishLocation(childId: String, loc: android.location.Location) {
         val now = System.currentTimeMillis()
+        val prev = accepted
+
+        // First fix ever (or after a restart): trust it.
+        if (prev == null) {
+            commitAccepted(childId, loc, now)
+            return
+        }
+        // 1. Accuracy gate — ignore poor fixes.
+        if (loc.accuracy > ACCURACY_MAX_METERS) return
+        // 2. Teleport gate — ignore impossibly fast jumps.
+        val dtSec = ((now - acceptedTime).coerceAtLeast(1L)) / 1000.0
+        val dist = prev.distanceTo(loc)
+        if (dist / dtSec > MAX_SPEED_MPS) return
+        // 3. Jitter gate — within combined accuracy noise = still stationary.
+        val noise = maxOf(prev.accuracy, loc.accuracy) + MOVE_MARGIN_METERS
+        if (dist <= noise) {
+            tentativeMove = null
+            smoothWindow.addLast(loc)
+            while (smoothWindow.size > SMOOTH_WINDOW) smoothWindow.removeFirst()
+            val cLat = smoothWindow.map { it.latitude }.average()
+            val cLng = smoothWindow.map { it.longitude }.average()
+            publishLive(childId, cLat, cLng, loc.accuracy, now)
+            return
+        }
+        // 4. Movement candidate — confirm with one more consistent fix before
+        //    treating it as real (so a single bad fix can't start a fake trip).
+        val tent = tentativeMove
+        if (tent == null) {
+            tentativeMove = loc
+            publishLive(childId, loc.latitude, loc.longitude, loc.accuracy, now)
+            return
+        }
+        if (tent.distanceTo(loc) <= noise || prev.distanceTo(loc) > noise) {
+            commitAccepted(childId, loc, now) // confirmed movement
+        } else {
+            tentativeMove = null // bounced back — it was a blip
+            publishLive(childId, prev.latitude, prev.longitude, prev.accuracy, now)
+        }
+    }
+
+    /** Accepts [loc] as the trusted position: updates live, trail and stop tracking. */
+    private fun commitAccepted(childId: String, loc: android.location.Location, now: Long) {
+        accepted = loc
+        acceptedTime = now
+        tentativeMove = null
+        smoothWindow.clear()
+        smoothWindow.addLast(loc)
+        publishLive(childId, loc.latitude, loc.longitude, loc.accuracy, now)
         scope.launch {
-            runCatching {
-                deviceRepository.updateLocation(
-                    childId,
-                    ChildLocation(
-                        latitude = loc.latitude,
-                        longitude = loc.longitude,
-                        accuracyMeters = loc.accuracy,
-                        timestampMillis = now,
-                    ),
-                )
-            }
-            // Append to the day's continuous trail (the actual path).
             runCatching {
                 deviceRepository.appendTrailPoint(
                     childId,
@@ -176,6 +232,17 @@ class GeofenceSyncService : Service() {
             }
         }
         trackStop(childId, loc, now)
+    }
+
+    private fun publishLive(childId: String, lat: Double, lng: Double, acc: Float, now: Long) {
+        scope.launch {
+            runCatching {
+                deviceRepository.updateLocation(
+                    childId,
+                    ChildLocation(latitude = lat, longitude = lng, accuracyMeters = acc, timestampMillis = now),
+                )
+            }
+        }
     }
 
     private fun today(millis: Long): String =
@@ -259,6 +326,12 @@ class GeofenceSyncService : Service() {
 
         // Only report location after moving this far — the move-only optimization.
         private const val MOVE_DISTANCE_METERS = 40f
+
+        // Jitter filtering (Phase 1 + 2).
+        private const val ACCURACY_MAX_METERS = 50f   // drop fixes worse than this
+        private const val MOVE_MARGIN_METERS = 15f    // movement must beat the accuracy noise by this
+        private const val MAX_SPEED_MPS = 60f         // ~216 km/h teleport ceiling
+        private const val SMOOTH_WINDOW = 5           // fixes averaged for a steady marker
 
         // Presence heartbeat interval.
         private const val HEARTBEAT_MS = 2 * 60_000L

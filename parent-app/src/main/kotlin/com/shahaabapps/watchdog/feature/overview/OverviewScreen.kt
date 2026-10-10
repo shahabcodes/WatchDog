@@ -49,6 +49,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shahaabapps.core.model.ChildLocation
 import androidx.compose.ui.text.input.KeyboardType
+import com.shahaabapps.watchdog.util.drawGeoCircle
+import com.shahaabapps.watchdog.util.drawLiveDot
 import com.shahaabapps.core.ui.components.AppIcon
 import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.components.CupertinoListRow
@@ -402,7 +404,7 @@ private fun LocationCard(
                         onMapClick = { _, _ -> onOpenMap() },
                         overlay = {
                             if (location.accuracyMeters > 0f) {
-                                com.shahaabapps.watchdog.util.drawGeoCircle(
+                                drawGeoCircle(
                                     miniMap,
                                     location.latitude, location.longitude, location.accuracyMeters.toDouble(),
                                     fill = accent.copy(alpha = 0.12f),
@@ -410,7 +412,7 @@ private fun LocationCard(
                                     strokeWidthPx = 2f,
                                 )
                             }
-                            com.shahaabapps.watchdog.util.drawLiveDot(
+                            drawLiveDot(
                                 miniMap, location.latitude, location.longitude, accent, dotPx,
                             )
                         },

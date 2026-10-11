@@ -1,5 +1,6 @@
 package com.shahaabapps.watchdog.feature.overview
 
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -59,6 +60,7 @@ import com.shahaabapps.core.ui.components.CupertinoSwitch
 import com.shahaabapps.core.ui.components.CupertinoTextButton
 import com.shahaabapps.core.ui.components.CupertinoTextField
 import com.shahaabapps.core.ui.components.SectionHeader
+import com.shahaabapps.core.ui.components.rememberReducedMotion
 import com.shahaabapps.core.ui.components.StatTile
 import com.shahaabapps.core.ui.components.StatusChip
 import com.shahaabapps.core.ui.theme.AppTheme
@@ -161,6 +163,11 @@ fun OverviewScreen(
 
         SectionHeader("Protection")
         ProtectionCard(blocked = protection.uninstallBlocked, onClick = { showProtectionSheet = true })
+
+        if (weekly.any { it.minutes > 0 }) {
+            SectionHeader("This week")
+            WeeklyTrendChart(weekly)
+        }
 
         SectionHeader("App usage today")
         UsageChart(state.screenTimeMinutes, state.topApps)
@@ -469,18 +476,32 @@ private fun GreetingHero(
         Box(
             modifier = Modifier.background(
                 androidx.compose.ui.graphics.Brush.linearGradient(
-                    listOf(Color(0xFFA78BFA), Color(0xFFF0A6CA)),
+                    listOf(Color(0xFF161B30), Color(0xFF241A4D), Color(0xFF0E1430)),
                 ),
             ),
         ) {
-            // Soft decorative blob.
+            // Futuristic glow accents (clipped to the card's rounded shape).
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(end = 8.dp, top = 8.dp)
-                    .size(96.dp)
+                    .size(180.dp)
                     .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.12f)),
+                    .background(
+                        androidx.compose.ui.graphics.Brush.radialGradient(
+                            listOf(Color(0xFF7C6FF0).copy(alpha = 0.45f), Color.Transparent),
+                        ),
+                    ),
+            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .size(150.dp)
+                    .clip(CircleShape)
+                    .background(
+                        androidx.compose.ui.graphics.Brush.radialGradient(
+                            listOf(Color(0xFF22D3EE).copy(alpha = 0.20f), Color.Transparent),
+                        ),
+                    ),
             )
             Column(modifier = Modifier.padding(Spacing.lg)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -493,23 +514,22 @@ private fun GreetingHero(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
-                    StatusChip(
-                        text = if (online) "Online" else "Offline",
-                        color = if (online) AppTheme.colors.success else AppTheme.colors.secondaryLabel,
-                    )
+                    StatusPill(online = online)
                 }
 
                 Text(
-                    "Screen time today",
-                    color = Color.White.copy(alpha = 0.9f),
-                    fontSize = 13.sp,
-                    modifier = Modifier.padding(top = Spacing.md),
+                    "SCREEN TIME TODAY",
+                    color = Color.White.copy(alpha = 0.55f),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 1.5.sp,
+                    modifier = Modifier.padding(top = Spacing.lg),
                 )
                 Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.padding(top = 2.dp)) {
                     Text(
                         formatDuration(todayMinutes),
                         color = Color.White,
-                        fontSize = 30.sp,
+                        fontSize = 34.sp,
                         fontWeight = FontWeight.Bold,
                     )
                     yesterdayMinutes?.let { y ->
@@ -521,10 +541,10 @@ private fun GreetingHero(
                         }
                         Text(
                             label,
-                            color = Color.White.copy(alpha = 0.92f),
+                            color = Color.White.copy(alpha = 0.85f),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(start = Spacing.sm, bottom = 5.dp),
+                            modifier = Modifier.padding(start = Spacing.sm, bottom = 6.dp),
                         )
                     }
                 }
@@ -534,8 +554,8 @@ private fun GreetingHero(
                         values = weekMinutes,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(30.dp)
-                            .padding(top = Spacing.sm),
+                            .height(32.dp)
+                            .padding(top = Spacing.md),
                     )
                 }
             }
@@ -543,10 +563,61 @@ private fun GreetingHero(
     }
 }
 
-/** A compact 7-bar sparkline drawn in white for the gradient hero. */
+/** Glass "LIVE/OFFLINE" status pill with a pulsing indicator dot. */
+@Composable
+private fun StatusPill(online: Boolean) {
+    val animate = !rememberReducedMotion()
+    val dotColor = if (online) Color(0xFF34D399) else Color(0xFF94A3B8)
+    androidx.compose.material3.Surface(
+        shape = RoundedCornerShape(50),
+        color = Color.White.copy(alpha = 0.10f),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+        ) {
+            PulsingDot(color = dotColor, animate = animate && online)
+            Text(
+                if (online) "LIVE" else "OFFLINE",
+                color = Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 1.sp,
+                modifier = Modifier.padding(start = 6.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PulsingDot(color: Color, animate: Boolean) {
+    val haloAlpha = if (animate) {
+        val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "statusDot")
+        transition.animateFloat(
+            initialValue = 0.2f,
+            targetValue = 0.6f,
+            animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                androidx.compose.animation.core.tween(1000),
+                androidx.compose.animation.core.RepeatMode.Reverse,
+            ),
+            label = "halo",
+        ).value
+    } else {
+        0.4f
+    }
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(14.dp)) {
+        Box(modifier = Modifier.size(14.dp).clip(CircleShape).background(color.copy(alpha = haloAlpha)))
+        Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(color))
+    }
+}
+
+/** A compact 7-bar sparkline; today's bar glows cyan→violet. */
 @Composable
 private fun HeroSparkline(values: List<Int>, modifier: Modifier = Modifier) {
     val max = (values.maxOrNull() ?: 0).coerceAtLeast(1)
+    val todayBrush = androidx.compose.ui.graphics.Brush.verticalGradient(
+        listOf(Color(0xFF22D3EE), Color(0xFF7C6FF0)),
+    )
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -554,12 +625,12 @@ private fun HeroSparkline(values: List<Int>, modifier: Modifier = Modifier) {
     ) {
         values.forEachIndexed { i, m ->
             val isToday = i == values.lastIndex
+            val barMod = Modifier
+                .weight(1f)
+                .fillMaxHeight(fraction = (m.toFloat() / max).coerceIn(0.06f, 1f))
+                .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 2.dp, bottomEnd = 2.dp))
             Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight(fraction = (m.toFloat() / max).coerceIn(0.06f, 1f))
-                    .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 2.dp, bottomEnd = 2.dp))
-                    .background(Color.White.copy(alpha = if (isToday) 1f else 0.45f)),
+                modifier = if (isToday) barMod.background(todayBrush) else barMod.background(Color.White.copy(alpha = 0.22f)),
             )
         }
     }
@@ -668,6 +739,73 @@ private fun formatDuration(minutes: Int): String {
         h > 0 && m > 0 -> "${h}h ${m}m"
         h > 0 -> "${h}h"
         else -> "${m}m"
+    }
+}
+
+private val WEEK_LETTERS = listOf("M", "T", "W", "T", "F", "S", "S")
+
+@Composable
+private fun WeeklyTrendChart(days: List<DayUsage>) {
+    val max = (days.maxOfOrNull { it.minutes } ?: 0).coerceAtLeast(1)
+    val total = days.sumOf { it.minutes }
+    val activeDays = days.count { it.minutes > 0 }.coerceAtLeast(1)
+    val average = total / activeDays
+
+    CupertinoCard {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Daily average", style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
+                    Text(formatDuration(average), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+                }
+                Text("${formatDuration(total)} total", style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().height(132.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                days.forEach { day ->
+                    val barColor = if (day.isToday) Color(0xFF7C6FF0) else Color(0xFF7C6FF0).copy(alpha = 0.22f)
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Bottom,
+                    ) {
+                        if (day.minutes > 0) {
+                            Text(
+                                formatDuration(day.minutes),
+                                fontSize = 9.sp,
+                                color = AppTheme.colors.secondaryLabel,
+                                modifier = Modifier.padding(bottom = 4.dp),
+                            )
+                        }
+                        // Bar area: fixed height box, bar grows from the bottom.
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(96.dp),
+                            contentAlignment = Alignment.BottomCenter,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .fillMaxHeight(fraction = (day.minutes.toFloat() / max).coerceIn(0.03f, 1f))
+                                    .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 3.dp, bottomEnd = 3.dp))
+                                    .background(barColor),
+                            )
+                        }
+                        Text(
+                            WEEK_LETTERS[day.date.dayOfWeek.value - 1],
+                            fontSize = 11.sp,
+                            fontWeight = if (day.isToday) FontWeight.Bold else FontWeight.Normal,
+                            color = if (day.isToday) Color(0xFF7C6FF0) else AppTheme.colors.secondaryLabel,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

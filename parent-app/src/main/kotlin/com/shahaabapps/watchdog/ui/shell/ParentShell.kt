@@ -197,6 +197,12 @@ fun ParentShell(
             navController = navController,
             startDestination = "${Tab.OVERVIEW.route}/$initialChild",
             modifier = Modifier.padding(padding),
+            // Instant tab switches — no crossfade that would overlap two heavy
+            // screens (the Map tab's live map) mid-transition.
+            enterTransition = { androidx.compose.animation.EnterTransition.None },
+            exitTransition = { androidx.compose.animation.ExitTransition.None },
+            popEnterTransition = { androidx.compose.animation.EnterTransition.None },
+            popExitTransition = { androidx.compose.animation.ExitTransition.None },
         ) {
             val childArg = listOf(navArgument("childId") { type = NavType.StringType })
             composable("overview/{childId}", childArg) {

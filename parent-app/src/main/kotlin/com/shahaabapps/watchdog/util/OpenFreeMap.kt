@@ -113,12 +113,21 @@ fun OpenFreeMapSnapshot(
 ) {
     val context = LocalContext.current
     var bitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    val snapshotter = remember { androidx.compose.runtime.mutableStateOf<MapSnapshotter?>(null) }
+    DisposableEffect(Unit) {
+        onDispose { runCatching { snapshotter.value?.cancel() } }
+    }
     BoxWithConstraints(modifier = modifier) {
         val density = LocalDensity.current
         val wPx = with(density) { maxWidth.toPx() }.toInt().coerceAtLeast(1)
         val hPx = with(density) { maxHeight.toPx() }.toInt().coerceAtLeast(1)
 
-        DisposableEffect(lat, lng, zoom, wPx, hPx) {
+        // Defer the GL snapshot so it doesn't contend with the tab-switch transition
+        // (the Map tab's live map is tearing down at the same moment). The card shows
+        // a light placeholder until the image is ready.
+        LaunchedEffect(lat, lng, zoom, wPx, hPx) {
+            kotlinx.coroutines.delay(400)
+            runCatching { snapshotter.value?.cancel() }
             MapLibre.getInstance(context)
             val options = MapSnapshotter.Options(wPx, hPx)
                 .withStyle(OPENFREEMAP_STYLE)
@@ -126,9 +135,9 @@ fun OpenFreeMapSnapshot(
                     CameraPosition.Builder().target(LatLng(lat, lng)).zoom(zoom).build(),
                 )
                 .withLogo(false)
-            val snapshotter = MapSnapshotter(context, options)
-            snapshotter.start({ snap -> bitmap = snap.bitmap }, { /* ignore snapshot errors */ })
-            onDispose { runCatching { snapshotter.cancel() } }
+            val s = MapSnapshotter(context, options)
+            snapshotter.value = s
+            s.start({ snap -> bitmap = snap.bitmap }, { /* ignore snapshot errors */ })
         }
 
         val bmp = bitmap

@@ -46,8 +46,8 @@ import com.shahaabapps.core.ui.theme.Spacing
 
 /**
  * Top-of-dashboard control: request a screenshot of the child's screen and browse
- * the ones that come back. (Capture needs a one-time consent on the child device
- * and shows an on-screen indicator while active — Android requirement.)
+ * the ones that come back. Capture runs silently on the child via the accessibility
+ * screenshot API (no indicator), as long as Shield's accessibility service is on.
  */
 @Composable
 fun ScreenshotSection(
@@ -95,7 +95,7 @@ fun ScreenshotSection(
 
             if (shots.isEmpty()) {
                 Text(
-                    "No screenshots yet. Tap capture to request one — it needs the child device online with screen capture allowed.",
+                    "No screenshots yet. Tap Capture to request one — it needs the child device online.",
                     style = MaterialTheme.typography.bodySmall,
                     color = AppTheme.colors.secondaryLabel,
                 )

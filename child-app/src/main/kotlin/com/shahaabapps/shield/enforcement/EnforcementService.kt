@@ -1,19 +1,26 @@
 package com.shahaabapps.shield.enforcement
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityService.ScreenshotResult
+import android.accessibilityservice.AccessibilityService.TakeScreenshotCallback
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.os.Build
 import android.telecom.TelecomManager
+import android.view.Display
 import android.view.accessibility.AccessibilityEvent
+import androidx.annotation.RequiresApi
 import com.shahaabapps.core.firebase.auth.AuthRepository
 import com.shahaabapps.core.firebase.child.ChildRepository
 import com.shahaabapps.core.firebase.focus.FocusRepository
 import com.shahaabapps.core.firebase.protection.PendingAppsRepository
 import com.shahaabapps.core.firebase.protection.ProtectionRepository
 import com.shahaabapps.core.firebase.rules.AppRulesRepository
+import com.shahaabapps.core.firebase.screenshot.ScreenshotRepository
 import com.shahaabapps.core.model.AppRule
 import com.shahaabapps.core.model.FocusSettings
 import com.shahaabapps.core.model.PendingApp
@@ -24,7 +31,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import java.io.ByteArrayOutputStream
 import java.time.LocalDateTime
+import java.util.concurrent.Executors
 import javax.inject.Inject
 
 /**
@@ -41,8 +50,11 @@ class EnforcementService : AccessibilityService() {
     @Inject lateinit var protectionRepository: ProtectionRepository
     @Inject lateinit var pendingAppsRepository: PendingAppsRepository
     @Inject lateinit var focusRepository: FocusRepository
+    @Inject lateinit var screenshotRepository: ScreenshotRepository
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val screenshotExecutor = Executors.newSingleThreadExecutor()
+    private var lastScreenshotNonce = 0L
 
     @Volatile
     private var focus: FocusSettings = FocusSettings()
@@ -88,6 +100,24 @@ class EnforcementService : AccessibilityService() {
         }
         serviceScope.launch {
             focusRepository.observe(childId).collectLatest { focus = it }
+        }
+        // Parent screenshot requests — captured silently via the accessibility
+        // screenshot API (no MediaProjection, no on-screen indicator). API 30+.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            serviceScope.launch {
+                var first = true
+                screenshotRepository.observeCaptureRequests(childId).collectLatest { nonce ->
+                    if (first) {
+                        first = false
+                        lastScreenshotNonce = nonce // adopt current as baseline
+                        return@collectLatest
+                    }
+                    if (nonce > lastScreenshotNonce) {
+                        lastScreenshotNonce = nonce
+                        if (nonce > 0) captureScreenshot(childId)
+                    }
+                }
+            }
         }
         focusExempt = computeFocusExempt()
         serviceScope.launch {
@@ -172,6 +202,49 @@ class EnforcementService : AccessibilityService() {
         }.getOrDefault(packageName)
     }
 
+    /**
+     * Captures the screen via the accessibility screenshot API (API 30+) and uploads
+     * it for the parent. No MediaProjection, no consent dialog, no capture indicator —
+     * it reuses the already-granted accessibility permission.
+     */
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun captureScreenshot(childId: String) {
+        runCatching {
+            takeScreenshot(
+                Display.DEFAULT_DISPLAY,
+                screenshotExecutor,
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(result: ScreenshotResult) {
+                        val png = runCatching { result.toPng() }.getOrNull()
+                        result.hardwareBuffer.close()
+                        if (png != null) {
+                            serviceScope.launch { screenshotRepository.uploadScreenshot(childId, png) }
+                        }
+                    }
+
+                    override fun onFailure(errorCode: Int) = Unit
+                },
+            )
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun ScreenshotResult.toPng(): ByteArray? {
+        val hardware = Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace) ?: return null
+        val software = hardware.copy(Bitmap.Config.ARGB_8888, false) ?: return null
+        val maxW = 900
+        val scaled = if (software.width > maxW) {
+            val ratio = maxW.toFloat() / software.width
+            Bitmap.createScaledBitmap(software, maxW, (software.height * ratio).toInt(), true)
+        } else {
+            software
+        }
+        return ByteArrayOutputStream().use { out ->
+            scaled.compress(Bitmap.CompressFormat.PNG, 100, out)
+            out.toByteArray()
+        }
+    }
+
     private fun computeFocusExempt(): Set<String> {
         val exempt = mutableSetOf("android", "com.android.systemui", "com.android.phone")
         // Home launcher — the child can always reach the home screen.
@@ -228,6 +301,7 @@ class EnforcementService : AccessibilityService() {
     override fun onDestroy() {
         super.onDestroy()
         runCatching { unregisterReceiver(packageAddedReceiver) }
+        runCatching { screenshotExecutor.shutdown() }
         serviceScope.cancel()
     }
 }

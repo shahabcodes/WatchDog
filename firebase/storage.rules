@@ -1,11 +1,12 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Avatars: a user may write only their own avatar; any signed-in user may read.
-    match /avatars/{userId}.jpg {
+    // Avatars: a user may write only their own avatar (<uid>.jpg); any signed-in
+    // user may read.
+    match /avatars/{imageId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null
-                   && request.auth.uid == userId
+                   && imageId == request.auth.uid + '.jpg'
                    && request.resource.size < 5 * 1024 * 1024
                    && request.resource.contentType.matches('image/.*');
     }

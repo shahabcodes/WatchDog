@@ -1,6 +1,5 @@
 package com.shahaabapps.watchdog.feature.overview
 
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,7 +14,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -59,7 +57,6 @@ import com.shahaabapps.core.ui.components.CupertinoPrimaryButton
 import com.shahaabapps.core.ui.components.CupertinoSwitch
 import com.shahaabapps.core.ui.components.CupertinoTextButton
 import com.shahaabapps.core.ui.components.CupertinoTextField
-import com.shahaabapps.core.ui.components.rememberReducedMotion
 import com.shahaabapps.core.ui.components.StatTile
 import com.shahaabapps.core.ui.components.StatusChip
 import com.shahaabapps.core.ui.theme.AppTheme
@@ -100,12 +97,7 @@ fun OverviewScreen(
         // the header hugs its card.
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
-        GreetingHero(
-            childName = state.childName,
-            online = state.online,
-            todayMinutes = state.screenTimeMinutes,
-            yesterdayMinutes = if (weekly.size >= 2) weekly[weekly.lastIndex - 1].minutes else null,
-            weekMinutes = weekly.map { it.minutes },
+        com.shahaabapps.watchdog.feature.screenshot.ScreenshotSection(
             modifier = Modifier.padding(top = Spacing.md),
         )
 
@@ -485,183 +477,6 @@ private val USAGE_PALETTE = listOf(
     Color(0xFFEA4335),
     Color(0xFFA142F4),
 )
-
-@Composable
-private fun GreetingHero(
-    childName: String,
-    online: Boolean,
-    todayMinutes: Int,
-    yesterdayMinutes: Int?,
-    weekMinutes: List<Int>,
-    modifier: Modifier = Modifier,
-) {
-    androidx.compose.material3.Surface(
-        shape = RoundedCornerShape(26.dp),
-        shadowElevation = 4.dp,
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Box(
-            modifier = Modifier.background(
-                androidx.compose.ui.graphics.Brush.linearGradient(
-                    listOf(Color(0xFF161B30), Color(0xFF241A4D), Color(0xFF0E1430)),
-                ),
-            ),
-        ) {
-            // Futuristic glow accents (clipped to the card's rounded shape).
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .size(180.dp)
-                    .clip(CircleShape)
-                    .background(
-                        androidx.compose.ui.graphics.Brush.radialGradient(
-                            listOf(Color(0xFF7C6FF0).copy(alpha = 0.45f), Color.Transparent),
-                        ),
-                    ),
-            )
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .size(150.dp)
-                    .clip(CircleShape)
-                    .background(
-                        androidx.compose.ui.graphics.Brush.radialGradient(
-                            listOf(Color(0xFF22D3EE).copy(alpha = 0.20f), Color.Transparent),
-                        ),
-                    ),
-            )
-            Column(modifier = Modifier.padding(Spacing.lg)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        childName.ifBlank { "Your child" },
-                        color = Color.White,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    StatusPill(online = online)
-                }
-
-                Text(
-                    "SCREEN TIME TODAY",
-                    color = Color.White.copy(alpha = 0.55f),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 1.5.sp,
-                    modifier = Modifier.padding(top = Spacing.lg),
-                )
-                Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.padding(top = 2.dp)) {
-                    Text(
-                        formatDuration(todayMinutes),
-                        color = Color.White,
-                        fontSize = 34.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    yesterdayMinutes?.let { y ->
-                        val diff = todayMinutes - y
-                        val label = when {
-                            diff == 0 -> "same as yesterday"
-                            diff < 0 -> "↓ ${formatDuration(-diff)} vs yesterday"
-                            else -> "↑ ${formatDuration(diff)} vs yesterday"
-                        }
-                        Text(
-                            label,
-                            color = Color.White.copy(alpha = 0.85f),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(start = Spacing.sm, bottom = 6.dp),
-                        )
-                    }
-                }
-
-                if (weekMinutes.any { it > 0 }) {
-                    HeroSparkline(
-                        values = weekMinutes,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(32.dp)
-                            .padding(top = Spacing.md),
-                    )
-                }
-            }
-        }
-    }
-}
-
-/** Glass "LIVE/OFFLINE" status pill with a pulsing indicator dot. */
-@Composable
-private fun StatusPill(online: Boolean) {
-    val animate = !rememberReducedMotion()
-    val dotColor = if (online) Color(0xFF34D399) else Color(0xFF94A3B8)
-    androidx.compose.material3.Surface(
-        shape = RoundedCornerShape(50),
-        color = Color.White.copy(alpha = 0.10f),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-        ) {
-            PulsingDot(color = dotColor, animate = animate && online)
-            Text(
-                if (online) "LIVE" else "OFFLINE",
-                color = Color.White,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 1.sp,
-                modifier = Modifier.padding(start = 6.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun PulsingDot(color: Color, animate: Boolean) {
-    val haloAlpha = if (animate) {
-        val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "statusDot")
-        transition.animateFloat(
-            initialValue = 0.2f,
-            targetValue = 0.6f,
-            animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-                androidx.compose.animation.core.tween(1000),
-                androidx.compose.animation.core.RepeatMode.Reverse,
-            ),
-            label = "halo",
-        ).value
-    } else {
-        0.4f
-    }
-    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(14.dp)) {
-        Box(modifier = Modifier.size(14.dp).clip(CircleShape).background(color.copy(alpha = haloAlpha)))
-        Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(color))
-    }
-}
-
-/** A compact 7-bar sparkline; today's bar glows cyan→violet. */
-@Composable
-private fun HeroSparkline(values: List<Int>, modifier: Modifier = Modifier) {
-    val max = (values.maxOrNull() ?: 0).coerceAtLeast(1)
-    val todayBrush = androidx.compose.ui.graphics.Brush.verticalGradient(
-        listOf(Color(0xFF22D3EE), Color(0xFF7C6FF0)),
-    )
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.Bottom,
-    ) {
-        values.forEachIndexed { i, m ->
-            val isToday = i == values.lastIndex
-            val barMod = Modifier
-                .weight(1f)
-                .fillMaxHeight(fraction = (m.toFloat() / max).coerceIn(0.06f, 1f))
-                .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 2.dp, bottomEnd = 2.dp))
-            Box(
-                modifier = if (isToday) barMod.background(todayBrush) else barMod.background(Color.White.copy(alpha = 0.22f)),
-            )
-        }
-    }
-}
 
 @Composable
 private fun UsageChart(totalMinutes: Int, apps: List<AppUsageItem>) {

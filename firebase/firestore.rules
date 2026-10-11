@@ -128,6 +128,27 @@ service cloud.firestore {
         allow create: if request.auth != null && request.auth.uid == childId;
       }
 
+      // On-demand commands (e.g. screenshot): a linked parent writes the request;
+      // the child reads it. (The catch-all below is the opposite way round.)
+      match /commands/{docId} {
+        allow read: if request.auth != null && (
+          request.auth.uid == childId ||
+          request.auth.uid in get(/databases/$(database)/documents/children/$(childId)).data.linkedParents
+        );
+        allow write: if request.auth != null
+                     && request.auth.uid in get(/databases/$(database)/documents/children/$(childId)).data.linkedParents;
+      }
+
+      // Captured screenshots: the child uploads records; a linked parent reads and
+      // deletes them.
+      match /screenshots/{shotId} {
+        allow read, delete: if request.auth != null && (
+          request.auth.uid == childId ||
+          request.auth.uid in get(/databases/$(database)/documents/children/$(childId)).data.linkedParents
+        );
+        allow create: if request.auth != null && request.auth.uid == childId;
+      }
+
       match /{document=**} {
         allow read: if request.auth != null
                     && request.auth.uid in get(/databases/$(database)/documents/children/$(childId)).data.linkedParents;

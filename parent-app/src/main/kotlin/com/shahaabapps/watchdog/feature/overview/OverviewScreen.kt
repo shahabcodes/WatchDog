@@ -291,7 +291,14 @@ private fun ProtectionEditor(
     var blocked by remember { mutableStateOf(initial.uninstallBlocked) }
     var pin by remember { mutableStateOf(initial.pin) }
     var blockNewApps by remember { mutableStateOf(initial.blockNewApps) }
+    // An existing, still-valid PIN can be kept; otherwise (none yet, or an old
+    // too-short PIN) we start in "reset" mode so a compliant one must be entered.
+    val existingValid = initial.pin.length in PIN_MIN_LEN..PIN_MAX_LEN && initial.pin.all { it.isDigit() }
+    var resetting by remember { mutableStateOf(!existingValid) }
     val pinValid = pin.length in PIN_MIN_LEN..PIN_MAX_LEN && pin.all { it.isDigit() }
+    // Save is allowed if protection is off, or a valid PIN is already kept, or a
+    // valid new PIN has been entered.
+    val canSave = !blocked || (!resetting && existingValid) || (resetting && pinValid)
 
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl),
@@ -307,15 +314,46 @@ private fun ProtectionEditor(
             )
         }
         if (blocked) {
-            Text("Removal PIN ($PIN_MIN_LEN–$PIN_MAX_LEN digits)", style = MaterialTheme.typography.titleMedium)
-            CupertinoTextField(
-                value = pin,
-                onValueChange = { if (it.length <= PIN_MAX_LEN && it.all { c -> c.isDigit() }) pin = it },
-                placeholder = "$PIN_MIN_LEN–$PIN_MAX_LEN digits",
-                keyboardType = KeyboardType.NumberPassword,
-            )
-            if (pin.isNotEmpty() && !pinValid) {
-                Text("Enter $PIN_MIN_LEN to $PIN_MAX_LEN digits.", color = AppTheme.colors.destructive, style = MaterialTheme.typography.bodySmall)
+            if (!resetting) {
+                // A PIN is already set — offer to reset it rather than revealing it.
+                CupertinoCard {
+                    CupertinoListRow(
+                        title = "Removal PIN",
+                        subtitle = "A PIN is set",
+                        showDivider = false,
+                        trailing = {
+                            Text(
+                                text = "Reset PIN",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = AppTheme.colors.accent,
+                                modifier = Modifier
+                                    .clickable { resetting = true; pin = "" }
+                                    .padding(horizontal = Spacing.sm, vertical = 4.dp),
+                            )
+                        },
+                    )
+                }
+            } else {
+                Text("New removal PIN ($PIN_MIN_LEN–$PIN_MAX_LEN digits)", style = MaterialTheme.typography.titleMedium)
+                CupertinoTextField(
+                    value = pin,
+                    onValueChange = { if (it.length <= PIN_MAX_LEN && it.all { c -> c.isDigit() }) pin = it },
+                    placeholder = "$PIN_MIN_LEN–$PIN_MAX_LEN digits",
+                    keyboardType = KeyboardType.NumberPassword,
+                )
+                if (pin.isNotEmpty() && !pinValid) {
+                    Text("Enter $PIN_MIN_LEN to $PIN_MAX_LEN digits.", color = AppTheme.colors.destructive, style = MaterialTheme.typography.bodySmall)
+                }
+                if (existingValid) {
+                    Text(
+                        text = "Keep current PIN",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = AppTheme.colors.accent,
+                        modifier = Modifier
+                            .clickable { resetting = false; pin = initial.pin }
+                            .padding(vertical = 4.dp),
+                    )
+                }
             }
         }
         CupertinoCard {
@@ -328,12 +366,17 @@ private fun ProtectionEditor(
         }
         CupertinoPrimaryButton(
             text = "Save",
-            enabled = !blocked || pinValid,
+            enabled = canSave,
             onClick = {
+                val finalPin = when {
+                    !blocked -> ""
+                    resetting -> pin
+                    else -> initial.pin
+                }
                 onSave(
                     com.shahaabapps.core.model.ProtectionSettings(
                         uninstallBlocked = blocked,
-                        pin = if (blocked) pin else "",
+                        pin = finalPin,
                         blockNewApps = blockNewApps,
                     ),
                 )

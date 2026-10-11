@@ -25,8 +25,14 @@ interface ScreenshotRepository {
     /** Parent: ask the child device to take a screenshot now. */
     suspend fun requestCapture(childId: String): AppResult<Unit>
 
-    /** Parent: observe captured screenshots, newest first. */
+    /** Parent: observe pending (not-yet-downloaded) screenshots, newest first. */
     fun observeScreenshots(childId: String): Flow<List<Screenshot>>
+
+    /**
+     * Parent: download a screenshot's bytes, then delete the Storage object and its
+     * Firestore doc so nothing is kept server-side.
+     */
+    suspend fun fetchAndClear(childId: String, shot: Screenshot): AppResult<ByteArray>
 
     /** Child: emits the latest request nonce (0 when none). */
     fun observeCaptureRequests(childId: String): Flow<Long>
@@ -65,6 +71,7 @@ class FirebaseScreenshotRepository @Inject constructor(
                             id = doc.id,
                             url = doc.getString("url") ?: "",
                             capturedAtMillis = doc.getLong("capturedAtMillis") ?: 0L,
+                            storagePath = doc.getString("storagePath") ?: "",
                         )
                     },
                 )
@@ -98,6 +105,20 @@ class FirebaseScreenshotRepository @Inject constructor(
             Unit
         }
 
+    override suspend fun fetchAndClear(childId: String, shot: Screenshot): AppResult<ByteArray> =
+        runCatchingResult {
+            val ref = if (shot.storagePath.isNotBlank()) {
+                storage.reference.child(shot.storagePath.trimStart('/'))
+            } else {
+                storage.reference.child("screenshots/$childId/${shot.capturedAtMillis}.png")
+            }
+            val bytes = ref.getBytes(MAX_SCREENSHOT_BYTES).await()
+            // Clear the backend copy now that the parent has it locally.
+            runCatching { ref.delete().await() }
+            runCatching { screenshotsCollection(childId).document(shot.id).delete().await() }
+            bytes
+        }
+
     override suspend fun reportStatus(childId: String, status: String) {
         runCatching {
             firestore.collection("children").document(childId)
@@ -109,6 +130,10 @@ class FirebaseScreenshotRepository @Inject constructor(
     override suspend fun delete(childId: String, id: String): AppResult<Unit> = runCatchingResult {
         screenshotsCollection(childId).document(id).delete().await()
         Unit
+    }
+
+    private companion object {
+        const val MAX_SCREENSHOT_BYTES = 12L * 1024 * 1024
     }
 
     private fun commandDoc(childId: String) =

@@ -12,13 +12,14 @@ service firebase.storage {
     }
 
     // Child screenshots: only the child device uploads; the child or a linked
-    // parent may read.
+    // parent may read; the parent (or child) may delete after the parent has
+    // downloaded it locally (screenshots are not kept server-side).
     match /screenshots/{childId}/{file} {
-      allow write: if request.auth != null
-                   && request.auth.uid == childId
-                   && request.resource.size < 10 * 1024 * 1024
-                   && request.resource.contentType.matches('image/.*');
-      allow read: if request.auth != null && (
+      allow create: if request.auth != null
+                    && request.auth.uid == childId
+                    && request.resource.size < 10 * 1024 * 1024
+                    && request.resource.contentType.matches('image/.*');
+      allow read, delete: if request.auth != null && (
         request.auth.uid == childId ||
         request.auth.uid in firestore.get(/databases/(default)/documents/children/$(childId)).data.linkedParents
       );

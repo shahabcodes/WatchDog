@@ -1,25 +1,34 @@
 package com.shahaabapps.watchdog.feature.screenshot
 
+import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,35 +41,38 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
-import com.shahaabapps.core.model.Screenshot
 import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
 
 /**
- * Top-of-dashboard control: request a screenshot of the child's screen and browse
- * the ones that come back. Capture runs silently on the child via the accessibility
- * screenshot API (no indicator), as long as Shield's accessibility service is on.
+ * Dashboard "Screen" control: request a screenshot of the child's screen and browse
+ * the ones already pulled down (stored on this device only). Capture runs silently
+ * on the child via the accessibility screenshot API.
  */
 @Composable
 fun ScreenshotSection(
     modifier: Modifier = Modifier,
     viewModel: ScreenshotViewModel = hiltViewModel(),
 ) {
-    val shots by viewModel.screenshots.collectAsStateWithLifecycle()
-    var enlarged by remember { mutableStateOf<Screenshot?>(null) }
+    val shots by viewModel.shots.collectAsStateWithLifecycle()
+    var viewerIndex by remember { mutableStateOf<Int?>(null) }
     var requestedAt by remember { mutableStateOf(0L) }
-    val waiting = requestedAt > 0 && System.currentTimeMillis() - requestedAt < 20_000
+    val waiting = requestedAt > 0 && System.currentTimeMillis() - requestedAt < 25_000
 
-    // Clear the "waiting" hint once a newer screenshot arrives.
-    LaunchedEffect(shots.firstOrNull()?.id) {
+    // Clear the "waiting" hint once a newer screenshot has landed locally.
+    LaunchedEffect(shots.firstOrNull()?.capturedAtMillis) {
         if ((shots.firstOrNull()?.capturedAtMillis ?: 0L) >= requestedAt) requestedAt = 0L
     }
 
@@ -101,32 +113,22 @@ fun ScreenshotSection(
                 )
             } else {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    items(shots, key = { it.id }) { shot ->
-                        Thumbnail(shot = shot, onClick = { enlarged = shot })
+                    items(shots, key = { it.capturedAtMillis }) { shot ->
+                        val index = shots.indexOf(shot)
+                        Thumbnail(shot = shot, onClick = { viewerIndex = index })
                     }
                 }
             }
         }
     }
 
-    enlarged?.let { shot ->
-        Dialog(onDismissRequest = { enlarged = null }) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color.Black)
-                    .clickable { enlarged = null },
-                contentAlignment = Alignment.Center,
-            ) {
-                AsyncImage(
-                    model = shot.url,
-                    contentDescription = "Screenshot",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxWidth().aspectRatio(0.5f),
-                )
-            }
-        }
+    viewerIndex?.let { start ->
+        ScreenshotViewer(
+            shots = shots,
+            startIndex = start,
+            onClose = { viewerIndex = null },
+            onDelete = { viewModel.delete(it) },
+        )
     }
 }
 
@@ -149,18 +151,18 @@ private fun CaptureButton(waiting: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun Thumbnail(shot: Screenshot, onClick: () -> Unit) {
+private fun Thumbnail(shot: LocalShot, onClick: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
-                .width(110.dp)
-                .height(200.dp)
+                .width(120.dp)
+                .height(210.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(AppTheme.colors.separator.copy(alpha = 0.3f))
                 .clickable(onClick = onClick),
         ) {
             AsyncImage(
-                model = shot.url,
+                model = shot.file,
                 contentDescription = "Screenshot",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
@@ -172,6 +174,93 @@ private fun Thumbnail(shot: Screenshot, onClick: () -> Unit) {
             color = AppTheme.colors.secondaryLabel,
             modifier = Modifier.padding(top = 4.dp),
         )
+    }
+}
+
+/** Full-screen, swipeable viewer with zoom, share and delete. */
+@Composable
+private fun ScreenshotViewer(
+    shots: List<LocalShot>,
+    startIndex: Int,
+    onClose: () -> Unit,
+    onDelete: (LocalShot) -> Unit,
+) {
+    if (shots.isEmpty()) {
+        LaunchedEffect(Unit) { onClose() }
+        return
+    }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val pagerState = rememberPagerState(
+        initialPage = startIndex.coerceIn(0, shots.lastIndex),
+        pageCount = { shots.size },
+    )
+
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+            HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+                ZoomableImage(shot = shots[page])
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = Spacing.sm, vertical = Spacing.sm),
+            ) {
+                IconButton(onClick = onClose) {
+                    Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White)
+                }
+                Text(
+                    "${(pagerState.currentPage + 1).coerceAtMost(shots.size)} / ${shots.size}",
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                val current = shots.getOrNull(pagerState.currentPage)
+                IconButton(onClick = { current?.let { shareLocalShot(context, it) } }) {
+                    Icon(Icons.Filled.Share, contentDescription = "Share", tint = Color.White)
+                }
+                IconButton(onClick = { current?.let { onDelete(it) } }) {
+                    Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color.White)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ZoomableImage(shot: LocalShot) {
+    var zoomed by remember(shot.file.path) { mutableStateOf(false) }
+    val target = if (zoomed) 2.5f else 1f
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(shot.file.path) {
+                detectTapGestures(onDoubleTap = { zoomed = !zoomed })
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        AsyncImage(
+            model = shot.file,
+            contentDescription = "Screenshot",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(scaleX = target, scaleY = target),
+        )
+    }
+}
+
+private fun shareLocalShot(context: Context, shot: LocalShot) {
+    runCatching {
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", shot.file)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/png"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share screenshot").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 }
 

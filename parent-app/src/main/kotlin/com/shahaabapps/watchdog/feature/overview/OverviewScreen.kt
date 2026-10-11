@@ -101,7 +101,6 @@ fun OverviewScreen(
         GreetingHero(
             childName = state.childName,
             online = state.online,
-            onOpenMap = onOpenMap,
             modifier = Modifier.padding(top = Spacing.md),
         )
 
@@ -485,7 +484,6 @@ private val USAGE_PALETTE = listOf(
 private fun GreetingHero(
     childName: String,
     online: Boolean,
-    onOpenMap: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     androidx.compose.material3.Surface(
@@ -522,19 +520,6 @@ private fun GreetingHero(
                         text = if (online) "Online" else "Offline",
                         color = if (online) AppTheme.colors.success else AppTheme.colors.secondaryLabel,
                     )
-                }
-                androidx.compose.material3.Surface(
-                    shape = RoundedCornerShape(50),
-                    color = Color.White,
-                    modifier = Modifier.padding(top = Spacing.md).clickable(onClick = onOpenMap),
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                    ) {
-                        Icon(Icons.Filled.Map, contentDescription = null, tint = Color(0xFF8B5CF6), modifier = Modifier.size(18.dp))
-                        Text("Open map", color = Color(0xFF8B5CF6), fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 6.dp))
-                    }
                 }
             }
         }

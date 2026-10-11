@@ -56,6 +56,29 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Reconnect path: create a child record with a pairing code but no profile, so
+     * the device jumps straight to pairing. After the parent reconnects, migration
+     * restores the original name/DOB — the child never re-enters them.
+     */
+    fun beginReconnect(onReady: () -> Unit) {
+        val userId = authRepository.currentUserIdOrNull() ?: return
+        if (_uiState.value.isSaving) return
+        _uiState.update { it.copy(isSaving = true, errorMessage = null) }
+        viewModelScope.launch {
+            val profile = UserProfile(id = userId, name = "", role = UserRole.CHILD)
+            when (val result = childRepository.saveChildProfile(userId, profile)) {
+                is AppResult.Success -> {
+                    _uiState.update { it.copy(isSaving = false) }
+                    onReady()
+                }
+                is AppResult.Failure -> _uiState.update {
+                    it.copy(isSaving = false, errorMessage = result.error.message ?: "Could not start reconnect")
+                }
+            }
+        }
+    }
+
     fun save(onSaved: () -> Unit) {
         val state = _uiState.value
         val userId = authRepository.currentUserIdOrNull() ?: return

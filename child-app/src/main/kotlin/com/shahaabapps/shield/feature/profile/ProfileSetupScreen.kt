@@ -154,6 +154,16 @@ fun ProfileSetupScreen(
                 enabled = state.canSave,
                 modifier = Modifier.padding(top = Spacing.sm),
             )
+
+            // Reconnecting a device that was already set up: skip name/DOB — the
+            // parent reconnects and the original details are restored automatically.
+            TextButton(
+                onClick = { viewModel.beginReconnect(onSaved) },
+                enabled = !state.isSaving,
+                modifier = Modifier.padding(top = Spacing.sm),
+            ) {
+                Text("Reconnecting this child's device? Skip setup")
+            }
         }
     }
 

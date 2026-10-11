@@ -50,14 +50,16 @@ object ProtectionLocalStore {
     )
 
     fun isUninstallScreen(packageName: String, className: String?, text: String? = null): Boolean {
-        if (packageName in INSTALLER_PACKAGES) return true
-        if (packageName.contains("packageinstaller", ignoreCase = true)) return true
+        // The installer package handles BOTH install and uninstall, so we must not
+        // bounce on the package alone — that would also block legitimate APK
+        // installs/updates. Only the uninstall flow is identified, by its activity
+        // class or the word "uninstall" on screen.
+        val inInstaller = packageName in INSTALLER_PACKAGES ||
+            packageName.contains("packageinstaller", ignoreCase = true)
+        val inSettings = packageName.contains("settings", ignoreCase = true)
+        if (!inInstaller && !inSettings) return false
         if (className != null && className.contains("Uninstall", ignoreCase = true)) return true
-        if (text != null && text.contains("uninstall", ignoreCase = true) &&
-            packageName.contains("settings", ignoreCase = true)
-        ) {
-            return true
-        }
+        if (text != null && text.contains("uninstall", ignoreCase = true)) return true
         return false
     }
 

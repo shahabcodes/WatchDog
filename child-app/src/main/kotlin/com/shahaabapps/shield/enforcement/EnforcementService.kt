@@ -132,7 +132,8 @@ class EnforcementService : AccessibilityService() {
         val packageName = event.packageName?.toString() ?: return
 
         // Uninstall protection runs independently of app-limit enforcement.
-        guardUninstall(packageName, event.className?.toString())
+        val eventText = event.text.joinToString(" ").ifBlank { null }
+        guardUninstall(packageName, event.className?.toString(), eventText)
 
         if (!supervised) return // device no longer supervised — no restrictions
         if (packageName == this.packageName) return
@@ -206,12 +207,12 @@ class EnforcementService : AccessibilityService() {
      * out of the uninstall dialog or the "deactivate device admin" screen — unless
      * a parent has unlocked a removal window with the PIN.
      */
-    private fun guardUninstall(packageName: String, className: String?) {
+    private fun guardUninstall(packageName: String, className: String?, text: String?) {
         if (!ProtectionLocalStore.isBlocked(this)) return
         if (!DeviceAdmin.isActive(this)) return
         if (ProtectionLocalStore.isUnlocked(this)) return
-        if (ProtectionLocalStore.isUninstallScreen(packageName, className) ||
-            ProtectionLocalStore.isAdminRemovalScreen(packageName, className)
+        if (ProtectionLocalStore.isUninstallScreen(packageName, className, text) ||
+            ProtectionLocalStore.isAdminRemovalScreen(packageName, className, text)
         ) {
             performGlobalAction(GLOBAL_ACTION_HOME)
         }

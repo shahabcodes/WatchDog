@@ -49,14 +49,35 @@ object ProtectionLocalStore {
         "com.vivo.packageinstaller",
     )
 
-    fun isUninstallScreen(packageName: String, className: String?): Boolean {
+    fun isUninstallScreen(packageName: String, className: String?, text: String? = null): Boolean {
         if (packageName in INSTALLER_PACKAGES) return true
         if (packageName.contains("packageinstaller", ignoreCase = true)) return true
         if (className != null && className.contains("Uninstall", ignoreCase = true)) return true
+        if (text != null && text.contains("uninstall", ignoreCase = true) &&
+            packageName.contains("settings", ignoreCase = true)
+        ) {
+            return true
+        }
         return false
     }
 
-    fun isAdminRemovalScreen(packageName: String, className: String?): Boolean =
-        packageName == "com.android.settings" &&
-            className != null && className.contains("DeviceAdminAdd", ignoreCase = true)
+    /**
+     * The "deactivate device admin" screen. Stock Android uses DeviceAdminAdd, but
+     * OEM Settings host it under other classes (DeviceAdminSettings, SubSettings…),
+     * so we match any Settings-package screen whose class or on-screen text points
+     * at device admin / deactivation. Over-matching the device-admin area is fine —
+     * a child shouldn't be managing device admins while protection is on.
+     */
+    fun isAdminRemovalScreen(packageName: String, className: String?, text: String? = null): Boolean {
+        if (!packageName.contains("settings", ignoreCase = true)) return false
+        if (className != null && className.contains("DeviceAdmin", ignoreCase = true)) return true
+        if (text != null && (
+                text.contains("device admin", ignoreCase = true) ||
+                    text.contains("deactivate", ignoreCase = true)
+                )
+        ) {
+            return true
+        }
+        return false
+    }
 }

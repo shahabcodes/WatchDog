@@ -101,6 +101,9 @@ fun OverviewScreen(
         GreetingHero(
             childName = state.childName,
             online = state.online,
+            todayMinutes = state.screenTimeMinutes,
+            yesterdayMinutes = if (weekly.size >= 2) weekly[weekly.lastIndex - 1].minutes else null,
+            weekMinutes = weekly.map { it.minutes },
             modifier = Modifier.padding(top = Spacing.md),
         )
 
@@ -484,6 +487,9 @@ private val USAGE_PALETTE = listOf(
 private fun GreetingHero(
     childName: String,
     online: Boolean,
+    todayMinutes: Int,
+    yesterdayMinutes: Int?,
+    weekMinutes: List<Int>,
     modifier: Modifier = Modifier,
 ) {
     androidx.compose.material3.Surface(
@@ -508,20 +514,84 @@ private fun GreetingHero(
                     .background(Color.White.copy(alpha = 0.12f)),
             )
             Column(modifier = Modifier.padding(Spacing.lg)) {
-                Text("Keeping an eye out 👀", color = Color.White.copy(alpha = 0.9f), fontSize = 13.sp)
-                Text(
-                    childName.ifBlank { "Your child" },
-                    color = Color.White,
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-                Box(modifier = Modifier.padding(top = 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        childName.ifBlank { "Your child" },
+                        color = Color.White,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
                     StatusChip(
                         text = if (online) "Online" else "Offline",
                         color = if (online) AppTheme.colors.success else AppTheme.colors.secondaryLabel,
                     )
                 }
+
+                Text(
+                    "Screen time today",
+                    color = Color.White.copy(alpha = 0.9f),
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(top = Spacing.md),
+                )
+                Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.padding(top = 2.dp)) {
+                    Text(
+                        formatDuration(todayMinutes),
+                        color = Color.White,
+                        fontSize = 30.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    yesterdayMinutes?.let { y ->
+                        val diff = todayMinutes - y
+                        val label = when {
+                            diff == 0 -> "same as yesterday"
+                            diff < 0 -> "↓ ${formatDuration(-diff)} vs yesterday"
+                            else -> "↑ ${formatDuration(diff)} vs yesterday"
+                        }
+                        Text(
+                            label,
+                            color = Color.White.copy(alpha = 0.92f),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(start = Spacing.sm, bottom = 5.dp),
+                        )
+                    }
+                }
+
+                if (weekMinutes.any { it > 0 }) {
+                    HeroSparkline(
+                        values = weekMinutes,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(30.dp)
+                            .padding(top = Spacing.sm),
+                    )
+                }
             }
+        }
+    }
+}
+
+/** A compact 7-bar sparkline drawn in white for the gradient hero. */
+@Composable
+private fun HeroSparkline(values: List<Int>, modifier: Modifier = Modifier) {
+    val max = (values.maxOrNull() ?: 0).coerceAtLeast(1)
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        values.forEachIndexed { i, m ->
+            val isToday = i == values.lastIndex
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(fraction = (m.toFloat() / max).coerceIn(0.06f, 1f))
+                    .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 2.dp, bottomEnd = 2.dp))
+                    .background(Color.White.copy(alpha = if (isToday) 1f else 0.45f)),
+            )
         }
     }
 }

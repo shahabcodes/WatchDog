@@ -45,6 +45,7 @@ import com.shahaabapps.core.ui.theme.Spacing
 import com.shahaabapps.shield.enforcement.EnforcementSetupCard
 import com.shahaabapps.shield.enforcement.ProtectionSetupCard
 import com.shahaabapps.shield.feature.settings.SettingsScreen
+import com.shahaabapps.shield.capture.ScreenCaptureSetupCard
 import com.shahaabapps.shield.location.AlertsSetupCard
 import com.shahaabapps.shield.location.BatterySetupCard
 import com.shahaabapps.shield.location.LocationSetupCard
@@ -128,6 +129,7 @@ fun ProtectedScreen(
             EnforcementSetupCard()
             LocationSetupCard()
             BatterySetupCard()
+            ScreenCaptureSetupCard()
             AlertsSetupCard()
             ProtectionSetupCard()
         }

@@ -19,6 +19,8 @@
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <!-- On-demand screenshot capture for parents (MediaProjection). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Ask to be exempt from battery optimization so the OS doesn't kill the
          location/enforcement services in the background. -->
@@ -113,6 +115,12 @@
             android:name=".location.GeofenceSyncService"
             android:exported="false"
             android:foregroundServiceType="location" />
+
+        <!-- Captures the screen on parent request (one-time user consent). -->
+        <service
+            android:name=".capture.ScreenCaptureService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
 
         <!-- Receives geofence enter/exit transitions. -->
         <receiver

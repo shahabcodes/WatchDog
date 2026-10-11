@@ -49,18 +49,28 @@ object ProtectionLocalStore {
         "com.vivo.packageinstaller",
     )
 
-    fun isUninstallScreen(packageName: String, className: String?, text: String? = null): Boolean {
+    fun isUninstallScreen(
+        packageName: String,
+        className: String?,
+        text: String? = null,
+        ownLabel: String = "",
+    ): Boolean {
         // The installer package handles BOTH install and uninstall, so we must not
         // bounce on the package alone — that would also block legitimate APK
-        // installs/updates. Only the uninstall flow is identified, by its activity
-        // class or the word "uninstall" on screen.
+        // installs/updates.
         val inInstaller = packageName in INSTALLER_PACKAGES ||
             packageName.contains("packageinstaller", ignoreCase = true)
         val inSettings = packageName.contains("settings", ignoreCase = true)
         if (!inInstaller && !inSettings) return false
-        if (className != null && className.contains("Uninstall", ignoreCase = true)) return true
-        if (text != null && text.contains("uninstall", ignoreCase = true)) return true
-        return false
+        val looksUninstall = (className != null && className.contains("Uninstall", ignoreCase = true)) ||
+            (text != null && text.contains("uninstall", ignoreCase = true))
+        if (!looksUninstall) return false
+        // Only guard OUR OWN app's uninstall — never block uninstalling other apps
+        // (e.g. Watch Dog on the same device). The confirm screen names the app, so
+        // require our label to appear; if it can't be read, don't bounce (device
+        // admin still blocks Shield's removal).
+        if (ownLabel.isBlank() || text == null) return false
+        return text.contains(ownLabel, ignoreCase = true)
     }
 
     /**

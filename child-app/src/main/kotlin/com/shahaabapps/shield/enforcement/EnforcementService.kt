@@ -211,11 +211,16 @@ class EnforcementService : AccessibilityService() {
         if (!ProtectionLocalStore.isBlocked(this)) return
         if (!DeviceAdmin.isActive(this)) return
         if (ProtectionLocalStore.isUnlocked(this)) return
-        if (ProtectionLocalStore.isUninstallScreen(packageName, className, text) ||
+        if (ProtectionLocalStore.isUninstallScreen(packageName, className, text, ownAppLabel) ||
             ProtectionLocalStore.isAdminRemovalScreen(packageName, className, text)
         ) {
             performGlobalAction(GLOBAL_ACTION_HOME)
         }
+    }
+
+    /** Shield's own launcher label — used to scope the uninstall guard to this app. */
+    private val ownAppLabel: String by lazy {
+        runCatching { applicationInfo.loadLabel(packageManager).toString() }.getOrDefault("")
     }
 
     override fun onInterrupt() = Unit

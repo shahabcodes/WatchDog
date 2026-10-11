@@ -59,7 +59,6 @@ import com.shahaabapps.core.ui.components.CupertinoPrimaryButton
 import com.shahaabapps.core.ui.components.CupertinoSwitch
 import com.shahaabapps.core.ui.components.CupertinoTextButton
 import com.shahaabapps.core.ui.components.CupertinoTextField
-import com.shahaabapps.core.ui.components.SectionHeader
 import com.shahaabapps.core.ui.components.rememberReducedMotion
 import com.shahaabapps.core.ui.components.StatTile
 import com.shahaabapps.core.ui.components.StatusChip
@@ -96,7 +95,10 @@ fun OverviewScreen(
             )
             .verticalScroll(rememberScrollState())
             .padding(horizontal = Spacing.lg),
-        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+        // One uniform gap between every block. The 2x2 stat grid keeps its own
+        // tighter internal spacing; a section header sits in a header+card group so
+        // the header hugs its card.
+        verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
         GreetingHero(
             childName = state.childName,
@@ -107,71 +109,79 @@ fun OverviewScreen(
             modifier = Modifier.padding(top = Spacing.md),
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            StatTile(
-                value = formatDuration(state.screenTimeMinutes),
-                label = "Screen time",
-                icon = Icons.Filled.BarChart,
-                tint = Color(0xFF14B8A6),
-                modifier = Modifier.weight(1f),
-            )
-            StatTile(
-                value = state.limitedOrBlocked.toString(),
-                label = "Apps limited",
-                icon = Icons.Filled.Apps,
-                tint = Color(0xFFF59E0B),
-                modifier = Modifier.weight(1f),
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            StatTile(
-                value = state.placesCount.toString(),
-                label = "Places",
-                icon = Icons.Filled.Place,
-                tint = Color(0xFF3B6FF6),
-                modifier = Modifier.weight(1f),
-                onClick = onOpenMap,
-            )
-            StatTile(
-                value = if (state.batteryPercent > 0) "${state.batteryPercent}%" else "—",
-                label = "Battery",
-                icon = Icons.Filled.BatteryStd,
-                tint = Color(0xFFE5588E),
-                modifier = Modifier.weight(1f),
-            )
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                StatTile(
+                    value = formatDuration(state.screenTimeMinutes),
+                    label = "Screen time",
+                    icon = Icons.Filled.BarChart,
+                    tint = Color(0xFF14B8A6),
+                    modifier = Modifier.weight(1f),
+                )
+                StatTile(
+                    value = state.limitedOrBlocked.toString(),
+                    label = "Apps limited",
+                    icon = Icons.Filled.Apps,
+                    tint = Color(0xFFF59E0B),
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                StatTile(
+                    value = state.placesCount.toString(),
+                    label = "Places",
+                    icon = Icons.Filled.Place,
+                    tint = Color(0xFF3B6FF6),
+                    modifier = Modifier.weight(1f),
+                    onClick = onOpenMap,
+                )
+                StatTile(
+                    value = if (state.batteryPercent > 0) "${state.batteryPercent}%" else "—",
+                    label = "Battery",
+                    icon = Icons.Filled.BatteryStd,
+                    tint = Color(0xFFE5588E),
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
 
-        SectionHeader("Location")
-        LocationCard(
-            location = childLocation,
-            deviceModel = state.deviceModel,
-            onOpenMap = onOpenMap,
-            onRing = { showRingSheet = true },
-        )
+        DashSection("Location") {
+            LocationCard(
+                location = childLocation,
+                deviceModel = state.deviceModel,
+                onOpenMap = onOpenMap,
+                onRing = { showRingSheet = true },
+            )
+        }
 
         if (pendingApps.isNotEmpty()) {
-            SectionHeader("New apps to review")
-            PendingAppsCard(
-                apps = pendingApps,
-                onAllow = { pendingVm.allow(it) },
-                onKeepBlocked = { pendingVm.keepBlocked(it) },
-            )
+            DashSection("New apps to review") {
+                PendingAppsCard(
+                    apps = pendingApps,
+                    onAllow = { pendingVm.allow(it) },
+                    onKeepBlocked = { pendingVm.keepBlocked(it) },
+                )
+            }
         }
 
-        SectionHeader("Focus modes")
-        com.shahaabapps.watchdog.feature.focus.FocusCard(settings = focus, onEdit = { showFocusSheet = true })
+        DashSection("Focus modes") {
+            com.shahaabapps.watchdog.feature.focus.FocusCard(settings = focus, onEdit = { showFocusSheet = true })
+        }
 
-        SectionHeader("Protection")
-        ProtectionCard(blocked = protection.uninstallBlocked, onClick = { showProtectionSheet = true })
+        DashSection("Protection") {
+            ProtectionCard(blocked = protection.uninstallBlocked, onClick = { showProtectionSheet = true })
+        }
 
         if (weekly.any { it.minutes > 0 }) {
-            SectionHeader("This week")
-            WeeklyTrendChart(weekly)
+            DashSection("This week") {
+                WeeklyTrendChart(weekly)
+            }
         }
 
-        SectionHeader("App usage today")
-        UsageChart(state.screenTimeMinutes, state.topApps)
-        Spacer(Modifier.height(Spacing.md))
+        DashSection("App usage today") {
+            UsageChart(state.screenTimeMinutes, state.topApps)
+        }
+        Spacer(Modifier.height(Spacing.sm))
     }
 
     if (showRingSheet) {
@@ -210,6 +220,23 @@ fun OverviewScreen(
                 },
             )
         }
+    }
+}
+
+/** A dashboard section: an uppercase header tucked tightly above its card. */
+@Composable
+private fun DashSection(title: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+        Text(
+            text = title.uppercase(),
+            style = MaterialTheme.typography.labelMedium,
+            color = AppTheme.colors.secondaryLabel,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 0.5.sp,
+            modifier = Modifier.padding(start = Spacing.xs),
+        )
+        content()
     }
 }
 

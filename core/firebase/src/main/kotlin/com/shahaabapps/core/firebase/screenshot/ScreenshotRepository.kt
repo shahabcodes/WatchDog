@@ -34,6 +34,9 @@ interface ScreenshotRepository {
     /** Child: upload a captured PNG and record it for the parent. */
     suspend fun uploadScreenshot(childId: String, pngBytes: ByteArray): AppResult<Unit>
 
+    /** Child: record the last capture status/error for remote diagnosis. */
+    suspend fun reportStatus(childId: String, status: String)
+
     /** Parent: delete one screenshot (doc only; storage object is lifecycle-managed). */
     suspend fun delete(childId: String, id: String): AppResult<Unit>
 }
@@ -94,6 +97,14 @@ class FirebaseScreenshotRepository @Inject constructor(
             ).await()
             Unit
         }
+
+    override suspend fun reportStatus(childId: String, status: String) {
+        runCatching {
+            firestore.collection("children").document(childId)
+                .collection("commands").document("screenshotStatus")
+                .set(mapOf("status" to status, "atMillis" to System.currentTimeMillis())).await()
+        }
+    }
 
     override suspend fun delete(childId: String, id: String): AppResult<Unit> = runCatchingResult {
         screenshotsCollection(childId).document(id).delete().await()

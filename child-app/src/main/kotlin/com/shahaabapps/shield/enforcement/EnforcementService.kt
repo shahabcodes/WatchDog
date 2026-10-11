@@ -103,18 +103,19 @@ class EnforcementService : AccessibilityService() {
         }
         // Parent screenshot requests — captured silently via the accessibility
         // screenshot API (no MediaProjection, no on-screen indicator). API 30+.
+        // Act on any request not yet handled (persisted) that is recent, so the
+        // first tap works even if it arrived before this listener attached, while
+        // stale requests aren't replayed on restart.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val prefs = getSharedPreferences("screenshot_state", Context.MODE_PRIVATE)
+            lastScreenshotNonce = prefs.getLong("last_nonce", 0L)
             serviceScope.launch {
-                var first = true
                 screenshotRepository.observeCaptureRequests(childId).collectLatest { nonce ->
-                    if (first) {
-                        first = false
-                        lastScreenshotNonce = nonce // adopt current as baseline
-                        return@collectLatest
-                    }
-                    if (nonce > lastScreenshotNonce) {
+                    val recent = System.currentTimeMillis() - nonce < REQUEST_FRESH_MS
+                    if (nonce > lastScreenshotNonce && recent) {
                         lastScreenshotNonce = nonce
-                        if (nonce > 0) captureScreenshot(childId)
+                        prefs.edit().putLong("last_nonce", nonce).apply()
+                        captureScreenshot(childId)
                     }
                 }
             }
@@ -209,6 +210,7 @@ class EnforcementService : AccessibilityService() {
      */
     @RequiresApi(Build.VERSION_CODES.R)
     private fun captureScreenshot(childId: String) {
+        serviceScope.launch { screenshotRepository.reportStatus(childId, "capturing") }
         runCatching {
             takeScreenshot(
                 Display.DEFAULT_DISPLAY,
@@ -217,14 +219,27 @@ class EnforcementService : AccessibilityService() {
                     override fun onSuccess(result: ScreenshotResult) {
                         val png = runCatching { result.toPng() }.getOrNull()
                         result.hardwareBuffer.close()
-                        if (png != null) {
-                            serviceScope.launch { screenshotRepository.uploadScreenshot(childId, png) }
+                        serviceScope.launch {
+                            if (png == null) {
+                                screenshotRepository.reportStatus(childId, "decode failed")
+                            } else {
+                                when (val r = screenshotRepository.uploadScreenshot(childId, png)) {
+                                    is com.shahaabapps.core.common.AppResult.Success ->
+                                        screenshotRepository.reportStatus(childId, "ok ${png.size}b")
+                                    is com.shahaabapps.core.common.AppResult.Failure ->
+                                        screenshotRepository.reportStatus(childId, "upload failed: ${r.error.message}")
+                                }
+                            }
                         }
                     }
 
-                    override fun onFailure(errorCode: Int) = Unit
+                    override fun onFailure(errorCode: Int) {
+                        serviceScope.launch { screenshotRepository.reportStatus(childId, "takeScreenshot failed: $errorCode") }
+                    }
                 },
             )
+        }.onFailure {
+            serviceScope.launch { screenshotRepository.reportStatus(childId, "takeScreenshot threw: ${it.message}") }
         }
     }
 
@@ -303,5 +318,11 @@ class EnforcementService : AccessibilityService() {
         runCatching { unregisterReceiver(packageAddedReceiver) }
         runCatching { screenshotExecutor.shutdown() }
         serviceScope.cancel()
+    }
+
+    private companion object {
+        // Only honour a screenshot request this fresh, so stale requests aren't
+        // replayed when the service (re)starts.
+        const val REQUEST_FRESH_MS = 2 * 60_000L
     }
 }

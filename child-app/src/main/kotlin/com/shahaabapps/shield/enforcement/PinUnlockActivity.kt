@@ -28,6 +28,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.shahaabapps.core.model.PIN_MAX_LEN
+import com.shahaabapps.core.model.PIN_MIN_LEN
 import com.shahaabapps.core.ui.components.CupertinoPrimaryButton
 import com.shahaabapps.core.ui.components.CupertinoTextButton
 import com.shahaabapps.core.ui.components.CupertinoTextField
@@ -77,8 +79,8 @@ private fun PinUnlockScreen(
         )
         CupertinoTextField(
             value = pin,
-            onValueChange = { if (it.length <= 4 && it.all { c -> c.isDigit() }) { pin = it; error = false } },
-            placeholder = "4-digit PIN",
+            onValueChange = { if (it.length <= PIN_MAX_LEN && it.all { c -> c.isDigit() }) { pin = it; error = false } },
+            placeholder = "$PIN_MIN_LEN–$PIN_MAX_LEN digit PIN",
             keyboardType = KeyboardType.NumberPassword,
             isPassword = true,
             modifier = Modifier.fillMaxWidth(),
@@ -88,7 +90,7 @@ private fun PinUnlockScreen(
         }
         CupertinoPrimaryButton(
             text = "Allow removal",
-            enabled = pin.length == 4,
+            enabled = pin.length in PIN_MIN_LEN..PIN_MAX_LEN,
             onClick = {
                 if (settings.pin.isNotEmpty() && pin == settings.pin) {
                     ProtectionLocalStore.unlock(context)

@@ -48,6 +48,8 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shahaabapps.core.model.ChildLocation
+import com.shahaabapps.core.model.PIN_MAX_LEN
+import com.shahaabapps.core.model.PIN_MIN_LEN
 import androidx.compose.ui.text.input.KeyboardType
 import com.shahaabapps.watchdog.util.drawGeoCircle
 import com.shahaabapps.watchdog.util.drawLiveDot
@@ -289,7 +291,7 @@ private fun ProtectionEditor(
     var blocked by remember { mutableStateOf(initial.uninstallBlocked) }
     var pin by remember { mutableStateOf(initial.pin) }
     var blockNewApps by remember { mutableStateOf(initial.blockNewApps) }
-    val pinValid = pin.length == 4 && pin.all { it.isDigit() }
+    val pinValid = pin.length in PIN_MIN_LEN..PIN_MAX_LEN && pin.all { it.isDigit() }
 
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl),
@@ -305,15 +307,15 @@ private fun ProtectionEditor(
             )
         }
         if (blocked) {
-            Text("Removal PIN (4 digits)", style = MaterialTheme.typography.titleMedium)
+            Text("Removal PIN ($PIN_MIN_LEN–$PIN_MAX_LEN digits)", style = MaterialTheme.typography.titleMedium)
             CupertinoTextField(
                 value = pin,
-                onValueChange = { if (it.length <= 4 && it.all { c -> c.isDigit() }) pin = it },
-                placeholder = "e.g. 1234",
+                onValueChange = { if (it.length <= PIN_MAX_LEN && it.all { c -> c.isDigit() }) pin = it },
+                placeholder = "$PIN_MIN_LEN–$PIN_MAX_LEN digits",
                 keyboardType = KeyboardType.NumberPassword,
             )
             if (pin.isNotEmpty() && !pinValid) {
-                Text("Enter exactly 4 digits.", color = AppTheme.colors.destructive, style = MaterialTheme.typography.bodySmall)
+                Text("Enter $PIN_MIN_LEN to $PIN_MAX_LEN digits.", color = AppTheme.colors.destructive, style = MaterialTheme.typography.bodySmall)
             }
         }
         CupertinoCard {

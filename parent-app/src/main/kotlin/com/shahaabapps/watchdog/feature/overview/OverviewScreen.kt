@@ -51,8 +51,6 @@ import com.shahaabapps.core.model.ChildLocation
 import com.shahaabapps.core.model.PIN_MAX_LEN
 import com.shahaabapps.core.model.PIN_MIN_LEN
 import androidx.compose.ui.text.input.KeyboardType
-import com.shahaabapps.watchdog.util.drawGeoCircle
-import com.shahaabapps.watchdog.util.drawLiveDot
 import com.shahaabapps.core.ui.components.AppIcon
 import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.components.CupertinoListRow
@@ -424,42 +422,18 @@ private fun LocationCard(
 
             if (location != null) {
                 val accent = AppTheme.colors.accent
-                val density = androidx.compose.ui.platform.LocalDensity.current
-                val dotPx = with(density) { 12.dp.toPx() }
-                val miniMap = com.shahaabapps.watchdog.util.rememberOpenFreeMapController(
-                    location.latitude, location.longitude, 15.5,
-                )
-                // Keep the mini-map centred on the child as new fixes arrive.
-                androidx.compose.runtime.LaunchedEffect(location.latitude, location.longitude) {
-                    runCatching { miniMap.animateTo(location.latitude, location.longitude, 15.5) }
-                }
-                Box(
+                // A static snapshot (not a live GL map) keeps the dashboard light and
+                // tab switches smooth — the Map tab is the only interactive map.
+                com.shahaabapps.watchdog.util.OpenFreeMapSnapshot(
+                    lat = location.latitude,
+                    lng = location.longitude,
+                    zoom = 15.5,
+                    dotColor = accent,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(170.dp)
                         .clip(RoundedCornerShape(16.dp)),
-                ) {
-                    com.shahaabapps.watchdog.util.OpenFreeMap(
-                        controller = miniMap,
-                        modifier = Modifier.fillMaxSize(),
-                        gesturesEnabled = false,
-                        onMapClick = { _, _ -> onOpenMap() },
-                        overlay = {
-                            if (location.accuracyMeters > 0f) {
-                                drawGeoCircle(
-                                    miniMap,
-                                    location.latitude, location.longitude, location.accuracyMeters.toDouble(),
-                                    fill = accent.copy(alpha = 0.12f),
-                                    stroke = accent.copy(alpha = 0.4f),
-                                    strokeWidthPx = 2f,
-                                )
-                            }
-                            drawLiveDot(
-                                miniMap, location.latitude, location.longitude, accent, dotPx,
-                            )
-                        },
-                    )
-                }
+                )
             }
 
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {

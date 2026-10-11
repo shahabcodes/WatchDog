@@ -1,14 +1,20 @@
 package com.shahaabapps.watchdog.util
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -18,11 +24,15 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -34,6 +44,7 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
+import org.maplibre.android.snapshotter.MapSnapshotter
 
 /** OpenFreeMap "liberty" vector style — free, OpenStreetMap-based, no API key. */
 const val OPENFREEMAP_STYLE = "https://tiles.openfreemap.org/styles/liberty"
@@ -85,6 +96,61 @@ fun rememberOpenFreeMapController(
     lng: Double,
     zoom: Double,
 ): OpenFreeMapController = remember { OpenFreeMapController(lat, lng, zoom) }
+
+/**
+ * A lightweight, non-interactive map preview rendered as a one-shot bitmap via
+ * [MapSnapshotter] — no persistent GL surface. Use this for small previews (e.g.
+ * the dashboard) so there's only ever one live [MapView] (the Map tab), which
+ * keeps tab switches smooth. A "current location" dot is drawn at the centre.
+ */
+@Composable
+fun OpenFreeMapSnapshot(
+    lat: Double,
+    lng: Double,
+    zoom: Double,
+    modifier: Modifier = Modifier,
+    dotColor: Color = Color(0xFF4285F4),
+) {
+    val context = LocalContext.current
+    var bitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    BoxWithConstraints(modifier = modifier) {
+        val density = LocalDensity.current
+        val wPx = with(density) { maxWidth.toPx() }.toInt().coerceAtLeast(1)
+        val hPx = with(density) { maxHeight.toPx() }.toInt().coerceAtLeast(1)
+
+        DisposableEffect(lat, lng, zoom, wPx, hPx) {
+            MapLibre.getInstance(context)
+            val options = MapSnapshotter.Options(wPx, hPx)
+                .withStyle(OPENFREEMAP_STYLE)
+                .withCameraPosition(
+                    CameraPosition.Builder().target(LatLng(lat, lng)).zoom(zoom).build(),
+                )
+                .withLogo(false)
+            val snapshotter = MapSnapshotter(context, options)
+            snapshotter.start({ snap -> bitmap = snap.bitmap }, { /* ignore snapshot errors */ })
+            onDispose { runCatching { snapshotter.cancel() } }
+        }
+
+        val bmp = bitmap
+        if (bmp != null) {
+            Image(
+                bitmap = bmp.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Box(modifier = Modifier.fillMaxSize().background(Color(0xFFE8EEF3)))
+        }
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val c = Offset(size.width / 2f, size.height / 2f)
+            val core = with(density) { 6.dp.toPx() }
+            drawCircle(color = Color.White, radius = core * 1.6f, center = c)
+            drawCircle(color = dotColor, radius = core, center = c)
+            drawCircle(color = Color.White.copy(alpha = 0.85f), radius = core * 0.32f, center = c)
+        }
+    }
+}
 
 @Composable
 fun OpenFreeMap(

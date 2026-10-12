@@ -210,8 +210,11 @@ class GeofenceSyncService : Service() {
             commitAccepted(childId, loc, now)
             return
         }
-        // 1. Accuracy gate — ignore poor fixes.
-        if (loc.accuracy > ACCURACY_MAX_METERS) return
+        // 1. Accuracy gate — ignore poor fixes. Relax it while the device is moving
+        //    (travelling): a stricter gate drops valid highway fixes, leaving holes.
+        val moving = loc.hasSpeed() && loc.speed > MOVING_SPEED_MPS
+        val maxAccuracy = if (moving) ACCURACY_MAX_MOVING_METERS else ACCURACY_MAX_METERS
+        if (loc.accuracy > maxAccuracy) return
         // 2. Teleport gate — ignore impossibly fast jumps.
         val dtSec = ((now - acceptedTime).coerceAtLeast(1L)) / 1000.0
         val dist = prev.distanceTo(loc)
@@ -367,7 +370,9 @@ class GeofenceSyncService : Service() {
         private const val MOVE_DISTANCE_METERS = 40f
 
         // Jitter filtering (Phase 1 + 2).
-        private const val ACCURACY_MAX_METERS = 50f   // drop fixes worse than this
+        private const val ACCURACY_MAX_METERS = 50f   // drop fixes worse than this (stationary)
+        private const val ACCURACY_MAX_MOVING_METERS = 120f // relaxed while travelling
+        private const val MOVING_SPEED_MPS = 2.5f     // ~9 km/h: clearly moving
         private const val MOVE_MARGIN_METERS = 15f    // movement must beat the accuracy noise by this
         private const val MAX_SPEED_MPS = 60f         // ~216 km/h teleport ceiling
         private const val SMOOTH_WINDOW = 5           // fixes averaged for a steady marker

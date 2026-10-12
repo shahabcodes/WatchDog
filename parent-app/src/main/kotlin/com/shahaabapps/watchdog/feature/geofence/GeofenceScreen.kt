@@ -235,6 +235,8 @@ fun GeofenceScreen(
     var showToPicker by remember { mutableStateOf(false) }
 
     val trail = remember(travelState.trail) { travelState.trail.sortedBy { it.timestampMillis } }
+    // Contiguous segments, broken where there's a dead-zone gap (no signal/GPS).
+    val historySegments = remember(trail) { splitTrailSegments(trail) }
     val startMs = trail.firstOrNull()?.timestampMillis ?: 0L
     val endMs = trail.lastOrNull()?.timestampMillis ?: 0L
     val rangeMs = (endMs - startMs).coerceAtLeast(0L)
@@ -308,18 +310,39 @@ fun GeofenceScreen(
                 }
 
                 if (historyMode) {
-                    // Google-Maps-style playback: split the path at the dot — the road
-                    // ahead in blue, the travelled portion behind in green. The two
-                    // meet at the dot and never overlap (no doubled/ghosted casing).
+                    // Playback: split the path at the dot (road ahead blue, travelled
+                    // green). Also break the line across dead-zone GAPS (no signal/GPS)
+                    // so a tunnel doesn't render as a false straight line — a dashed
+                    // grey connector marks each gap instead.
                     val t = startMs + (progress.value * rangeMs).toLong()
                     val cur = positionAt(trail, t)
-                    val travelled = trail.filter { it.timestampMillis <= t }.map { it.latitude to it.longitude }
-                    val remaining = trail.filter { it.timestampMillis > t }.map { it.latitude to it.longitude }
-                    val travelledWithCur = if (cur != null) travelled + cur else travelled
-                    val remainingWithCur = if (cur != null) listOf(cur) + remaining else remaining
-                    // Road ahead (blue) first, travelled (green) on top so the join is clean.
-                    drawGeoRoute(controller, remainingWithCur, core = routeCore, casing = routeCasing, coreWidthPx = routeCorePx, casingWidthPx = routeCasingPx)
-                    drawGeoRoute(controller, travelledWithCur, core = routeGreen, casing = routeGreenCasing, coreWidthPx = routeCorePx, casingWidthPx = routeCasingPx)
+                    historySegments.forEach { seg ->
+                        val travelled = seg.filter { it.timestampMillis <= t }.map { it.latitude to it.longitude }
+                        val remaining = seg.filter { it.timestampMillis > t }.map { it.latitude to it.longitude }
+                        // If the dot falls inside this segment, stitch it to both halves.
+                        val inSeg = cur != null && t in seg.first().timestampMillis..seg.last().timestampMillis
+                        val travelledPts = if (inSeg) travelled + cur!! else travelled
+                        val remainingPts = if (inSeg) listOf(cur!!) + remaining else remaining
+                        drawGeoRoute(controller, remainingPts, core = routeCore, casing = routeCasing, coreWidthPx = routeCorePx, casingWidthPx = routeCasingPx)
+                        drawGeoRoute(controller, travelledPts, core = routeGreen, casing = routeGreenCasing, coreWidthPx = routeCorePx, casingWidthPx = routeCasingPx)
+                    }
+                    // Dashed connectors across the gaps between segments.
+                    for (i in 0 until historySegments.size - 1) {
+                        val a = historySegments[i].last()
+                        val b = historySegments[i + 1].first()
+                        val pa = controller.toScreen(a.latitude, a.longitude)
+                        val pb = controller.toScreen(b.latitude, b.longitude)
+                        if (pa != null && pb != null) {
+                            drawLine(
+                                color = Color(0xFF9AA0A6),
+                                start = pa,
+                                end = pb,
+                                strokeWidth = routeCorePx * 0.7f,
+                                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(12f, 12f)),
+                                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                            )
+                        }
+                    }
                     travelState.stops.forEach { s ->
                         drawMapMarker(controller, s.stop.latitude, s.stop.longitude, accent.copy(alpha = 0.85f), placePx * 0.75f, icon = painterFor(s.placeIcon ?: "place"))
                     }
@@ -1215,6 +1238,26 @@ private fun TimeRangePickerDialog(initialMinutes: Int, onDismiss: () -> Unit, on
 }
 
 /** Interpolated position along the trail at playback time [t]. */
+/** A gap longer than this between consecutive fixes breaks the drawn path. */
+private const val TRAIL_GAP_MS = 5 * 60_000L
+
+/** Splits a trail into contiguous segments, breaking at dead-zone time gaps. */
+private fun splitTrailSegments(trail: List<TrailPoint>): List<List<TrailPoint>> {
+    if (trail.isEmpty()) return emptyList()
+    val segments = mutableListOf<MutableList<TrailPoint>>()
+    var current = mutableListOf(trail.first())
+    for (i in 1 until trail.size) {
+        if (trail[i].timestampMillis - trail[i - 1].timestampMillis > TRAIL_GAP_MS) {
+            segments.add(current)
+            current = mutableListOf(trail[i])
+        } else {
+            current.add(trail[i])
+        }
+    }
+    segments.add(current)
+    return segments
+}
+
 private fun positionAt(trail: List<TrailPoint>, t: Long): Pair<Double, Double>? {
     if (trail.isEmpty()) return null
     if (t <= trail.first().timestampMillis) return trail.first().latitude to trail.first().longitude

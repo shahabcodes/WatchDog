@@ -283,7 +283,7 @@ private fun HomeHero(
             com.shahaabapps.watchdog.util.OpenFreeMapSnapshot(
                 lat = location.latitude,
                 lng = location.longitude,
-                zoom = 17.5,
+                zoom = 18.5,
                 dotColor = AppTheme.colors.accent,
                 modifier = Modifier.fillMaxSize(),
             )

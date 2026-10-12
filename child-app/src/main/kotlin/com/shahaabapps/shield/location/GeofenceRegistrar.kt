@@ -19,8 +19,12 @@ const val EXIT_GEOFENCE_SUFFIX = "#exit"
 /** How far beyond a place's boundary the child must go before a "left" alert fires. */
 const val EXIT_BUFFER_METERS = 100f
 
-/** How long the child must stay inside before an "arrived" alert fires (dwell). */
-const val DWELL_DELAY_MS = 60_000
+/**
+ * How long the child must stay inside before an "arrived" alert fires (dwell).
+ * Set to 3 minutes so merely walking past a place (e.g. a mosque on the route)
+ * doesn't trigger a false arrival — only an actual stop does.
+ */
+const val DWELL_DELAY_MS = 180_000
 
 /** Registers the parent's geofences with Play Services. */
 class GeofenceRegistrar @Inject constructor(

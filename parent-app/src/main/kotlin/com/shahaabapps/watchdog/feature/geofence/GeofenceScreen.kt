@@ -240,8 +240,8 @@ fun GeofenceScreen(
     // ---- History / playback (reuses the travel data for this child) ----
     val travelVm: TravelHistoryViewModel = hiltViewModel()
     val travelState by travelVm.uiState.collectAsStateWithLifecycle()
-    // Default to the day timeline ("Today"), matching the Map prototype.
-    var historyMode by remember { mutableStateOf(true) }
+    // Default to Live (current location), zoomed in; Today is a tap away.
+    var historyMode by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showFromPicker by remember { mutableStateOf(false) }
     var showToPicker by remember { mutableStateOf(false) }
@@ -1099,6 +1099,13 @@ private fun HistorySheet(
     onFocus: (Double, Double) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Collapsed by default so the sheet stays small; tap the header to expand
+    // the stop timeline.
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val chevronRotation by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        label = "sheetChevron",
+    )
     Surface(
         shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
         color = AppTheme.colors.card,
@@ -1113,10 +1120,14 @@ private fun HistorySheet(
                     .clip(CircleShape)
                     .background(AppTheme.colors.secondaryLabel.copy(alpha = 0.3f)),
             )
-            // Header: date (Bricolage) + "N places · X.X km".
+            // Header: date (Bricolage) + "N places · X.X km" + expand chevron.
             Row(
-                verticalAlignment = Alignment.Bottom,
-                modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                    .clickable { expanded = !expanded }
+                    .padding(top = Spacing.sm),
             ) {
                 Text(
                     dateLabel,
@@ -1130,6 +1141,12 @@ private fun HistorySheet(
                     "$placesCount place${if (placesCount == 1) "" else "s"} · ${"%.1f".format(distanceKm)} km",
                     style = MaterialTheme.typography.bodySmall,
                     color = AppTheme.colors.secondaryLabel,
+                )
+                Icon(
+                    Icons.Filled.ExpandMore,
+                    contentDescription = if (expanded) "Collapse" else "Expand",
+                    tint = AppTheme.colors.secondaryLabel,
+                    modifier = Modifier.padding(start = 6.dp).rotate(chevronRotation),
                 )
             }
             // Scrubber: dark circular play + thin progress bar + time.
@@ -1183,22 +1200,24 @@ private fun HistorySheet(
                 }
                 Text(timeLabel(), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
             }
-            // Timeline (always visible).
-            if (stops.isEmpty()) {
-                Text(
-                    "No stops recorded for this window. Pick another day or widen the time range.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = AppTheme.colors.secondaryLabel,
-                    modifier = Modifier.padding(vertical = Spacing.sm),
-                )
-            } else {
-                LazyColumn(
-                    modifier = Modifier.heightIn(max = 260.dp),
-                    contentPadding = PaddingValues(top = Spacing.sm, bottom = Spacing.sm),
-                ) {
-                    itemsIndexed(stops, key = { _, it -> it.stop.id }) { i, item ->
-                        TimelineRow(item = item, accent = accent, isLast = i == stops.lastIndex) {
-                            onFocus(item.stop.latitude, item.stop.longitude)
+            // Timeline — only when expanded, so the sheet stays compact.
+            if (expanded) {
+                if (stops.isEmpty()) {
+                    Text(
+                        "No stops recorded for this window. Pick another day or widen the time range.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = AppTheme.colors.secondaryLabel,
+                        modifier = Modifier.padding(vertical = Spacing.sm),
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 260.dp),
+                        contentPadding = PaddingValues(top = Spacing.sm, bottom = Spacing.sm),
+                    ) {
+                        itemsIndexed(stops, key = { _, it -> it.stop.id }) { i, item ->
+                            TimelineRow(item = item, accent = accent, isLast = i == stops.lastIndex) {
+                                onFocus(item.stop.latitude, item.stop.longitude)
+                            }
                         }
                     }
                 }

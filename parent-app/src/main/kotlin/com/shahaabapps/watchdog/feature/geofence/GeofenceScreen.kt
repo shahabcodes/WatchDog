@@ -1228,19 +1228,38 @@ private fun TimelineRow(
     onClick: () -> Unit,
 ) {
     Row(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        // Filled dot joined by a rail (prototype timeline).
+        // Filled dot joined by a rail (prototype timeline). The current place
+        // gets a ringed dot.
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(top = 4.dp)) {
-            Box(modifier = Modifier.size(14.dp).clip(CircleShape).background(accent))
+            if (item.current) {
+                Box(
+                    modifier = Modifier.size(16.dp).clip(CircleShape).background(accent.copy(alpha = 0.3f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(modifier = Modifier.size(9.dp).clip(CircleShape).background(accent))
+                }
+            } else {
+                Box(modifier = Modifier.size(14.dp).clip(CircleShape).background(accent))
+            }
             if (!isLast) {
                 Box(modifier = Modifier.width(2.dp).heightIn(min = 34.dp).background(AppTheme.colors.separator))
             }
         }
         Column(modifier = Modifier.weight(1f).padding(start = Spacing.md, bottom = Spacing.md)) {
-            Text(item.placeName ?: "Stop", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
             Text(
-                "${timeLabel(item.stop.arrivalMillis)} – ${timeLabel(item.stop.departureMillis)} · ${durationShort(item.stop.durationMinutes)}",
+                item.placeName ?: if (item.current) "Current location" else "Stop",
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                if (item.current) {
+                    "Here now"
+                } else {
+                    "${timeLabel(item.stop.arrivalMillis)} – ${timeLabel(item.stop.departureMillis)} · ${durationShort(item.stop.durationMinutes)}"
+                },
                 style = MaterialTheme.typography.bodySmall,
-                color = AppTheme.colors.secondaryLabel,
+                color = if (item.current) accent else AppTheme.colors.secondaryLabel,
+                fontWeight = if (item.current) FontWeight.SemiBold else FontWeight.Normal,
             )
         }
     }

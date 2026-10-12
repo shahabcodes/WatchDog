@@ -367,7 +367,7 @@ class GeofenceSyncService : Service() {
 
         // Travel-history "stop" detection.
         private const val STOP_RADIUS_METERS = 150f
-        private const val STOP_MIN_MS = 5 * 60_000L // 5 minutes
+        private const val STOP_MIN_MS = 2 * 60_000L // 2 minutes (shorter stays count)
 
         // Only report location after moving this far — the move-only optimization.
         private const val MOVE_DISTANCE_METERS = 40f

@@ -256,8 +256,6 @@ fun OverviewScreen(
     }
 }
 
-/** Status hero: a map strip with a live online chip, then the status + battery. */
-@Composable
 /**
  * Full-bleed hero: the live map fills the top of the screen (behind the status
  * bar) with the name pill and notifications bell overlaid on top, and the

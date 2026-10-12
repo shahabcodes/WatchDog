@@ -28,6 +28,8 @@ data class TravelStopItem(
     val stop: TravelStop,
     val placeName: String?,
     val placeIcon: String? = null,
+    /** True for the synthesized "where the child is right now" row. */
+    val current: Boolean = false,
 )
 
 data class TravelHistoryUiState(
@@ -62,14 +64,16 @@ class TravelHistoryViewModel @Inject constructor(
         trailFlow,
         deviceRepository.observeTravelHistory(childId),
         geofenceRepository.observeGeofences(childId),
+        deviceRepository.observeLocation(childId),
         filters,
-    ) { trail, stops, geofences, (date, from, to) ->
+    ) { trail, stops, geofences, live, filter ->
+        val (date, from, to) = filter
         val zone = ZoneId.systemDefault()
         val trailPts = trail.filter { p ->
             val z = Instant.ofEpochMilli(p.timestampMillis).atZone(zone)
             z.toLocalDate() == date && minuteOfDay(z) in from..to
         }
-        val stopItems = stops
+        val recorded = stops
             .filter { s ->
                 val z = Instant.ofEpochMilli(s.arrivalMillis).atZone(zone)
                 z.toLocalDate() == date && minuteOfDay(z) in from..to
@@ -78,6 +82,34 @@ class TravelHistoryViewModel @Inject constructor(
                 val place = placeFor(s.latitude, s.longitude, geofences)
                 TravelStopItem(s, place?.name, place?.icon)
             }
+        // When viewing today, prepend where the child is right now (so the
+        // current place shows before they leave it), unless it's already the
+        // most recent recorded stop.
+        val current = if (date == LocalDate.now() && live != null) {
+            val place = placeFor(live.latitude, live.longitude, geofences)
+            val latest = recorded.firstOrNull()
+            val sameAsLatest = latest != null &&
+                GeoMath.distanceMeters(latest.stop.latitude, latest.stop.longitude, live.latitude, live.longitude) <= 120
+            if (sameAsLatest) {
+                null
+            } else {
+                TravelStopItem(
+                    stop = TravelStop(
+                        id = "current",
+                        latitude = live.latitude,
+                        longitude = live.longitude,
+                        arrivalMillis = live.timestampMillis,
+                        departureMillis = live.timestampMillis,
+                    ),
+                    placeName = place?.name,
+                    placeIcon = place?.icon,
+                    current = true,
+                )
+            }
+        } else {
+            null
+        }
+        val stopItems = listOfNotNull(current) + recorded
         TravelHistoryUiState(
             loading = false,
             date = date,

@@ -43,6 +43,6 @@ class ThemePreferences @Inject constructor(
         val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
         val KEY_ACCENT_PALETTE = stringPreferencesKey("accent_palette")
         const val DEFAULT_MODE = "LIGHT"
-        const val DEFAULT_PALETTE = "GUARDIAN"
+        const val DEFAULT_PALETTE = "NEW_ZEALAND"
     }
 }

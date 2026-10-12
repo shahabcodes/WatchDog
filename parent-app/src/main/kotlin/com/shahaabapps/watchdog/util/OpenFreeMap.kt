@@ -41,6 +41,7 @@ import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
@@ -133,11 +134,26 @@ fun OpenFreeMapSnapshot(
             kotlinx.coroutines.delay(400)
             runCatching { snapshotter.value?.cancel() }
             MapLibre.getInstance(context)
-            val options = MapSnapshotter.Options(wPx, hPx + cropPx)
+            val renderedH = hPx + cropPx
+            // Force the zoom deterministically: the snapshotter can let the
+            // style's default camera override withCameraPosition, so compute the
+            // exact lat/lng bounds this zoom covers for the image size and fit
+            // that region instead.
+            val latRad = Math.toRadians(lat)
+            val metersPerPx = 156543.03392 * kotlin.math.cos(latRad) / Math.pow(2.0, zoom)
+            val halfWMeters = metersPerPx * wPx / 2.0
+            val halfHMeters = metersPerPx * renderedH / 2.0
+            val dLat = halfHMeters / 111_320.0
+            val dLng = halfWMeters / (111_320.0 * kotlin.math.cos(latRad).coerceAtLeast(1e-6))
+            val bounds = LatLngBounds.from(
+                (lat + dLat).coerceAtMost(85.0),
+                lng + dLng,
+                (lat - dLat).coerceAtLeast(-85.0),
+                lng - dLng,
+            )
+            val options = MapSnapshotter.Options(wPx, renderedH)
                 .withStyle(OPENFREEMAP_STYLE)
-                .withCameraPosition(
-                    CameraPosition.Builder().target(LatLng(lat, lng)).zoom(zoom).build(),
-                )
+                .withRegion(bounds)
                 .withLogo(false)
             val s = MapSnapshotter(context, options)
             snapshotter.value = s

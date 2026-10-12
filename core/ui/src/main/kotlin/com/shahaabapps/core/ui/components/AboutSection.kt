@@ -54,6 +54,12 @@ fun AboutSection(
                     color = AppTheme.colors.accent,
                     modifier = Modifier.padding(top = 4.dp),
                 )
+                Text(
+                    "Maps © OpenFreeMap · OpenStreetMap contributors",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.secondaryLabel,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
             }
         }
 

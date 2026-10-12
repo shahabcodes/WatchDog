@@ -121,6 +121,10 @@ fun OpenFreeMapSnapshot(
         val density = LocalDensity.current
         val wPx = with(density) { maxWidth.toPx() }.toInt().coerceAtLeast(1)
         val hPx = with(density) { maxHeight.toPx() }.toInt().coerceAtLeast(1)
+        // The snapshotter bakes a small attribution ("OpenFreeMap") into the
+        // bottom of the bitmap. Render a little taller and crop that band off;
+        // attribution lives in the app's About screen instead.
+        val cropPx = with(density) { 22.dp.toPx() }.toInt()
 
         // Defer the GL snapshot so it doesn't contend with the tab-switch transition
         // (the Map tab's live map is tearing down at the same moment). The card shows
@@ -129,7 +133,7 @@ fun OpenFreeMapSnapshot(
             kotlinx.coroutines.delay(400)
             runCatching { snapshotter.value?.cancel() }
             MapLibre.getInstance(context)
-            val options = MapSnapshotter.Options(wPx, hPx)
+            val options = MapSnapshotter.Options(wPx, hPx + cropPx)
                 .withStyle(OPENFREEMAP_STYLE)
                 .withCameraPosition(
                     CameraPosition.Builder().target(LatLng(lat, lng)).zoom(zoom).build(),
@@ -137,7 +141,15 @@ fun OpenFreeMapSnapshot(
                 .withLogo(false)
             val s = MapSnapshotter(context, options)
             snapshotter.value = s
-            s.start({ snap -> bitmap = snap.bitmap }, { /* ignore snapshot errors */ })
+            s.start(
+                { snap ->
+                    val full = snap.bitmap
+                    bitmap = runCatching {
+                        android.graphics.Bitmap.createBitmap(full, 0, 0, full.width, hPx.coerceAtMost(full.height))
+                    }.getOrDefault(full)
+                },
+                { /* ignore snapshot errors */ },
+            )
         }
 
         val bmp = bitmap
@@ -204,7 +216,7 @@ fun OpenFreeMap(
                 isRotateGesturesEnabled = false
                 isCompassEnabled = false
                 isLogoEnabled = false
-                isAttributionEnabled = true
+                isAttributionEnabled = false
             }
             map.addOnCameraMoveListener { controller.tick.intValue++ }
             map.addOnCameraIdleListener { controller.tick.intValue++ }

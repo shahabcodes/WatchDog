@@ -276,6 +276,7 @@ private fun HomeHero(
         modifier = Modifier
             .fillMaxWidth()
             .height(320.dp)
+            .clip(RoundedCornerShape(bottomStart = 36.dp, bottomEnd = 36.dp))
             .clickable(onClick = onOpenMap),
     ) {
         if (location != null) {

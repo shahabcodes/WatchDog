@@ -68,6 +68,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavType
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -163,6 +164,18 @@ fun ParentShell(
         }
     }
 
+    // One consistent way to move between tab destinations, so the saved/restored
+    // back stack stays coherent however the Map was opened (bottom bar or a card).
+    val switchTab: (String) -> Unit = remember(navController) {
+        { route ->
+            navController.navigate(route) {
+                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
+
     Scaffold(
         containerColor = AppTheme.colors.groupedBackground,
         // No top bar: each screen owns its top (status-bar) inset. Zeroing the
@@ -172,11 +185,7 @@ fun ParentShell(
         bottomBar = {
             if (showChrome) {
                 ParentBottomBar(currentTab = currentTab) { tab ->
-                    navController.navigate("${tab.route}/$currentChildId") {
-                        popUpTo("${Tab.OVERVIEW.route}/{childId}") { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
+                    switchTab("${tab.route}/$currentChildId")
                 }
             }
         },
@@ -195,7 +204,7 @@ fun ParentShell(
             val childArg = listOf(navArgument("childId") { type = NavType.StringType })
             composable("overview/{childId}", childArg) {
                 OverviewScreen(
-                    onOpenMap = { navController.navigate("${Tab.MAP.route}/$currentChildId") { launchSingleTop = true } },
+                    onOpenMap = { switchTab("${Tab.MAP.route}/$currentChildId") },
                     onOpenAlerts = { navController.navigate("alerts/$currentChildId") { launchSingleTop = true } },
                     childNames = children.map { it.childId to it.profile.name.ifBlank { "Child" } },
                     selectedId = currentChildId,

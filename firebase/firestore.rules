@@ -119,9 +119,10 @@ service cloud.firestore {
         allow create, update: if request.auth != null && request.auth.uid == childId;
       }
 
-      // Geofence events: the child reports them; a linked parent reads them.
+      // Geofence events: the child reports them; a linked parent reads them
+      // and may delete them (the "Clear all" action on the notifications feed).
       match /geofenceEvents/{eventId} {
-        allow read: if request.auth != null && (
+        allow read, delete: if request.auth != null && (
           request.auth.uid == childId ||
           request.auth.uid in get(/databases/$(database)/documents/children/$(childId)).data.linkedParents
         );

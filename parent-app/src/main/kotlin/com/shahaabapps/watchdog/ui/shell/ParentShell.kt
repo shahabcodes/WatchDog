@@ -81,6 +81,7 @@ import com.shahaabapps.core.ui.components.Avatar
 import com.shahaabapps.core.ui.components.CupertinoPrimaryButton
 import com.shahaabapps.core.ui.components.CupertinoTextButton
 import com.shahaabapps.core.ui.components.LoadingView
+import com.shahaabapps.core.ui.theme.AppFonts
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
 import com.shahaabapps.watchdog.feature.alerts.AlertsScreen
@@ -306,7 +307,7 @@ private fun AddChildScreen(
             androidx.compose.foundation.layout.Spacer(Modifier.statusBarsPadding())
         }
         Column(
-            modifier = Modifier.fillMaxWidth().padding(Spacing.lg),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
@@ -314,16 +315,23 @@ private fun AddChildScreen(
                 Text(linkState.message, color = AppTheme.colors.destructive, textAlign = TextAlign.Center)
             }
             Text(
-                "Add your first child",
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(top = Spacing.xl),
+                "Pair your child's phone",
+                fontFamily = AppFonts.display,
+                fontSize = 30.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = (-0.8).sp,
+                color = MaterialTheme.colorScheme.onBackground,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(top = Spacing.lg),
             )
             Text(
-                "Open Shield on your child's phone and scan the code it shows.",
+                "On the child's phone, open Shield and show its code. Point your camera at it.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = AppTheme.colors.secondaryLabel,
                 textAlign = TextAlign.Center,
             )
+            ScanViewport(modifier = Modifier.padding(top = Spacing.md))
+            Spacer(Modifier.weight(1f))
             CupertinoPrimaryButton(
                 text = "Scan child's QR",
                 onClick = {
@@ -333,13 +341,40 @@ private fun AddChildScreen(
                             .setOrientationLocked(false),
                     )
                 },
-                modifier = Modifier.padding(top = Spacing.sm),
+                modifier = Modifier.fillMaxWidth(),
             )
             CupertinoTextButton(
                 text = "Choose QR from gallery",
                 onClick = {
                     imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                 },
+            )
+            Spacer(Modifier.height(Spacing.md))
+        }
+    }
+}
+
+/** Dark rounded QR viewport with a teal scan frame (prototype Pair). */
+@Composable
+private fun ScanViewport(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(260.dp)
+            .clip(RoundedCornerShape(28.dp))
+            .background(Color(0xFF15171C)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(172.dp)
+                .border(4.dp, AppTheme.colors.accent, RoundedCornerShape(16.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            androidx.compose.material3.Icon(
+                Icons.Filled.QrCodeScanner,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.85f),
+                modifier = Modifier.size(72.dp),
             )
         }
     }

@@ -15,6 +15,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -66,100 +68,81 @@ fun ProtectedScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(
-                androidx.compose.ui.graphics.Brush.verticalGradient(
-                    listOf(AppTheme.colors.groupedBackground, AppTheme.colors.groupedBackground),
-                ),
-            )
-            .verticalScroll(rememberScrollState()),
+            .background(AppTheme.colors.accent),
     ) {
-        ShieldTopBar(name = child.profile.name, onSettings = { showSettings = true })
-
+        // Teal hero band: shield mark + "You're protected" + connection line.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(Spacing.lg),
+                .background(AppTheme.colors.accent)
+                .statusBarsPadding()
+                .padding(start = Spacing.lg, end = Spacing.lg, top = Spacing.md, bottom = Spacing.xl),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(Spacing.lg),
         ) {
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Box(modifier = Modifier.weight(1f))
+                IconButton(onClick = { showSettings = true }) {
+                    Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = Color.White.copy(alpha = 0.9f))
+                }
+            }
             Box(
                 modifier = Modifier
                     .padding(top = Spacing.sm)
-                    .size(96.dp)
+                    .size(84.dp)
                     .clip(CircleShape)
-                    .background(Brand.accentGradient),
+                    .background(Color.White.copy(alpha = 0.14f)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = Icons.Filled.CheckCircle,
+                    imageVector = Icons.Filled.Shield,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(52.dp),
+                    modifier = Modifier.size(42.dp),
                 )
             }
-
             Text(
                 text = "You're protected",
                 style = MaterialTheme.typography.headlineLarge,
+                color = Color.White,
                 textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = Spacing.md),
             )
             Text(
-                text = "Shield is active and connected to your family.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = AppTheme.colors.secondaryLabel,
+                text = if (child.linkedParents.isEmpty()) {
+                    "Connected to your family"
+                } else {
+                    "Connected to ${child.linkedParents.size} parent${if (child.linkedParents.size == 1) "" else "s"}"
+                },
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color.White.copy(alpha = 0.8f),
                 textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = Spacing.xs),
             )
+        }
 
-            CupertinoCard {
-                Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    Text(
-                        text = "Status",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.secondaryLabel,
-                    )
-                    StatusChip(text = "Connected", color = AppTheme.colors.success)
-                    Text(
-                        text = "${child.linkedParents.size} parent(s) linked",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            }
-
+        // Paper sheet: the setup checklist.
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .clip(RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp))
+                .background(AppTheme.colors.groupedBackground)
+                .verticalScroll(rememberScrollState())
+                .padding(start = Spacing.lg, end = Spacing.lg, top = Spacing.lg, bottom = Spacing.xl),
+            verticalArrangement = Arrangement.spacedBy(Spacing.md),
+        ) {
+            Text(
+                text = "SET UP",
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.6.sp,
+                color = AppTheme.colors.secondaryLabel,
+            )
             EnforcementSetupCard()
             LocationSetupCard()
             BatterySetupCard()
             AlertsSetupCard()
             ProtectionSetupCard()
-        }
-    }
-}
-
-@Composable
-private fun ShieldTopBar(name: String, onSettings: () -> Unit) {
-    Surface(color = Color.Transparent) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 14.dp),
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "Hi, ${name.ifBlank { "there" }}",
-                    fontSize = 13.sp,
-                    color = AppTheme.colors.secondaryLabel,
-                )
-                Text(
-                    "Shield",
-                    fontSize = 30.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
-            }
-            IconButton(onClick = onSettings) {
-                Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = AppTheme.colors.secondaryLabel)
-            }
         }
     }
 }

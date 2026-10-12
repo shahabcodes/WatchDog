@@ -62,19 +62,29 @@ fun PairingScreen(
                 textAlign = TextAlign.Center,
             )
 
-            // QR in a white rounded card so it scans well in dark mode too.
-            Column(
+            // Dark rounded viewport with a white QR tile (prototype Pair look);
+            // the QR stays dark-on-white so it still scans.
+            androidx.compose.foundation.layout.Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(Color.White)
-                    .padding(Spacing.lg),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                    .padding(top = Spacing.sm)
+                    .size(260.dp)
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(Color(0xFF15171C)),
+                contentAlignment = Alignment.Center,
             ) {
-                Image(
-                    bitmap = qrBitmap,
-                    contentDescription = "Pairing QR code",
-                    modifier = Modifier.size(240.dp),
-                )
+                Column(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.White)
+                        .padding(Spacing.md),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Image(
+                        bitmap = qrBitmap,
+                        contentDescription = "Pairing QR code",
+                        modifier = Modifier.size(176.dp),
+                    )
+                }
             }
 
             // Fallback manual code.

@@ -93,7 +93,7 @@ fun OverviewScreen(
             .fillMaxSize()
             .background(
                 androidx.compose.ui.graphics.Brush.verticalGradient(
-                    listOf(Color(0xFFFDEEF3), Color(0xFFEFF6F3), AppTheme.colors.groupedBackground),
+                    listOf(Color(0xFFF3F4EF), Color(0xFFF3F4EF), AppTheme.colors.groupedBackground),
                 ),
             )
             .verticalScroll(rememberScrollState())
@@ -116,14 +116,14 @@ fun OverviewScreen(
                     value = formatDuration(state.screenTimeMinutes),
                     label = "Screen time",
                     icon = Icons.Filled.BarChart,
-                    tint = Color(0xFF14B8A6),
+                    tint = Color(0xFF0E6B5E),
                     modifier = Modifier.weight(1f),
                 )
                 StatTile(
                     value = state.limitedOrBlocked.toString(),
                     label = "Apps limited",
                     icon = Icons.Filled.Apps,
-                    tint = Color(0xFFF59E0B),
+                    tint = Color(0xFFD9622B),
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -140,7 +140,7 @@ fun OverviewScreen(
                     value = if (state.batteryPercent > 0) "${state.batteryPercent}%" else "—",
                     label = "Battery",
                     icon = Icons.Filled.BatteryStd,
-                    tint = Color(0xFFE5588E),
+                    tint = Color(0xFF1E9E5A),
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -507,11 +507,11 @@ private fun LocationCard(
 }
 
 private val USAGE_PALETTE = listOf(
-    Color(0xFF4285F4),
-    Color(0xFF34A853),
-    Color(0xFFFBBC04),
-    Color(0xFFEA4335),
-    Color(0xFFA142F4),
+    Color(0xFF0E6B5E),
+    Color(0xFFD9622B),
+    Color(0xFF6E7FD6),
+    Color(0xFFE5A14B),
+    Color(0xFF8A919E),
 )
 
 @Composable
@@ -644,7 +644,7 @@ private fun WeeklyTrendChart(days: List<DayUsage>) {
                 verticalAlignment = Alignment.Bottom,
             ) {
                 days.forEach { day ->
-                    val barColor = if (day.isToday) Color(0xFF7C6FF0) else Color(0xFF7C6FF0).copy(alpha = 0.22f)
+                    val barColor = if (day.isToday) Color(0xFF0E6B5E) else Color(0xFF0E6B5E).copy(alpha = 0.22f)
                     Column(
                         modifier = Modifier.weight(1f),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -677,7 +677,7 @@ private fun WeeklyTrendChart(days: List<DayUsage>) {
                             WEEK_LETTERS[day.date.dayOfWeek.value - 1],
                             fontSize = 11.sp,
                             fontWeight = if (day.isToday) FontWeight.Bold else FontWeight.Normal,
-                            color = if (day.isToday) Color(0xFF7C6FF0) else AppTheme.colors.secondaryLabel,
+                            color = if (day.isToday) Color(0xFF0E6B5E) else AppTheme.colors.secondaryLabel,
                             modifier = Modifier.padding(top = 6.dp),
                         )
                     }

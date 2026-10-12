@@ -37,7 +37,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MailOutline
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -746,7 +745,7 @@ private fun GradientButton(
         contentAlignment = Alignment.Center,
     ) {
         if (loading) {
-            CircularProgressIndicator(color = Color.White, strokeWidth = 2.5.dp, modifier = Modifier.size(24.dp))
+            com.shahaabapps.core.ui.components.AppLoader(size = 24.dp, color = Color.White, strokeWidth = 2.5.dp)
         } else {
             Text(label, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
         }

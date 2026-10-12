@@ -542,7 +542,7 @@ private fun ManageChildrenScreen(
             onDismissRequest = { },
             confirmButton = {},
             title = { Text("Reconnecting…") },
-            text = { Row(verticalAlignment = Alignment.CenterVertically) { androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(22.dp)); Text("  Migrating this child's data.") } },
+            text = { Row(verticalAlignment = Alignment.CenterVertically) { com.shahaabapps.core.ui.components.AppLoader(size = 22.dp); Text("  Migrating this child's data.") } },
         )
         is ReconnectState.Success -> androidx.compose.material3.AlertDialog(
             onDismissRequest = viewModel::clearReconnectState,

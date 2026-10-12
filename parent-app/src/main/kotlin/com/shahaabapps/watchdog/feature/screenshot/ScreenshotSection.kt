@@ -28,7 +28,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -146,7 +145,7 @@ private fun CaptureButton(waiting: Boolean, onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         if (waiting) {
-            CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+            com.shahaabapps.core.ui.components.AppLoader(size = 18.dp, color = Color.White, strokeWidth = 2.dp)
         } else {
             Text("Capture", color = Color.White, fontWeight = FontWeight.SemiBold)
         }

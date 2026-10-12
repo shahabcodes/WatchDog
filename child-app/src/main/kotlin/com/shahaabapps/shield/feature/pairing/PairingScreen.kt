@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -109,10 +108,10 @@ private fun WaitingRow() {
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
     ) {
-        CircularProgressIndicator(
-            strokeWidth = 2.dp,
-            modifier = Modifier.size(16.dp),
+        com.shahaabapps.core.ui.components.AppLoader(
+            size = 16.dp,
             color = AppTheme.colors.secondaryLabel,
+            strokeWidth = 2.dp,
         )
         Text(
             text = "Waiting for a parent to connect…",

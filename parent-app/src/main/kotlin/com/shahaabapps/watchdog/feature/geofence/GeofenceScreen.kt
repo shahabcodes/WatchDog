@@ -13,7 +13,11 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.PaddingValues
@@ -1202,23 +1206,19 @@ private fun HistorySheet(
 
 /** Tap anywhere on a horizontal bar → fraction of its width. */
 private fun Modifier.androidx_pointerTap(onFraction: (Float) -> Unit): Modifier =
-    this.then(
-        androidx.compose.ui.input.pointer.pointerInput(Unit) {
-            androidx.compose.foundation.gestures.detectTapGestures { offset ->
-                onFraction((offset.x / size.width.toFloat()).coerceIn(0f, 1f))
-            }
-        },
-    )
+    pointerInput(Unit) {
+        detectTapGestures { offset ->
+            onFraction((offset.x / size.width.toFloat()).coerceIn(0f, 1f))
+        }
+    }
 
 /** Drag horizontally on a bar → fraction of its width. */
 private fun Modifier.androidx_pointerDrag(onFraction: (Float) -> Unit): Modifier =
-    this.then(
-        androidx.compose.ui.input.pointer.pointerInput(Unit) {
-            androidx.compose.foundation.gestures.detectHorizontalDragGestures { change, _ ->
-                onFraction((change.position.x / size.width.toFloat()).coerceIn(0f, 1f))
-            }
-        },
-    )
+    pointerInput(Unit) {
+        detectHorizontalDragGestures { change, _ ->
+            onFraction((change.position.x / size.width.toFloat()).coerceIn(0f, 1f))
+        }
+    }
 
 @Composable
 private fun TimelineRow(

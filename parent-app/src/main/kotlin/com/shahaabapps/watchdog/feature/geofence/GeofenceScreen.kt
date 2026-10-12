@@ -203,7 +203,7 @@ fun GeofenceScreen(
         ?: geofences.firstOrNull()?.let { it.latitude to it.longitude }
         ?: events.firstOrNull()?.let { it.latitude to it.longitude }
         ?: DEFAULT_CENTER
-    val controller = rememberOpenFreeMapController(initialCenter.first, initialCenter.second, 16.0)
+    val controller = rememberOpenFreeMapController(initialCenter.first, initialCenter.second, 17.0)
 
     // Fly the camera to the child (or first place) once data arrives after the
     // map is ready.
@@ -214,7 +214,7 @@ fun GeofenceScreen(
                 ?: geofences.firstOrNull()?.let { it.latitude to it.longitude }
             if (target != null) {
                 didInitialCenter = true
-                runCatching { controller.animateTo(target.first, target.second, 16.5) }
+                runCatching { controller.animateTo(target.first, target.second, 17.5) }
             }
         }
     }
@@ -288,7 +288,7 @@ fun GeofenceScreen(
             historyCentered = true
             val cLat = trail.sumOf { it.latitude } / trail.size
             val cLng = trail.sumOf { it.longitude } / trail.size
-            runCatching { controller.moveTo(cLat, cLng, 15.5) }
+            runCatching { controller.moveTo(cLat, cLng, 16.5) }
         }
     }
 
@@ -477,7 +477,7 @@ fun GeofenceScreen(
                 accent = accent,
                 onPlayPause = { playing = !playing },
                 onScrub = { playing = false; scope.launch { progress.snapTo(it) } },
-                onFocus = { la, ln -> runCatching { controller.animateTo(la, ln, 16.0) } },
+                onFocus = { la, ln -> runCatching { controller.animateTo(la, ln, 17.0) } },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         } else if (mode == DrawMode.AREA && area.isNotEmpty()) {
@@ -596,7 +596,7 @@ fun GeofenceScreen(
                 onEdit = { showList = false; editingGeofence = it },
                 onFocus = { g ->
                     showList = false
-                    runCatching { controller.animateTo(g.latitude, g.longitude, 16.0) }
+                    runCatching { controller.animateTo(g.latitude, g.longitude, 17.0) }
                 },
             )
         }

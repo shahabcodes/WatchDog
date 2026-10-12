@@ -97,10 +97,13 @@ fun OverviewScreen(
         // the header hugs its card.
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
-        com.shahaabapps.watchdog.feature.screenshot.ScreenshotSection(
+        OverviewHeader(
+            childName = state.childName,
+            online = state.online,
             modifier = Modifier.padding(top = Spacing.md),
         )
 
+        // Count cards at the top for an at-a-glance summary.
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 StatTile(
@@ -135,6 +138,10 @@ fun OverviewScreen(
                     modifier = Modifier.weight(1f),
                 )
             }
+        }
+
+        DashSection("Screen") {
+            com.shahaabapps.watchdog.feature.screenshot.ScreenshotSection()
         }
 
         if (pendingApps.isNotEmpty()) {
@@ -212,6 +219,25 @@ fun OverviewScreen(
                 },
             )
         }
+    }
+}
+
+/** Dashboard header: the child's name with a live online/offline pill. */
+@Composable
+private fun OverviewHeader(childName: String, online: Boolean, modifier: Modifier = Modifier) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier.fillMaxWidth()) {
+        Text(
+            childName.ifBlank { "Overview" },
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        StatusChip(
+            text = if (online) "Online" else "Offline",
+            color = if (online) AppTheme.colors.success else AppTheme.colors.secondaryLabel,
+        )
     }
 }
 

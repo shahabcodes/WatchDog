@@ -17,7 +17,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -70,10 +72,13 @@ fun ScreenshotSection(
     var viewerIndex by remember { mutableStateOf<Int?>(null) }
     var requestedAt by remember { mutableStateOf(0L) }
     val waiting = requestedAt > 0 && System.currentTimeMillis() - requestedAt < 25_000
+    val listState = rememberLazyListState()
 
-    // Clear the "waiting" hint once a newer screenshot has landed locally.
+    // Clear the "waiting" hint once a newer screenshot has landed locally, and
+    // scroll the gallery to the newest (index 0) so it's visible after capture.
     LaunchedEffect(shots.firstOrNull()?.capturedAtMillis) {
         if ((shots.firstOrNull()?.capturedAtMillis ?: 0L) >= requestedAt) requestedAt = 0L
+        if (shots.isNotEmpty()) runCatching { listState.animateScrollToItem(0) }
     }
 
     CupertinoCard(modifier = modifier) {
@@ -89,10 +94,9 @@ fun ScreenshotSection(
                     Icon(Icons.Filled.PhotoCamera, contentDescription = null, tint = AppTheme.colors.accent)
                 }
                 Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
-                    Text("Screen", style = MaterialTheme.typography.bodyLarge)
                     Text(
                         if (waiting) "Requested — waiting for the device…" else "Capture what's on the screen now",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = AppTheme.colors.secondaryLabel,
                     )
                 }
@@ -112,9 +116,8 @@ fun ScreenshotSection(
                     color = AppTheme.colors.secondaryLabel,
                 )
             } else {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    items(shots, key = { it.capturedAtMillis }) { shot ->
-                        val index = shots.indexOf(shot)
+                LazyRow(state = listState, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    itemsIndexed(shots, key = { _, it -> it.capturedAtMillis }) { index, shot ->
                         Thumbnail(shot = shot, onClick = { viewerIndex = index })
                     }
                 }
@@ -205,6 +208,7 @@ private fun ScreenshotViewer(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.45f))
                     .statusBarsPadding()
                     .padding(horizontal = Spacing.sm, vertical = Spacing.sm),
             ) {
@@ -218,6 +222,9 @@ private fun ScreenshotViewer(
                     modifier = Modifier.weight(1f),
                 )
                 val current = shots.getOrNull(pagerState.currentPage)
+                IconButton(onClick = { current?.let { saveToGallery(context, it) } }) {
+                    Icon(Icons.Filled.SaveAlt, contentDescription = "Save to gallery", tint = Color.White)
+                }
                 IconButton(onClick = { current?.let { shareLocalShot(context, it) } }) {
                     Icon(Icons.Filled.Share, contentDescription = "Share", tint = Color.White)
                 }
@@ -250,6 +257,38 @@ private fun ZoomableImage(shot: LocalShot) {
                 .graphicsLayer(scaleX = target, scaleY = target),
         )
     }
+}
+
+private fun saveToGallery(context: Context, shot: LocalShot) {
+    val ok = runCatching {
+        val name = "WatchDog_${shot.capturedAtMillis}.png"
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name)
+            put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                put(
+                    android.provider.MediaStore.Images.Media.RELATIVE_PATH,
+                    android.os.Environment.DIRECTORY_PICTURES + "/WatchDog",
+                )
+                put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
+            }
+        }
+        val resolver = context.contentResolver
+        val uri = resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            ?: return@runCatching false
+        resolver.openOutputStream(uri)?.use { out -> shot.file.inputStream().use { it.copyTo(out) } }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            values.clear()
+            values.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+        }
+        true
+    }.getOrDefault(false)
+    android.widget.Toast.makeText(
+        context,
+        if (ok) "Saved to gallery" else "Couldn't save to gallery",
+        android.widget.Toast.LENGTH_SHORT,
+    ).show()
 }
 
 private fun shareLocalShot(context: Context, shot: LocalShot) {

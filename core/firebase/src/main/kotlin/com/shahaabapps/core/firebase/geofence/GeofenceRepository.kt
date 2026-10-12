@@ -25,4 +25,7 @@ interface GeofenceRepository {
 
     /** Most recent events, newest first (for the parent's activity feed). */
     fun observeRecentEvents(childId: String, limit: Long = 50): Flow<List<GeofenceEvent>>
+
+    /** Deletes every stored event for the child (parent "clear all" on the feed). */
+    suspend fun clearEvents(childId: String): AppResult<Unit>
 }

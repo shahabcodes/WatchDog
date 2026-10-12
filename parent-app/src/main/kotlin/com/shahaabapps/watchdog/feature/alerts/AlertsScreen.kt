@@ -82,13 +82,26 @@ fun AlertsScreen(
             }
             Spacer(Modifier.size(14.dp))
             Text(
-                "Alerts",
+                "Notifications",
                 fontFamily = AppFonts.display,
                 fontSize = 28.sp,
                 fontWeight = FontWeight.ExtraBold,
                 letterSpacing = (-0.6).sp,
                 color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.weight(1f),
             )
+            if (events.isNotEmpty()) {
+                Text(
+                    "Clear all",
+                    color = AppTheme.colors.accent,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { viewModel.clearAll() }
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                )
+            }
         }
 
         if (events.isEmpty()) {

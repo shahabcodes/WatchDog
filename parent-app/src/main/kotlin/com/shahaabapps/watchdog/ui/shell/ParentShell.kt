@@ -281,8 +281,17 @@ private fun AddChildScreen(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
-    val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
-        viewModel.onQrScanned(result.contents)
+    var hasCamera by remember {
+        mutableStateOf(
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED,
+        )
+    }
+    val cameraPermLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        hasCamera = granted
+    }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        if (!hasCamera) cameraPermLauncher.launch(android.Manifest.permission.CAMERA)
     }
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
@@ -330,33 +339,38 @@ private fun AddChildScreen(
                 color = AppTheme.colors.secondaryLabel,
                 textAlign = TextAlign.Center,
             )
-            ScanViewport(modifier = Modifier.padding(top = Spacing.md))
+            QrScanner(
+                hasCamera = hasCamera,
+                onRequestPermission = { cameraPermLauncher.launch(android.Manifest.permission.CAMERA) },
+                onDecoded = { viewModel.onQrScanned(it) },
+                modifier = Modifier.padding(top = Spacing.md),
+            )
             Spacer(Modifier.weight(1f))
             CupertinoPrimaryButton(
-                text = "Scan child's QR",
-                onClick = {
-                    scanLauncher.launch(
-                        ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                            .setPrompt("Scan the child's pairing code").setBeepEnabled(false)
-                            .setOrientationLocked(false),
-                    )
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            CupertinoTextButton(
-                text = "Choose QR from gallery",
+                text = "Scan QR from gallery",
                 onClick = {
                     imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                 },
+                modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(Spacing.md))
         }
     }
 }
 
-/** Dark rounded QR viewport with a teal scan frame (prototype Pair). */
+/**
+ * Live QR scanner inside a dark rounded viewport with a teal frame (prototype
+ * Pair). The camera preview runs in-screen via an embedded barcode view, paused
+ * and resumed with the composition lifecycle. Falls back to an "Enable camera"
+ * prompt until the CAMERA permission is granted.
+ */
 @Composable
-private fun ScanViewport(modifier: Modifier = Modifier) {
+private fun QrScanner(
+    hasCamera: Boolean,
+    onRequestPermission: () -> Unit,
+    onDecoded: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Box(
         modifier = modifier
             .size(260.dp)
@@ -364,17 +378,77 @@ private fun ScanViewport(modifier: Modifier = Modifier) {
             .background(Color(0xFF15171C)),
         contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .size(172.dp)
-                .border(4.dp, AppTheme.colors.accent, RoundedCornerShape(16.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            androidx.compose.material3.Icon(
-                Icons.Filled.QrCodeScanner,
-                contentDescription = null,
-                tint = Color.White.copy(alpha = 0.85f),
-                modifier = Modifier.size(72.dp),
+        if (hasCamera) {
+            val barcodeView = remember { mutableStateOf<com.journeyapps.barcodescanner.CompoundBarcodeView?>(null) }
+            val decoded = remember { mutableStateOf(false) }
+            val currentOnDecoded by androidx.compose.runtime.rememberUpdatedState(onDecoded)
+            androidx.compose.ui.viewinterop.AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { ctx ->
+                    com.journeyapps.barcodescanner.CompoundBarcodeView(ctx).apply {
+                        setStatusText("")
+                        this.barcodeView.decoderFactory =
+                            com.journeyapps.barcodescanner.DefaultDecoderFactory(listOf(com.google.zxing.BarcodeFormat.QR_CODE))
+                        decodeContinuous(object : com.journeyapps.barcodescanner.BarcodeCallback {
+                            override fun barcodeResult(result: com.journeyapps.barcodescanner.BarcodeResult) {
+                                val text = result.text ?: return
+                                if (!decoded.value) {
+                                    decoded.value = true
+                                    currentOnDecoded(text)
+                                }
+                            }
+                        })
+                        barcodeView.value = this
+                    }
+                },
+            )
+            val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+            androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+                val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                    when (event) {
+                        androidx.lifecycle.Lifecycle.Event.ON_RESUME -> barcodeView.value?.resume()
+                        androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> barcodeView.value?.pause()
+                        else -> {}
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                barcodeView.value?.resume()
+                onDispose {
+                    lifecycleOwner.lifecycle.removeObserver(observer)
+                    barcodeView.value?.pause()
+                }
+            }
+            // Teal scan frame over the preview.
+            Box(
+                modifier = Modifier
+                    .size(172.dp)
+                    .border(4.dp, AppTheme.colors.accent, RoundedCornerShape(16.dp)),
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(172.dp)
+                    .border(4.dp, AppTheme.colors.accent, RoundedCornerShape(16.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                androidx.compose.material3.Icon(
+                    Icons.Filled.QrCodeScanner,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.size(56.dp),
+                )
+            }
+            Text(
+                "Enable camera",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 18.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(AppTheme.colors.accent)
+                    .clickable(onClick = onRequestPermission)
+                    .padding(horizontal = 18.dp, vertical = 10.dp),
             )
         }
     }

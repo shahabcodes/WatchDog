@@ -104,87 +104,108 @@ fun OverviewScreen(
     var showRingSheet by remember { mutableStateOf(false) }
     var showProtectionSheet by remember { mutableStateOf(false) }
     var showFocusSheet by remember { mutableStateOf(false) }
+    var showChildSheet by remember { mutableStateOf(false) }
 
     androidx.compose.material3.pulltorefresh.PullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = { viewModel.refresh() },
         modifier = modifier.fillMaxSize(),
     ) {
-    Column(
+    // LazyColumn so off-screen sections don't all compose on first load.
+    androidx.compose.foundation.lazy.LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .background(AppTheme.colors.groupedBackground)
-            .statusBarsPadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = Spacing.lg),
+            .statusBarsPadding(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            start = Spacing.lg, end = Spacing.lg, bottom = Spacing.sm,
+        ),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
-        HomeTopRow(
-            childName = state.childName.ifBlank { "Child" },
-            childNames = childNames,
-            selectedId = selectedId,
-            onSelectChild = onSelectChild,
-            onAddChild = onAddChild,
-            onManage = onManage,
-            onSettings = onSettings,
-            onOpenAlerts = onOpenAlerts,
-            modifier = Modifier.padding(top = Spacing.md),
-        )
-
-        StatusHero(
-            location = childLocation,
-            place = currentPlace,
-            online = state.online,
-            batteryPercent = state.batteryPercent,
-            deviceModel = state.deviceModel,
-            onOpenMap = onOpenMap,
-        )
-
-        QuickActions(
-            onRing = { showRingSheet = true },
-            onLocate = onOpenMap,
-            onRefresh = { viewModel.refresh() },
-            onFocus = { showFocusSheet = true },
-        )
-
-        ScreenTimeCard(
-            totalMinutes = state.screenTimeMinutes,
-            yesterdayMinutes = if (weekly.size >= 2) weekly[weekly.lastIndex - 1].minutes else null,
-            weekMinutes = weekly.map { it.minutes },
-            apps = state.topApps,
-        )
-
-        BedtimeBanner(focus = focus)
+        item(key = "top") {
+            HomeTopRow(
+                childName = state.childName.ifBlank { "Child" },
+                onOpenSwitcher = { showChildSheet = true },
+                onOpenAlerts = onOpenAlerts,
+                modifier = Modifier.padding(top = Spacing.md),
+            )
+        }
+        item(key = "hero") {
+            StatusHero(
+                location = childLocation,
+                place = currentPlace,
+                online = state.online,
+                batteryPercent = state.batteryPercent,
+                deviceModel = state.deviceModel,
+                onOpenMap = onOpenMap,
+            )
+        }
+        item(key = "actions") {
+            QuickActions(
+                onRing = { showRingSheet = true },
+                onLocate = onOpenMap,
+                onRefresh = { viewModel.refresh() },
+                onFocus = { showFocusSheet = true },
+            )
+        }
+        item(key = "screentime") {
+            ScreenTimeCard(
+                totalMinutes = state.screenTimeMinutes,
+                yesterdayMinutes = if (weekly.size >= 2) weekly[weekly.lastIndex - 1].minutes else null,
+                weekMinutes = weekly.map { it.minutes },
+                apps = state.topApps,
+            )
+        }
+        item(key = "bedtime") { BedtimeBanner(focus = focus) }
 
         if (pendingApps.isNotEmpty()) {
-            DashSection("New apps to review") {
-                PendingAppsCard(
-                    apps = pendingApps,
-                    onAllow = { pendingVm.allow(it) },
-                    onKeepBlocked = { pendingVm.keepBlocked(it) },
-                )
+            item(key = "pending") {
+                DashSection("New apps to review") {
+                    PendingAppsCard(
+                        apps = pendingApps,
+                        onAllow = { pendingVm.allow(it) },
+                        onKeepBlocked = { pendingVm.keepBlocked(it) },
+                    )
+                }
             }
         }
 
-        DashSection("Screen") {
-            com.shahaabapps.watchdog.feature.screenshot.ScreenshotSection()
+        item(key = "screen") {
+            DashSection("Screen") {
+                com.shahaabapps.watchdog.feature.screenshot.ScreenshotSection()
+            }
         }
-
-        DashSection("Focus modes") {
-            com.shahaabapps.watchdog.feature.focus.FocusCard(settings = focus, onEdit = { showFocusSheet = true })
+        item(key = "focus") {
+            DashSection("Focus modes") {
+                com.shahaabapps.watchdog.feature.focus.FocusCard(settings = focus, onEdit = { showFocusSheet = true })
+            }
         }
-
-        DashSection("Protection") {
-            ProtectionCard(blocked = protection.uninstallBlocked, onClick = { showProtectionSheet = true })
+        item(key = "protection") {
+            DashSection("Protection") {
+                ProtectionCard(blocked = protection.uninstallBlocked, onClick = { showProtectionSheet = true })
+            }
         }
-
         if (weekly.any { it.minutes > 0 }) {
-            DashSection("This week") {
-                WeeklyTrendChart(weekly)
+            item(key = "week") {
+                DashSection("This week") {
+                    WeeklyTrendChart(weekly)
+                }
             }
         }
-        Spacer(Modifier.height(Spacing.sm))
     }
+    }
+
+    if (showChildSheet) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(onDismissRequest = { showChildSheet = false }, sheetState = sheetState) {
+            ChildSwitcherSheet(
+                childNames = childNames,
+                selectedId = selectedId,
+                onSelectChild = { showChildSheet = false; onSelectChild(it) },
+                onAddChild = { showChildSheet = false; onAddChild() },
+                onSettings = { showChildSheet = false; onSettings() },
+            )
+        }
     }
 
     if (showRingSheet) {
@@ -230,12 +251,7 @@ fun OverviewScreen(
 @Composable
 private fun HomeTopRow(
     childName: String,
-    childNames: List<Pair<String, String>>,
-    selectedId: String,
-    onSelectChild: (String) -> Unit,
-    onAddChild: () -> Unit,
-    onManage: () -> Unit,
-    onSettings: () -> Unit,
+    onOpenSwitcher: () -> Unit,
     onOpenAlerts: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -243,70 +259,40 @@ private fun HomeTopRow(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier.fillMaxWidth(),
     ) {
-        var menu by remember { mutableStateOf(false) }
         val initial = childName.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?"
-        Box {
-            // Avatar + name pill; tap to switch child or add another.
-            Surface(
-                shape = CircleShape,
-                color = AppTheme.colors.card,
-                border = androidx.compose.foundation.BorderStroke(1.dp, AppTheme.colors.separator),
-                modifier = Modifier.clip(CircleShape).clickable { menu = true },
+        // Avatar + name pill; tap to switch child or add another.
+        Surface(
+            shape = CircleShape,
+            color = AppTheme.colors.card,
+            border = androidx.compose.foundation.BorderStroke(1.dp, AppTheme.colors.separator),
+            modifier = Modifier.clip(CircleShape).clickable(onClick = onOpenSwitcher),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.height(48.dp).padding(start = 6.dp, end = 14.dp),
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.height(48.dp).padding(start = 6.dp, end = 14.dp),
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.size(36.dp).clip(CircleShape)
+                        .background(AppTheme.colors.accent.copy(alpha = 0.16f)),
                 ) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier.size(36.dp).clip(CircleShape)
-                            .background(AppTheme.colors.accent.copy(alpha = 0.16f)),
-                    ) {
-                        Text(initial, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = AppTheme.colors.accent)
-                    }
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        childName,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Icon(Icons.Filled.ArrowDropDown, contentDescription = "Switch child", tint = AppTheme.colors.secondaryLabel)
+                    Text(initial, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = AppTheme.colors.accent)
                 }
-            }
-            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                childNames.forEach { (id, name) ->
-                    DropdownMenuItem(
-                        text = { Text(name.ifBlank { "Child" }) },
-                        onClick = { menu = false; onSelectChild(id) },
-                        trailingIcon = {
-                            if (id == selectedId) Icon(Icons.Filled.Check, contentDescription = null, tint = AppTheme.colors.accent)
-                        },
-                    )
-                }
-                DropdownMenuItem(
-                    text = { Text("Add child") },
-                    onClick = { menu = false; onAddChild() },
-                    leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    childName,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                HorizontalDivider()
-                DropdownMenuItem(
-                    text = { Text("Manage children") },
-                    onClick = { menu = false; onManage() },
-                    leadingIcon = { Icon(Icons.Filled.Group, contentDescription = null) },
-                )
-                DropdownMenuItem(
-                    text = { Text("Settings") },
-                    onClick = { menu = false; onSettings() },
-                    leadingIcon = { Icon(Icons.Filled.Settings, contentDescription = null) },
-                )
+                Spacer(Modifier.width(6.dp))
+                Icon(Icons.Filled.ArrowDropDown, contentDescription = "Switch child", tint = AppTheme.colors.secondaryLabel)
             }
         }
         Spacer(Modifier.weight(1f))
-        // Notifications bell with unread dot -> Alerts.
+        // Notifications bell with unread dot.
         Box {
             Surface(
                 shape = CircleShape,
@@ -315,7 +301,7 @@ private fun HomeTopRow(
                 modifier = Modifier.size(48.dp).clickable(onClick = onOpenAlerts),
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.Notifications, contentDescription = "Alerts", tint = MaterialTheme.colorScheme.onBackground)
+                    Icon(Icons.Filled.Notifications, contentDescription = "Notifications", tint = MaterialTheme.colorScheme.onBackground)
                 }
             }
             Box(
@@ -327,6 +313,109 @@ private fun HomeTopRow(
                     .background(AppTheme.colors.warn)
                     .border(2.dp, AppTheme.colors.card, CircleShape),
             )
+        }
+    }
+}
+
+/** Bottom-sheet child switcher: switch between children or add another. */
+@Composable
+private fun ChildSwitcherSheet(
+    childNames: List<Pair<String, String>>,
+    selectedId: String,
+    onSelectChild: (String) -> Unit,
+    onAddChild: () -> Unit,
+    onSettings: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.lg)
+            .padding(bottom = Spacing.xl),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        Text(
+            "Your children",
+            fontFamily = AppFonts.display,
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.padding(bottom = Spacing.xs),
+        )
+        childNames.forEach { (id, name) ->
+            val selected = id == selectedId
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = if (selected) AppTheme.colors.accent.copy(alpha = 0.10f) else AppTheme.colors.card,
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    if (selected) AppTheme.colors.accent else AppTheme.colors.separator,
+                ),
+                modifier = Modifier.fillMaxWidth().clickable { onSelectChild(id) },
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.size(40.dp).clip(CircleShape)
+                            .background(AppTheme.colors.accent.copy(alpha = 0.16f)),
+                    ) {
+                        Text(
+                            name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = AppTheme.colors.accent,
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        name.ifBlank { "Child" },
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (selected) {
+                        Icon(Icons.Filled.Check, contentDescription = "Current", tint = AppTheme.colors.accent)
+                    }
+                }
+            }
+        }
+        // Add child
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = AppTheme.colors.card,
+            border = androidx.compose.foundation.BorderStroke(1.dp, AppTheme.colors.separator),
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onAddChild),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.size(40.dp).clip(CircleShape)
+                        .background(AppTheme.colors.accent.copy(alpha = 0.16f)),
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = null, tint = AppTheme.colors.accent)
+                }
+                Spacer(Modifier.width(12.dp))
+                Text("Add child", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        Spacer(Modifier.height(Spacing.xs))
+        // Settings
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .clickable(onClick = onSettings)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            Icon(Icons.Filled.Settings, contentDescription = null, tint = AppTheme.colors.secondaryLabel)
+            Spacer(Modifier.width(12.dp))
+            Text("Settings", style = MaterialTheme.typography.bodyLarge, color = AppTheme.colors.secondaryLabel)
         }
     }
 }

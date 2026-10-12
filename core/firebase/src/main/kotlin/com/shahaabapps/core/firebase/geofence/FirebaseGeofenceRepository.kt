@@ -52,6 +52,19 @@ class FirebaseGeofenceRepository @Inject constructor(
     override suspend fun deleteGeofence(childId: String, geofenceId: String): AppResult<Unit> =
         runCatchingResult { geofences(childId).document(geofenceId).delete().await() }
 
+    override suspend fun clearEvents(childId: String): AppResult<Unit> =
+        runCatchingResult {
+            // Firestore has no "delete collection"; page through and batch-delete.
+            while (true) {
+                val snap = events(childId).limit(400).get().await()
+                if (snap.isEmpty) break
+                val batch = firestore.batch()
+                snap.documents.forEach { batch.delete(it.reference) }
+                batch.commit().await()
+                if (snap.size() < 400) break
+            }
+        }
+
     override suspend fun reportEvent(childId: String, event: GeofenceEvent): AppResult<Unit> =
         runCatchingResult {
             val data = mapOf(

@@ -217,15 +217,15 @@ class EnforcementService : AccessibilityService() {
                 screenshotExecutor,
                 object : TakeScreenshotCallback {
                     override fun onSuccess(result: ScreenshotResult) {
-                        val png = runCatching { result.toPng() }.getOrNull()
+                        val bytes = runCatching { result.toImageBytes() }.getOrNull()
                         result.hardwareBuffer.close()
                         serviceScope.launch {
-                            if (png == null) {
+                            if (bytes == null) {
                                 screenshotRepository.reportStatus(childId, "decode failed")
                             } else {
-                                when (val r = screenshotRepository.uploadScreenshot(childId, png)) {
+                                when (val r = screenshotRepository.uploadScreenshot(childId, bytes)) {
                                     is com.shahaabapps.core.common.AppResult.Success ->
-                                        screenshotRepository.reportStatus(childId, "ok ${png.size}b")
+                                        screenshotRepository.reportStatus(childId, "ok ${bytes.size}b")
                                     is com.shahaabapps.core.common.AppResult.Failure ->
                                         screenshotRepository.reportStatus(childId, "upload failed: ${r.error.message}")
                                 }
@@ -244,18 +244,20 @@ class EnforcementService : AccessibilityService() {
     }
 
     @RequiresApi(Build.VERSION_CODES.R)
-    private fun ScreenshotResult.toPng(): ByteArray? {
+    private fun ScreenshotResult.toImageBytes(): ByteArray? {
         val hardware = Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace) ?: return null
         val software = hardware.copy(Bitmap.Config.ARGB_8888, false) ?: return null
-        val maxW = 900
+        val maxW = 1000
         val scaled = if (software.width > maxW) {
             val ratio = maxW.toFloat() / software.width
             Bitmap.createScaledBitmap(software, maxW, (software.height * ratio).toInt(), true)
         } else {
             software
         }
+        // JPEG (not PNG) keeps the upload/download small (~100KB vs ~600KB) so the
+        // screenshot reaches the parent quickly.
         return ByteArrayOutputStream().use { out ->
-            scaled.compress(Bitmap.CompressFormat.PNG, 100, out)
+            scaled.compress(Bitmap.CompressFormat.JPEG, 80, out)
             out.toByteArray()
         }
     }

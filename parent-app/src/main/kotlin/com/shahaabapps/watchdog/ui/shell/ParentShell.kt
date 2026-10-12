@@ -35,8 +35,6 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -160,25 +158,19 @@ fun ParentShell(
         containerColor = AppTheme.colors.groupedBackground,
         topBar = {
             if (showChrome) {
-                Column {
-                    FlatTopBar(
-                        greeting = "Hi, ${profile.name}",
-                        title = selectedChild.profile.name.ifBlank { "Child" },
-                        parentName = profile.name,
-                        parentPhoto = profile.photoUrl,
-                        onManage = { navController.navigate("manage") },
-                        onSettings = { navController.navigate("settings") },
-                    )
-                    if (children.size > 1) {
-                        ChildChipRow(
-                            children = children,
-                            selectedId = currentChildId,
-                            onSelect = { id ->
-                                navController.navigate("$currentTab/$id") { launchSingleTop = true }
-                            },
-                        )
-                    }
-                }
+                FlatTopBar(
+                    greeting = "Hi, ${profile.name}",
+                    title = selectedChild.profile.name.ifBlank { "Child" },
+                    parentName = profile.name,
+                    parentPhoto = profile.photoUrl,
+                    onManage = { navController.navigate("manage") },
+                    onSettings = { navController.navigate("settings") },
+                    children = children,
+                    selectedId = currentChildId,
+                    onSelectChild = { id ->
+                        navController.navigate("$currentTab/$id") { launchSingleTop = true }
+                    },
+                )
             }
         },
         bottomBar = {
@@ -239,7 +231,11 @@ private fun FlatTopBar(
     parentPhoto: String?,
     onManage: () -> Unit,
     onSettings: () -> Unit,
+    children: List<ChildAccount> = emptyList(),
+    selectedId: String = "",
+    onSelectChild: (String) -> Unit = {},
 ) {
+    val canSwitch = children.size > 1
     Surface(color = AppTheme.colors.card) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -248,14 +244,54 @@ private fun FlatTopBar(
                 .statusBarsPadding()
                 .padding(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 14.dp),
         ) {
+            var childMenu by remember { mutableStateOf(false) }
             Column(modifier = Modifier.weight(1f)) {
                 Text(greeting, fontSize = 13.sp, color = AppTheme.colors.secondaryLabel)
-                Text(
-                    title,
-                    fontSize = 30.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
+                Box {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable(enabled = canSwitch) { childMenu = true }
+                            .padding(end = 4.dp),
+                    ) {
+                        Text(
+                            title,
+                            fontSize = 30.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
+                        if (canSwitch) {
+                            androidx.compose.material3.Icon(
+                                Icons.Filled.ArrowDropDown,
+                                contentDescription = "Switch child",
+                                tint = AppTheme.colors.secondaryLabel,
+                                modifier = Modifier.padding(start = 2.dp),
+                            )
+                        }
+                    }
+                    androidx.compose.material3.DropdownMenu(expanded = childMenu, onDismissRequest = { childMenu = false }) {
+                        children.forEach { child ->
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text(child.profile.name.ifBlank { "Child" }) },
+                                onClick = { childMenu = false; onSelectChild(child.childId) },
+                                trailingIcon = {
+                                    if (child.childId == selectedId) {
+                                        androidx.compose.material3.Icon(Icons.Filled.Check, contentDescription = null, tint = AppTheme.colors.accent)
+                                    }
+                                },
+                            )
+                        }
+                        androidx.compose.material3.HorizontalDivider()
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Manage children") },
+                            onClick = { childMenu = false; onManage() },
+                            leadingIcon = { androidx.compose.material3.Icon(Icons.Filled.Group, contentDescription = null) },
+                        )
+                    }
+                }
             }
             var menu by remember { mutableStateOf(false) }
             Box {
@@ -288,33 +324,6 @@ private fun FlatTopBar(
 
 private fun Modifier.clickableAvatar(onClick: () -> Unit): Modifier =
     this.then(Modifier.clickable(onClick = onClick))
-
-@Composable
-private fun ChildChipRow(
-    children: List<ChildAccount>,
-    selectedId: String,
-    onSelect: (String) -> Unit,
-) {
-    Surface(color = AppTheme.colors.card) {
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-        ) {
-            items(children, key = { it.childId }) { child ->
-                FilterChip(
-                    selected = child.childId == selectedId,
-                    onClick = { onSelect(child.childId) },
-                    label = { Text(child.profile.name.ifBlank { "Child" }) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = AppTheme.colors.accent.copy(alpha = 0.15f),
-                        selectedLabelColor = AppTheme.colors.accent,
-                    ),
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun ParentBottomBar(currentTab: String, onSelect: (Tab) -> Unit) {

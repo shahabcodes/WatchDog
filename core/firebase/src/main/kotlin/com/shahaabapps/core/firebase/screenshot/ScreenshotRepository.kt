@@ -6,6 +6,7 @@ import com.shahaabapps.core.model.Screenshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.StorageMetadata
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -39,8 +40,8 @@ interface ScreenshotRepository {
     /** Child: emits the latest request nonce (0 when none). */
     fun observeCaptureRequests(childId: String): Flow<Long>
 
-    /** Child: upload a captured PNG and record it for the parent. */
-    suspend fun uploadScreenshot(childId: String, pngBytes: ByteArray): AppResult<Unit>
+    /** Child: upload a captured JPEG and record it for the parent. */
+    suspend fun uploadScreenshot(childId: String, imageBytes: ByteArray): AppResult<Unit>
 
     /** Child: record the last capture status/error for remote diagnosis. */
     suspend fun reportStatus(childId: String, status: String)
@@ -91,11 +92,12 @@ class FirebaseScreenshotRepository @Inject constructor(
         awaitClose { registration.remove() }
     }
 
-    override suspend fun uploadScreenshot(childId: String, pngBytes: ByteArray): AppResult<Unit> =
+    override suspend fun uploadScreenshot(childId: String, imageBytes: ByteArray): AppResult<Unit> =
         runCatchingResult {
             val now = System.currentTimeMillis()
-            val ref = storage.reference.child("screenshots/$childId/$now.png")
-            ref.putBytes(pngBytes).await()
+            val ref = storage.reference.child("screenshots/$childId/$now.jpg")
+            val metadata = StorageMetadata.Builder().setContentType("image/jpeg").build()
+            ref.putBytes(imageBytes, metadata).await()
             val url = ref.downloadUrl.await().toString()
             screenshotsCollection(childId).add(
                 mapOf(

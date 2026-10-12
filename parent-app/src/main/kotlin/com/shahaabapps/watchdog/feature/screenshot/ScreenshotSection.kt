@@ -259,12 +259,15 @@ private fun ZoomableImage(shot: LocalShot) {
     }
 }
 
+private fun mimeFor(shot: LocalShot): String =
+    if (shot.file.extension.equals("png", ignoreCase = true)) "image/png" else "image/jpeg"
+
 private fun saveToGallery(context: Context, shot: LocalShot) {
     val ok = runCatching {
-        val name = "WatchDog_${shot.capturedAtMillis}.png"
+        val name = "WatchDog_${shot.capturedAtMillis}.${shot.file.extension.ifBlank { "jpg" }}"
         val values = android.content.ContentValues().apply {
             put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name)
-            put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
+            put(android.provider.MediaStore.Images.Media.MIME_TYPE, mimeFor(shot))
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                 put(
                     android.provider.MediaStore.Images.Media.RELATIVE_PATH,
@@ -295,7 +298,7 @@ private fun shareLocalShot(context: Context, shot: LocalShot) {
     runCatching {
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", shot.file)
         val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "image/png"
+            type = mimeFor(shot)
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }

@@ -15,18 +15,20 @@ object LocalScreenshotStore {
     private fun dir(context: Context, childId: String): File =
         File(context.filesDir, "screenshots/$childId").apply { mkdirs() }
 
-    fun hasShot(context: Context, childId: String, capturedAtMillis: Long): Boolean =
-        File(dir(context, childId), "$capturedAtMillis.png").exists()
+    fun hasShot(context: Context, childId: String, capturedAtMillis: Long): Boolean {
+        val d = dir(context, childId)
+        return File(d, "$capturedAtMillis.jpg").exists() || File(d, "$capturedAtMillis.png").exists()
+    }
 
     fun save(context: Context, childId: String, capturedAtMillis: Long, bytes: ByteArray): File {
-        val file = File(dir(context, childId), "$capturedAtMillis.png")
+        val file = File(dir(context, childId), "$capturedAtMillis.jpg")
         file.writeBytes(bytes)
         return file
     }
 
     fun list(context: Context, childId: String): List<LocalShot> =
         dir(context, childId).listFiles()
-            ?.filter { it.extension == "png" }
+            ?.filter { it.extension == "jpg" || it.extension == "png" }
             ?.map { LocalShot(it, it.nameWithoutExtension.toLongOrNull() ?: 0L) }
             ?.sortedByDescending { it.capturedAtMillis }
             ?: emptyList()

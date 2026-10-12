@@ -98,8 +98,8 @@ fun OverviewScreen(
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
         OverviewHeader(
-            childName = state.childName,
             online = state.online,
+            lastSeenMillis = state.lastSeenMillis,
             modifier = Modifier.padding(top = Spacing.md),
         )
 
@@ -222,22 +222,22 @@ fun OverviewScreen(
     }
 }
 
-/** Dashboard header: the child's name with a live online/offline pill. */
+/** Dashboard status line: a live online/offline pill (name lives in the top bar). */
 @Composable
-private fun OverviewHeader(childName: String, online: Boolean, modifier: Modifier = Modifier) {
+private fun OverviewHeader(online: Boolean, lastSeenMillis: Long, modifier: Modifier = Modifier) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier.fillMaxWidth()) {
-        Text(
-            childName.ifBlank { "Overview" },
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
         StatusChip(
             text = if (online) "Online" else "Offline",
             color = if (online) AppTheme.colors.success else AppTheme.colors.secondaryLabel,
         )
+        if (!online && lastSeenMillis > 0) {
+            Text(
+                "seen ${relativeTime(lastSeenMillis)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = AppTheme.colors.secondaryLabel,
+                modifier = Modifier.padding(start = Spacing.sm),
+            )
+        }
     }
 }
 

@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -249,34 +252,56 @@ private fun FlatTopBar(
                 .padding(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 14.dp),
         ) {
             var childMenu by remember { mutableStateOf(false) }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(greeting, fontSize = 13.sp, color = AppTheme.colors.secondaryLabel)
-                Box {
+            Box(modifier = Modifier.weight(1f)) {
+                val initial = title.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?"
+                Surface(
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    color = AppTheme.colors.card,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AppTheme.colors.separator),
+                    modifier = Modifier
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .clickable(enabled = canSwitch) { childMenu = true },
+                ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable(enabled = canSwitch) { childMenu = true }
-                            .padding(end = 4.dp),
+                            .height(48.dp)
+                            .padding(start = 6.dp, end = 14.dp),
                     ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                .background(AppTheme.colors.accent.copy(alpha = 0.16f)),
+                        ) {
+                            Text(
+                                initial,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = AppTheme.colors.accent,
+                            )
+                        }
+                        Spacer(Modifier.width(10.dp))
                         Text(
                             title,
-                            fontSize = 30.sp,
+                            fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onBackground,
                             maxLines = 1,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         )
                         if (canSwitch) {
+                            Spacer(Modifier.width(6.dp))
                             androidx.compose.material3.Icon(
                                 Icons.Filled.ArrowDropDown,
                                 contentDescription = "Switch child",
                                 tint = AppTheme.colors.secondaryLabel,
-                                modifier = Modifier.padding(start = 2.dp),
                             )
                         }
                     }
-                    androidx.compose.material3.DropdownMenu(expanded = childMenu, onDismissRequest = { childMenu = false }) {
+                }
+                androidx.compose.material3.DropdownMenu(expanded = childMenu, onDismissRequest = { childMenu = false }) {
                         children.forEach { child ->
                             androidx.compose.material3.DropdownMenuItem(
                                 text = { Text(child.profile.name.ifBlank { "Child" }) },
@@ -295,7 +320,6 @@ private fun FlatTopBar(
                             leadingIcon = { androidx.compose.material3.Icon(Icons.Filled.Group, contentDescription = null) },
                         )
                     }
-                }
             }
             var menu by remember { mutableStateOf(false) }
             Box {

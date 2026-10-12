@@ -142,6 +142,9 @@ class GeofenceSyncService : Service() {
             }
         }
         startLocationUpdates(childId)
+        // Register the periodic backstop so location keeps flowing even if this
+        // foreground service is later killed by the OS.
+        runCatching { LocationSyncWorker.schedule(this) }
     }
 
     @SuppressLint("MissingPermission")

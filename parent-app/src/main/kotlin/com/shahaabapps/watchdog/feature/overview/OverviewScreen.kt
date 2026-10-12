@@ -164,6 +164,7 @@ fun OverviewScreen(
             LocationCard(
                 location = childLocation,
                 deviceModel = state.deviceModel,
+                online = state.online,
                 onOpenMap = onOpenMap,
                 onRing = { showRingSheet = true },
             )
@@ -444,6 +445,7 @@ private fun ProtectionEditor(
 private fun LocationCard(
     location: ChildLocation?,
     deviceModel: String,
+    online: Boolean,
     onOpenMap: () -> Unit,
     onRing: () -> Unit,
 ) {
@@ -464,11 +466,12 @@ private fun LocationCard(
                     )
                 }
                 Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
-                    Text("Live location", style = MaterialTheme.typography.bodyLarge)
+                    Text(if (online) "Live location" else "Last known location", style = MaterialTheme.typography.bodyLarge)
                     Text(
                         text = location?.let {
                             buildString {
-                                append("Updated ${relativeTime(it.timestampMillis)}")
+                                if (!online) append("Offline · ")
+                                append("updated ${relativeTime(it.timestampMillis)}")
                                 if (deviceModel.isNotBlank()) append(" · $deviceModel")
                             }
                         } ?: "Waiting for location…",

@@ -33,6 +33,9 @@ dependencies {
     // Location + geofencing
     implementation(libs.play.services.location)
 
+    // Background backstop: periodic location sync if the foreground service is killed.
+    implementation(libs.androidx.work.runtime.ktx)
+
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)

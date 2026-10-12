@@ -205,9 +205,10 @@ fun GeofenceScreen(
         ?: DEFAULT_CENTER
     val controller = rememberOpenFreeMapController(initialCenter.first, initialCenter.second, 17.0)
 
-    // Fly the camera to the child (or first place) once data arrives after the
-    // map is ready.
-    var didInitialCenter by rememberSaveable { mutableStateOf(false) }
+    // Each time the Map tab is (re)opened, fly the camera to the child's
+    // current location, zoomed in. `remember` (not saveable) resets on re-entry
+    // so switching back to the tab always re-centers on the child.
+    var didInitialCenter by remember { mutableStateOf(false) }
     LaunchedEffect(childLocation, geofences, controller.tick.intValue) {
         if (!didInitialCenter && controller.hasMap()) {
             val target = childLocation?.let { it.latitude to it.longitude }
@@ -280,11 +281,13 @@ fun GeofenceScreen(
             playing = false
         }
     }
-    // Center the map on the day's trail once, when entering history.
+    // Only when there's no live fix to center on, fall back to framing the
+    // day's trail (otherwise the current-location center above wins, so opening
+    // the tab always lands zoomed in on the child).
     var historyCentered by remember { mutableStateOf(false) }
     LaunchedEffect(historyMode) { if (!historyMode) historyCentered = false }
-    LaunchedEffect(historyMode, trail.size, controller.tick.intValue) {
-        if (historyMode && !historyCentered && trail.isNotEmpty() && controller.hasMap()) {
+    LaunchedEffect(historyMode, trail.size, childLocation, controller.tick.intValue) {
+        if (historyMode && childLocation == null && !historyCentered && trail.isNotEmpty() && controller.hasMap()) {
             historyCentered = true
             val cLat = trail.sumOf { it.latitude } / trail.size
             val cLng = trail.sumOf { it.longitude } / trail.size

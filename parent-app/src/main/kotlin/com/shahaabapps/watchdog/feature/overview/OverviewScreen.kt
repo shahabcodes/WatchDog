@@ -33,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -203,20 +204,28 @@ private fun StatusHero(
     onOpenMap: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    CupertinoCard(onClick = onOpenMap, modifier = modifier) {
-        Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+    androidx.compose.material3.Surface(
+        shape = RoundedCornerShape(26.dp),
+        color = AppTheme.colors.card,
+        shadowElevation = 2.dp,
+        border = androidx.compose.foundation.BorderStroke(1.dp, AppTheme.colors.separator),
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(26.dp))
+            .clickable(onClick = onOpenMap),
+    ) {
+        Column {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(150.dp)
-                    .clip(RoundedCornerShape(18.dp)),
+                    .height(150.dp),
                 contentAlignment = Alignment.TopStart,
             ) {
                 if (location != null) {
                     com.shahaabapps.watchdog.util.OpenFreeMapSnapshot(
                         lat = location.latitude,
                         lng = location.longitude,
-                        zoom = 15.0,
+                        zoom = 16.0,
                         dotColor = AppTheme.colors.accent,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -248,7 +257,7 @@ private fun StatusHero(
                     )
                 }
             }
-            Column {
+            Column(modifier = Modifier.padding(16.dp)) {
                 Text(
                     if (online) "Online now" else "Offline",
                     style = MaterialTheme.typography.headlineMedium,

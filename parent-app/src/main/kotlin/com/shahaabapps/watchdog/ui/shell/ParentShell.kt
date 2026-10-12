@@ -25,6 +25,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.foundation.border
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
@@ -297,11 +299,28 @@ private fun FlatTopBar(
             }
             var menu by remember { mutableStateOf(false) }
             Box {
-                Avatar(
-                    name = parentName,
-                    photoUrl = parentPhoto,
-                    size = 40.dp,
-                    modifier = Modifier.clickableAvatar { menu = true },
+                Surface(
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    color = AppTheme.colors.card,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AppTheme.colors.separator),
+                    modifier = Modifier.size(48.dp).clickable { menu = true },
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        androidx.compose.material3.Icon(
+                            Icons.Filled.Notifications,
+                            contentDescription = "Notifications and settings",
+                            tint = MaterialTheme.colorScheme.onBackground,
+                        )
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 10.dp, end = 11.dp)
+                        .size(9.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(AppTheme.colors.warn)
+                        .border(2.dp, AppTheme.colors.card, androidx.compose.foundation.shape.CircleShape),
                 )
                 androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     androidx.compose.material3.DropdownMenuItem(
@@ -323,9 +342,6 @@ private fun FlatTopBar(
         }
     }
 }
-
-private fun Modifier.clickableAvatar(onClick: () -> Unit): Modifier =
-    this.then(Modifier.clickable(onClick = onClick))
 
 @Composable
 private fun ParentBottomBar(currentTab: String, onSelect: (Tab) -> Unit) {

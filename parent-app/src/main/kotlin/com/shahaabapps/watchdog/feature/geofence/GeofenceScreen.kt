@@ -235,7 +235,8 @@ fun GeofenceScreen(
     // ---- History / playback (reuses the travel data for this child) ----
     val travelVm: TravelHistoryViewModel = hiltViewModel()
     val travelState by travelVm.uiState.collectAsStateWithLifecycle()
-    var historyMode by remember { mutableStateOf(false) }
+    // Default to the day timeline ("Today"), matching the Map prototype.
+    var historyMode by remember { mutableStateOf(true) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showFromPicker by remember { mutableStateOf(false) }
     var showToPicker by remember { mutableStateOf(false) }
@@ -243,6 +244,17 @@ fun GeofenceScreen(
     val trail = remember(travelState.trail) { travelState.trail.sortedBy { it.timestampMillis } }
     // Contiguous segments, broken where there's a dead-zone gap (no signal/GPS).
     val historySegments = remember(trail) { splitTrailSegments(trail) }
+    // Total distance travelled on the day, in km (summed across the trail).
+    val dayDistanceKm = remember(trail) {
+        var m = 0.0
+        for (i in 1 until trail.size) {
+            m += com.shahaabapps.core.model.GeoMath.distanceMeters(
+                trail[i - 1].latitude, trail[i - 1].longitude,
+                trail[i].latitude, trail[i].longitude,
+            )
+        }
+        m / 1000.0
+    }
     val startMs = trail.firstOrNull()?.timestampMillis ?: 0L
     val endMs = trail.lastOrNull()?.timestampMillis ?: 0L
     val rangeMs = (endMs - startMs).coerceAtLeast(0L)
@@ -416,14 +428,12 @@ fun GeofenceScreen(
                     onHistory = { historyMode = true },
                 )
                 Spacer(Modifier.weight(1f))
-                if (!historyMode) {
-                    // Round + button; tap to pick what to add (keeps the map clear).
-                    AddPlaceChip(
-                        mode = mode,
-                        selectedIcon = selectedIcon,
-                        onClick = { showCategorySheet = true },
-                    )
-                }
+                // Round + button in both modes; tap to pick what to add.
+                AddPlaceChip(
+                    mode = mode,
+                    selectedIcon = selectedIcon,
+                    onClick = { showCategorySheet = true },
+                )
             }
 
             if (historyMode) {
@@ -450,11 +460,12 @@ fun GeofenceScreen(
         if (historyMode) {
             HistorySheet(
                 dateLabel = dateLabel(travelState.date),
+                placesCount = travelState.stops.size,
+                distanceKm = dayDistanceKm,
                 stops = travelState.stops,
                 progress = progress,
                 playing = playing,
                 hasTrail = trail.isNotEmpty() && rangeMs > 0L,
-                speed = speed,
                 timeLabel = {
                     if (trail.isEmpty()) "No path this day"
                     else timeLabel(startMs + (progress.value * rangeMs).toLong())
@@ -462,7 +473,6 @@ fun GeofenceScreen(
                 accent = accent,
                 onPlayPause = { playing = !playing },
                 onScrub = { playing = false; scope.launch { progress.snapTo(it) } },
-                onCycleSpeed = { speed = when (speed) { 1f -> 2f; 2f -> 4f; else -> 1f } },
                 onFocus = { la, ln -> runCatching { controller.animateTo(la, ln, 16.0) } },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
@@ -529,9 +539,15 @@ fun GeofenceScreen(
                 mode = mode,
                 selectedIcon = selectedIcon,
                 onPickCategory = { key ->
-                    mode = DrawMode.PIN; area = emptyList(); selectedIcon = key; showCategorySheet = false
+                    mode = DrawMode.PIN; area = emptyList(); selectedIcon = key
+                    historyMode = false // switch to Live so the map is tappable to place
+                    showCategorySheet = false
                 },
-                onPickArea = { mode = DrawMode.AREA; pending = null; showCategorySheet = false },
+                onPickArea = {
+                    mode = DrawMode.AREA; pending = null
+                    historyMode = false
+                    showCategorySheet = false
+                },
             )
         }
     }
@@ -645,7 +661,7 @@ private fun ModeToggle(historyMode: Boolean, onLive: () -> Unit, onHistory: () -
             horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             ModeSegment("Live", !historyMode, onLive)
-            ModeSegment("History", historyMode, onHistory)
+            ModeSegment("Today", historyMode, onHistory)
         }
     }
 }
@@ -1056,38 +1072,33 @@ private fun liveLocationPulse(animate: Boolean): Float {
 }
 
 /**
- * One bottom sheet (prototype Map): drag handle + date/stops header, an inline
- * playback scrubber (dark circular play, progress, time, speed), and the day's
- * expandable stop timeline.
+ * One bottom sheet (prototype Map): drag handle, a "Today · N places · km"
+ * header, an inline playback scrubber (dark circular play + thin progress bar +
+ * time) and the day's stop timeline, always visible.
  */
 @Composable
 private fun HistorySheet(
     dateLabel: String,
+    placesCount: Int,
+    distanceKm: Double,
     stops: List<com.shahaabapps.watchdog.feature.travel.TravelStopItem>,
     progress: Animatable<Float, *>,
     playing: Boolean,
     hasTrail: Boolean,
-    speed: Float,
     timeLabel: () -> String,
     accent: Color,
     onPlayPause: () -> Unit,
     onScrub: (Float) -> Unit,
-    onCycleSpeed: () -> Unit,
     onFocus: (Double, Double) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
-    val chevronRotation by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (expanded) 180f else 0f,
-        label = "timelineChevron",
-    )
     Surface(
         shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
         color = AppTheme.colors.card,
         shadowElevation = 10.dp,
         modifier = modifier.fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.md)) {
+        Column(modifier = Modifier.padding(start = Spacing.lg, end = Spacing.lg, top = 12.dp, bottom = Spacing.sm)) {
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
@@ -1095,45 +1106,35 @@ private fun HistorySheet(
                     .clip(CircleShape)
                     .background(AppTheme.colors.secondaryLabel.copy(alpha = 0.3f)),
             )
-            // Header: date (Bricolage) + stop count + expand chevron.
+            // Header: date (Bricolage) + "N places · X.X km".
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded }
-                    .padding(top = Spacing.sm),
+                verticalAlignment = Alignment.Bottom,
+                modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
             ) {
                 Text(
                     dateLabel,
                     fontFamily = AppFonts.display,
-                    fontSize = 22.sp,
+                    fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = (-0.4).sp,
                     modifier = Modifier.weight(1f),
                 )
                 Text(
-                    "${stops.size} stop${if (stops.size == 1) "" else "s"}",
+                    "$placesCount place${if (placesCount == 1) "" else "s"} · ${"%.1f".format(distanceKm)} km",
                     style = MaterialTheme.typography.bodySmall,
                     color = AppTheme.colors.secondaryLabel,
-                    modifier = Modifier.padding(end = Spacing.sm),
-                )
-                Icon(
-                    Icons.Filled.ExpandMore,
-                    contentDescription = if (expanded) "Collapse" else "Expand",
-                    tint = AppTheme.colors.secondaryLabel,
-                    modifier = Modifier.rotate(chevronRotation),
                 )
             }
-            // Scrubber: dark circular play + progress + time + speed.
+            // Scrubber: dark circular play + thin progress bar + time.
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = Spacing.sm)
                     .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
                     .background(AppTheme.colors.groupedBackground)
-                    .padding(horizontal = Spacing.sm, vertical = 6.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
                 Surface(
                     shape = CircleShape,
@@ -1145,49 +1146,52 @@ private fun HistorySheet(
                             if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                             contentDescription = if (playing) "Pause" else "Play",
                             tint = Color.White.copy(alpha = if (hasTrail) 1f else 0.4f),
-                            modifier = Modifier.size(18.dp),
+                            modifier = Modifier.size(16.dp),
                         )
                     }
                 }
-                Slider(
-                    value = progress.value,
-                    onValueChange = onScrub,
-                    enabled = hasTrail,
-                    modifier = Modifier.weight(1f),
-                    colors = androidx.compose.material3.SliderDefaults.colors(
-                        thumbColor = accent,
-                        activeTrackColor = accent,
-                    ),
-                )
-                Text(timeLabel(), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                Surface(
-                    shape = CircleShape,
-                    color = accent.copy(alpha = 0.15f),
-                    modifier = Modifier.clickable(onClick = onCycleSpeed),
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(6.dp)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
+                        .background(AppTheme.colors.separator)
+                        .then(
+                            if (hasTrail) {
+                                Modifier
+                                    .androidx_pointerTap { onScrub(it) }
+                                    .androidx_pointerDrag { onScrub(it) }
+                            } else {
+                                Modifier
+                            },
+                        ),
                 ) {
-                    Text(
-                        "${speed.toInt()}x",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = accent,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(progress.value.coerceIn(0f, 1f))
+                            .height(6.dp)
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
+                            .background(accent),
                     )
                 }
+                Text(timeLabel(), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
             }
-            if (expanded) {
-                if (stops.isEmpty()) {
-                    Text(
-                        "No stops recorded for this window. Pick another day or widen the time range.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = AppTheme.colors.secondaryLabel,
-                        modifier = Modifier.padding(vertical = Spacing.sm),
-                    )
-                } else {
-                    LazyColumn(modifier = Modifier.heightIn(max = 200.dp), contentPadding = PaddingValues(top = Spacing.sm)) {
-                        itemsIndexed(stops, key = { _, it -> it.stop.id }) { i, item ->
-                            TimelineRow(item = item, accent = accent, isLast = i == stops.lastIndex) {
-                                onFocus(item.stop.latitude, item.stop.longitude)
-                            }
+            // Timeline (always visible).
+            if (stops.isEmpty()) {
+                Text(
+                    "No stops recorded for this window. Pick another day or widen the time range.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = AppTheme.colors.secondaryLabel,
+                    modifier = Modifier.padding(vertical = Spacing.sm),
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 260.dp),
+                    contentPadding = PaddingValues(top = Spacing.sm, bottom = Spacing.sm),
+                ) {
+                    itemsIndexed(stops, key = { _, it -> it.stop.id }) { i, item ->
+                        TimelineRow(item = item, accent = accent, isLast = i == stops.lastIndex) {
+                            onFocus(item.stop.latitude, item.stop.longitude)
                         }
                     }
                 }
@@ -1195,6 +1199,26 @@ private fun HistorySheet(
         }
     }
 }
+
+/** Tap anywhere on a horizontal bar → fraction of its width. */
+private fun Modifier.androidx_pointerTap(onFraction: (Float) -> Unit): Modifier =
+    this.then(
+        androidx.compose.ui.input.pointer.pointerInput(Unit) {
+            androidx.compose.foundation.gestures.detectTapGestures { offset ->
+                onFraction((offset.x / size.width.toFloat()).coerceIn(0f, 1f))
+            }
+        },
+    )
+
+/** Drag horizontally on a bar → fraction of its width. */
+private fun Modifier.androidx_pointerDrag(onFraction: (Float) -> Unit): Modifier =
+    this.then(
+        androidx.compose.ui.input.pointer.pointerInput(Unit) {
+            androidx.compose.foundation.gestures.detectHorizontalDragGestures { change, _ ->
+                onFraction((change.position.x / size.width.toFloat()).coerceIn(0f, 1f))
+            }
+        },
+    )
 
 @Composable
 private fun TimelineRow(
@@ -1204,22 +1228,17 @@ private fun TimelineRow(
     onClick: () -> Unit,
 ) {
     Row(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(
-                modifier = Modifier.size(30.dp).clip(CircleShape).background(accent.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(PlaceIcons.forKey(item.placeIcon ?: "place"), contentDescription = null, tint = accent, modifier = Modifier.size(16.dp))
-            }
+        // Filled dot joined by a rail (prototype timeline).
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(top = 4.dp)) {
+            Box(modifier = Modifier.size(14.dp).clip(CircleShape).background(accent))
             if (!isLast) {
-                Box(modifier = Modifier.width(2.dp).heightIn(min = 26.dp).background(AppTheme.colors.separator))
+                Box(modifier = Modifier.width(2.dp).heightIn(min = 34.dp).background(AppTheme.colors.separator))
             }
         }
-        Column(modifier = Modifier.weight(1f).padding(start = Spacing.md, bottom = Spacing.sm)) {
-            Text(timeLabel(item.stop.arrivalMillis), style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
-            Text(item.placeName ?: "Stop", style = MaterialTheme.typography.bodyLarge)
+        Column(modifier = Modifier.weight(1f).padding(start = Spacing.md, bottom = Spacing.md)) {
+            Text(item.placeName ?: "Stop", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
             Text(
-                "${durationShort(item.stop.durationMinutes)} · ${timeLabel(item.stop.arrivalMillis)} – ${timeLabel(item.stop.departureMillis)}",
+                "${timeLabel(item.stop.arrivalMillis)} – ${timeLabel(item.stop.departureMillis)} · ${durationShort(item.stop.durationMinutes)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = AppTheme.colors.secondaryLabel,
             )

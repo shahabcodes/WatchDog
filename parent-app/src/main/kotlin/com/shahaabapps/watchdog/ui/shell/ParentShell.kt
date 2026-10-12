@@ -96,9 +96,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private enum class Tab(val route: String, val label: String, val icon: ImageVector) {
-    OVERVIEW("overview", "Overview", Icons.Filled.GridView),
+    OVERVIEW("overview", "Home", Icons.Filled.GridView),
     MAP("map", "Map", Icons.Filled.Map),
-    SCREENTIME("screentime", "Screen time", Icons.Filled.BarChart),
+    SCREENTIME("screentime", "Activity", Icons.Filled.BarChart),
 }
 
 @Composable
@@ -369,10 +369,11 @@ private fun FlatTopBar(
 
 @Composable
 private fun ParentBottomBar(currentTab: String, onSelect: (Tab) -> Unit) {
-    // Floating, rounded pill bar with a pastel highlight on the active tab.
+    // Floating dark pill with a white chip on the active tab (prototype nav bar).
+    val barColor = Color(0xFF15171C)
     Surface(
-        shape = RoundedCornerShape(28.dp),
-        color = AppTheme.colors.card,
+        shape = RoundedCornerShape(34.dp),
+        color = barColor,
         shadowElevation = 12.dp,
         modifier = Modifier
             .navigationBarsPadding()
@@ -382,32 +383,25 @@ private fun ParentBottomBar(currentTab: String, onSelect: (Tab) -> Unit) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceEvenly,
-            modifier = Modifier.fillMaxWidth().padding(6.dp),
+            modifier = Modifier.fillMaxWidth().height(68.dp).padding(horizontal = 8.dp),
         ) {
             Tab.entries.forEach { tab ->
                 val selected = currentTab == tab.route
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                Box(
+                    contentAlignment = Alignment.Center,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(if (selected) AppTheme.colors.accent.copy(alpha = 0.15f) else Color.Transparent)
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(if (selected) Color.White else Color.Transparent)
                         .clickable { onSelect(tab) }
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                        .padding(horizontal = if (selected) 18.dp else 12.dp),
                 ) {
-                    Icon(
-                        tab.icon,
-                        contentDescription = tab.label,
-                        tint = if (selected) AppTheme.colors.accent else AppTheme.colors.secondaryLabel,
+                    Text(
+                        tab.label,
+                        fontSize = 14.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                        color = if (selected) Color(0xFF15171C) else Color(0xFFC3C6CE),
                     )
-                    if (selected) {
-                        Text(
-                            tab.label,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = AppTheme.colors.accent,
-                            modifier = Modifier.padding(start = 6.dp),
-                        )
-                    }
                 }
             }
         }

@@ -1,7 +1,10 @@
 package com.shahaabapps.watchdog.feature.geofence
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -21,6 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
@@ -404,20 +408,14 @@ fun GeofenceScreen(
                         }
                     }
                 }
-                CategoryPill(
-                    label = "Live",
-                    icon = Icons.Filled.MyLocation,
-                    selected = !historyMode,
-                    onClick = { historyMode = false },
+                ModeToggle(
+                    historyMode = historyMode,
+                    onLive = { historyMode = false },
+                    onHistory = { historyMode = true },
                 )
-                CategoryPill(
-                    label = "History",
-                    icon = Icons.Filled.History,
-                    selected = historyMode,
-                    onClick = { historyMode = true },
-                )
+                Spacer(Modifier.weight(1f))
                 if (!historyMode) {
-                    // One compact chip; tap to pick what to add (keeps the map clear).
+                    // Round + button; tap to pick what to add (keeps the map clear).
                     AddPlaceChip(
                         mode = mode,
                         selectedIcon = selectedIcon,
@@ -636,28 +634,60 @@ fun GeofenceScreen(
 
 /** Compact chip showing the current add-selection; tap to open the full picker. */
 @Composable
-private fun AddPlaceChip(mode: DrawMode, selectedIcon: String, onClick: () -> Unit) {
-    val icon = if (mode == DrawMode.AREA) Icons.Filled.Pentagon else PlaceIcons.forKey(selectedIcon)
-    val label = if (mode == DrawMode.AREA) "Draw area" else categoryName(selectedIcon).ifBlank { "Add place" }
+private fun ModeToggle(historyMode: Boolean, onLive: () -> Unit, onHistory: () -> Unit) {
     Surface(
         shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
-        color = AppTheme.colors.accent,
-        tonalElevation = 2.dp,
+        color = AppTheme.colors.card,
+        border = BorderStroke(1.dp, AppTheme.colors.separator),
         shadowElevation = 3.dp,
-        modifier = Modifier.clickable(onClick = onClick),
     ) {
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            modifier = Modifier.padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-            Text(
-                label,
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color.White,
-                modifier = Modifier.padding(start = 6.dp),
+            ModeSegment("Live", !historyMode, onLive)
+            ModeSegment("History", historyMode, onHistory)
+        }
+    }
+}
+
+@Composable
+private fun ModeSegment(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(50))
+            .background(if (selected) Color(0xFF15171C) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+            color = if (selected) Color.White else AppTheme.colors.secondaryLabel,
+        )
+    }
+}
+
+@Composable
+private fun AddPlaceChip(mode: DrawMode, selectedIcon: String, onClick: () -> Unit) {
+    // Round white button with a + (prototype "Add a place"); the category
+    // sheet that opens on tap keeps the current pin/area choice.
+    Surface(
+        shape = CircleShape,
+        color = AppTheme.colors.card,
+        border = BorderStroke(1.dp, AppTheme.colors.separator),
+        shadowElevation = 3.dp,
+        modifier = Modifier.size(48.dp).clickable(onClick = onClick),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                Icons.Filled.Add,
+                contentDescription = if (mode == DrawMode.AREA) "Draw area" else "Add a place",
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(22.dp),
             )
-            Icon(Icons.Filled.ExpandMore, contentDescription = "Change", tint = Color.White, modifier = Modifier.size(18.dp))
         }
     }
 }

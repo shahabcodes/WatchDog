@@ -41,9 +41,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.shahaabapps.core.ui.theme.AppFonts
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shahaabapps.core.model.AppRule
@@ -87,11 +95,27 @@ fun UsageScreen(
             .background(AppTheme.colors.groupedBackground),
     ) {
         if (embedded) {
-            Column(modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.md)) {
-                SectionHeader("Screen time today")
+            Column(modifier = Modifier.padding(start = Spacing.lg, end = Spacing.lg, top = Spacing.md, bottom = Spacing.sm)) {
+                Text(
+                    "Activity",
+                    fontFamily = AppFonts.display,
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = (-0.6).sp,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+                Text(
+                    "Screen time today",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.secondaryLabel,
+                    modifier = Modifier.padding(top = Spacing.sm),
+                )
                 Text(
                     formatDuration(state.totalMinutes),
-                    style = MaterialTheme.typography.displayLarge,
+                    fontFamily = AppFonts.display,
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = (-1).sp,
                     color = AppTheme.colors.accent,
                 )
             }
@@ -142,8 +166,14 @@ fun UsageScreen(
                 contentPadding = PaddingValues(start = Spacing.lg, end = Spacing.lg, top = Spacing.sm, bottom = Spacing.lg),
                 verticalArrangement = Arrangement.spacedBy(Spacing.sm),
             ) {
+                val maxMinutes = state.rows.maxOfOrNull { it.minutes }?.coerceAtLeast(1L) ?: 1L
                 items(state.rows, key = { it.app.packageName }) { row ->
-                    AppCard(row = row, showInstalled = state.sort == AppSort.INSTALLED, onClick = { editing = row })
+                    AppCard(
+                        row = row,
+                        showInstalled = state.sort == AppSort.INSTALLED,
+                        fraction = (row.minutes.toFloat() / maxMinutes).coerceIn(0f, 1f),
+                        onClick = { editing = row },
+                    )
                 }
             }
         }
@@ -170,7 +200,7 @@ fun UsageScreen(
 }
 
 @Composable
-private fun AppCard(row: AppRow, showInstalled: Boolean, onClick: () -> Unit) {
+private fun AppCard(row: AppRow, showInstalled: Boolean, fraction: Float, onClick: () -> Unit) {
     CupertinoCard(onClick = onClick) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             AppIcon(base64 = row.app.icon, label = row.app.label, size = 40.dp, modifier = Modifier.padding(end = Spacing.md))
@@ -181,20 +211,49 @@ private fun AppCard(row: AppRow, showInstalled: Boolean, onClick: () -> Unit) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                // Relative usage bar (busiest app fills the track) — prototype style.
+                Box(
+                    modifier = Modifier
+                        .padding(top = 6.dp)
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(AppTheme.colors.separator),
+                ) {
+                    if (fraction > 0f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(fraction)
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(AppTheme.colors.accent),
+                        )
+                    }
+                }
+                if (showInstalled && row.app.installedAtMillis > 0) {
+                    Text(
+                        text = "Installed ${dateLabel(row.app.installedAtMillis)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AppTheme.colors.secondaryLabel,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
+            Column(
+                horizontalAlignment = Alignment.End,
+                modifier = Modifier.padding(start = Spacing.md),
+            ) {
                 Text(
-                    text = if (showInstalled && row.app.installedAtMillis > 0) {
-                        "Installed ${dateLabel(row.app.installedAtMillis)} · ${usageLabel(row.minutes)}"
-                    } else {
-                        usageLabel(row.minutes)
-                    },
-                    style = MaterialTheme.typography.bodySmall,
+                    text = usageLabel(row.minutes),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
                     color = AppTheme.colors.secondaryLabel,
                 )
-            }
-            if (row.rule?.blocked == true) {
-                StatusChip(text = "Blocked", color = AppTheme.colors.destructive)
-            } else if (row.rule?.dailyLimitMinutes != null) {
-                StatusChip(text = "Limited", color = AppTheme.colors.accent)
+                if (row.rule?.blocked == true) {
+                    StatusChip(text = "Blocked", color = AppTheme.colors.destructive)
+                } else if (row.rule?.dailyLimitMinutes != null) {
+                    StatusChip(text = "Limited", color = AppTheme.colors.accent)
+                }
             }
         }
     }

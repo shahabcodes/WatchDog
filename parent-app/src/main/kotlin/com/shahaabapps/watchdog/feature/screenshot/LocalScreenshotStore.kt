@@ -32,4 +32,13 @@ object LocalScreenshotStore {
             ?: emptyList()
 
     fun delete(shot: LocalShot): Boolean = runCatching { shot.file.delete() }.getOrDefault(false)
+
+    /** Deletes locally stored screenshots older than [maxAgeMillis]. */
+    fun pruneOlderThan(context: Context, childId: String, maxAgeMillis: Long) {
+        val cutoff = System.currentTimeMillis() - maxAgeMillis
+        dir(context, childId).listFiles()?.forEach { file ->
+            val millis = file.nameWithoutExtension.toLongOrNull() ?: return@forEach
+            if (millis in 1 until cutoff) runCatching { file.delete() }
+        }
+    }
 }

@@ -24,13 +24,16 @@ class ScreenshotViewModel @Inject constructor(
 
     private val childId: String = checkNotNull(savedStateHandle["childId"])
 
-    private val _shots = MutableStateFlow(LocalScreenshotStore.list(context, childId))
+    private val _shots = MutableStateFlow<List<LocalShot>>(emptyList())
     val shots: StateFlow<List<LocalShot>> = _shots.asStateFlow()
 
     // Guards against downloading the same screenshot twice while in flight.
     private val inFlight = Collections.synchronizedSet(mutableSetOf<Long>())
 
     init {
+        // Auto-delete old local screenshots, then show what remains.
+        LocalScreenshotStore.pruneOlderThan(context, childId, LOCAL_RETENTION_MS)
+        refresh()
         // Pull any new backend screenshots down to local storage, then clear them
         // from the backend so nothing is kept server-side.
         viewModelScope.launch {
@@ -66,5 +69,10 @@ class ScreenshotViewModel @Inject constructor(
 
     private fun refresh() {
         _shots.value = LocalScreenshotStore.list(context, childId)
+    }
+
+    private companion object {
+        // Keep local screenshots for two weeks, then auto-delete.
+        const val LOCAL_RETENTION_MS = 14L * 24 * 60 * 60 * 1000
     }
 }

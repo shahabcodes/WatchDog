@@ -6,10 +6,12 @@ import com.shahaabapps.core.model.Screenshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.storage.FirebaseStorage
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /**
@@ -107,14 +109,21 @@ class FirebaseScreenshotRepository @Inject constructor(
 
     override suspend fun fetchAndClear(childId: String, shot: Screenshot): AppResult<ByteArray> =
         runCatchingResult {
-            val ref = if (shot.storagePath.isNotBlank()) {
-                storage.reference.child(shot.storagePath.trimStart('/'))
-            } else {
-                storage.reference.child("screenshots/$childId/${shot.capturedAtMillis}.png")
+            // Download via the stored download URL (token-authenticated, independent
+            // of Storage read rules) — falling back to the SDK by path if absent.
+            val bytes = withContext(Dispatchers.IO) {
+                if (shot.url.isNotBlank()) {
+                    java.net.URL(shot.url).openStream().use { it.readBytes() }
+                } else {
+                    val ref = storage.reference.child(
+                        shot.storagePath.ifBlank { "screenshots/$childId/${shot.capturedAtMillis}.png" }
+                            .trimStart('/'),
+                    )
+                    ref.getBytes(MAX_SCREENSHOT_BYTES).await()
+                }
             }
-            val bytes = ref.getBytes(MAX_SCREENSHOT_BYTES).await()
-            // Clear the backend copy now that the parent has it locally.
-            runCatching { ref.delete().await() }
+            // Delete the Firestore doc; a Cloud Function removes the Storage object
+            // on that deletion, so nothing is kept server-side.
             runCatching { screenshotsCollection(childId).document(shot.id).delete().await() }
             bytes
         }

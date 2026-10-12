@@ -1,14 +1,38 @@
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentDeleted } = require("firebase-functions/v2/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
+const { getStorage } = require("firebase-admin/storage");
 
 initializeApp();
 setGlobalOptions({ region: "us-central1", maxInstances: 10 });
 
 const db = getFirestore();
+const STORAGE_BUCKET = "watch-dog-13d09.firebasestorage.app";
+
+/**
+ * When a screenshot doc is deleted (the parent downloaded it locally), delete the
+ * backing Storage object too, so nothing is kept server-side. Runs with admin
+ * privileges, independent of client Storage rules.
+ *
+ * Firestore trigger: children/{childId}/screenshots/{shotId}
+ */
+exports.cleanupScreenshot = onDocumentDeleted(
+  "children/{childId}/screenshots/{shotId}",
+  async (event) => {
+    const data = (event.data && event.data.data()) || {};
+    let path = data.storagePath ||
+      `screenshots/${event.params.childId}/${data.capturedAtMillis}.png`;
+    path = String(path).replace(/^\/+/, "");
+    try {
+      await getStorage().bucket(STORAGE_BUCKET).file(path).delete({ ignoreNotFound: true });
+    } catch (e) {
+      // Best-effort; object may already be gone.
+    }
+  },
+);
 
 /**
  * Reconnect a reinstalled Shield: migrate the old child's data (geofences, rules,

@@ -137,15 +137,6 @@ fun OverviewScreen(
             }
         }
 
-        DashSection("Location") {
-            LocationCard(
-                location = childLocation,
-                deviceModel = state.deviceModel,
-                onOpenMap = onOpenMap,
-                onRing = { showRingSheet = true },
-            )
-        }
-
         if (pendingApps.isNotEmpty()) {
             DashSection("New apps to review") {
                 PendingAppsCard(
@@ -154,6 +145,15 @@ fun OverviewScreen(
                     onKeepBlocked = { pendingVm.keepBlocked(it) },
                 )
             }
+        }
+
+        DashSection("Location") {
+            LocationCard(
+                location = childLocation,
+                deviceModel = state.deviceModel,
+                onOpenMap = onOpenMap,
+                onRing = { showRingSheet = true },
+            )
         }
 
         DashSection("Focus modes") {

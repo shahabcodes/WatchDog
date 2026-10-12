@@ -68,7 +68,7 @@ fun ProtectedScreen(
             .fillMaxSize()
             .background(
                 androidx.compose.ui.graphics.Brush.verticalGradient(
-                    listOf(Color(0xFFEDE9FE), Color(0xFFEFF6F3), AppTheme.colors.groupedBackground),
+                    listOf(AppTheme.colors.groupedBackground, AppTheme.colors.groupedBackground),
                 ),
             )
             .verticalScroll(rememberScrollState()),

@@ -120,6 +120,22 @@ class OverviewViewModel @Inject constructor(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), OverviewUiState())
 
+    private val _isRefreshing = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing
+
+    /**
+     * Manual pull-to-refresh. The dashboard already updates live from Firestore;
+     * this shows the indicator briefly so the gesture feels responsive.
+     */
+    fun refresh() {
+        if (_isRefreshing.value) return
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            kotlinx.coroutines.delay(900)
+            _isRefreshing.value = false
+        }
+    }
+
     fun ringDevice(message: String) {
         viewModelScope.launch { deviceRepository.sendRing(childId, message) }
     }

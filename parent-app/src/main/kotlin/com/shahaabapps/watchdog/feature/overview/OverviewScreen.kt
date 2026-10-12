@@ -78,12 +78,18 @@ fun OverviewScreen(
     val pendingApps by pendingVm.pending.collectAsStateWithLifecycle()
     val focusVm: com.shahaabapps.watchdog.feature.focus.FocusViewModel = hiltViewModel()
     val focus by focusVm.settings.collectAsStateWithLifecycle()
+    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     var showRingSheet by remember { mutableStateOf(false) }
     var showProtectionSheet by remember { mutableStateOf(false) }
     var showFocusSheet by remember { mutableStateOf(false) }
 
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = { viewModel.refresh() },
+        modifier = modifier.fillMaxSize(),
+    ) {
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
             .background(
                 androidx.compose.ui.graphics.Brush.verticalGradient(
@@ -181,6 +187,7 @@ fun OverviewScreen(
             UsageChart(state.screenTimeMinutes, state.topApps)
         }
         Spacer(Modifier.height(Spacing.sm))
+    }
     }
 
     if (showRingSheet) {

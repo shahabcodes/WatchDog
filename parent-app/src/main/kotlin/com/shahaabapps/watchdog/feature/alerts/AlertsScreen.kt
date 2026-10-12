@@ -51,7 +51,7 @@ fun AlertsScreen(
     onBack: () -> Unit,
     viewModel: AlertsViewModel = hiltViewModel(),
 ) {
-    val events by viewModel.events.collectAsStateWithLifecycle()
+    val items by viewModel.items.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier
@@ -90,7 +90,7 @@ fun AlertsScreen(
                 color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.weight(1f),
             )
-            if (events.isNotEmpty()) {
+            if (items.isNotEmpty()) {
                 Text(
                     "Clear all",
                     color = AppTheme.colors.accent,
@@ -104,19 +104,19 @@ fun AlertsScreen(
             }
         }
 
-        if (events.isEmpty()) {
+        if (items.isEmpty()) {
             EmptyAlerts()
         } else {
             val today = LocalDate.now()
-            val grouped = events.groupBy { millisToDate(it.timestampMillis) == today }
+            val grouped = items.groupBy { millisToDate(it.event.timestampMillis) == today }
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(Spacing.sm),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = Spacing.xl),
             ) {
-                grouped[true]?.let { todayEvents ->
+                grouped[true]?.let { todayItems ->
                     item { SectionLabel("TODAY") }
-                    item { AlertCard(todayEvents) }
+                    item { AlertCard(todayItems) }
                 }
                 grouped[false]?.let { earlier ->
                     item { SectionLabel("EARLIER") }
@@ -140,7 +140,7 @@ private fun SectionLabel(text: String) {
 }
 
 @Composable
-private fun AlertCard(events: List<GeofenceEvent>) {
+private fun AlertCard(items: List<AlertItem>) {
     Surface(
         shape = RoundedCornerShape(22.dp),
         color = AppTheme.colors.card,
@@ -148,9 +148,9 @@ private fun AlertCard(events: List<GeofenceEvent>) {
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-            events.forEachIndexed { i, event ->
-                AlertRow(event)
-                if (i != events.lastIndex) {
+            items.forEachIndexed { i, item ->
+                AlertRow(item)
+                if (i != items.lastIndex) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -164,9 +164,17 @@ private fun AlertCard(events: List<GeofenceEvent>) {
 }
 
 @Composable
-private fun AlertRow(event: GeofenceEvent) {
+private fun AlertRow(item: AlertItem) {
+    val event = item.event
     val entered = event.transition == GeofenceTransition.ENTER
-    val place = event.geofenceName.ifBlank { "a place" }
+    // "Arrived at Home" for a saved place; a clearly different phrase when the
+    // place isn't one of the saved locations.
+    val title = when {
+        item.known && item.placeName != null ->
+            if (entered) "Arrived at ${item.placeName}" else "Left ${item.placeName}"
+        else ->
+            if (entered) "Arrived at an unknown place" else "Left an unknown place"
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
@@ -191,7 +199,7 @@ private fun AlertRow(event: GeofenceEvent) {
         Spacer(Modifier.size(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                if (entered) "Arrived at $place" else "Left $place",
+                title,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
             )

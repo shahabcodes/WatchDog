@@ -115,80 +115,87 @@ fun OverviewScreen(
     androidx.compose.foundation.lazy.LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(AppTheme.colors.groupedBackground)
-            .statusBarsPadding(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(
-            start = Spacing.lg, end = Spacing.lg, bottom = Spacing.sm,
-        ),
+            .background(AppTheme.colors.groupedBackground),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = Spacing.sm),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
-        item(key = "top") {
-            HomeTopRow(
-                childName = state.childName.ifBlank { "Child" },
-                onOpenSwitcher = { showChildSheet = true },
-                onOpenAlerts = onOpenAlerts,
-                modifier = Modifier.padding(top = Spacing.md),
-            )
-        }
+        // Full-bleed hero: the live map runs to the top, behind the name pill
+        // and the notifications bell.
         item(key = "hero") {
-            StatusHero(
+            HomeHero(
                 location = childLocation,
                 place = currentPlace,
                 online = state.online,
                 batteryPercent = state.batteryPercent,
-                deviceModel = state.deviceModel,
+                childName = state.childName.ifBlank { "Child" },
+                onOpenSwitcher = { showChildSheet = true },
+                onOpenAlerts = onOpenAlerts,
                 onOpenMap = onOpenMap,
             )
         }
         item(key = "actions") {
-            QuickActions(
-                onRing = { showRingSheet = true },
-                onLocate = onOpenMap,
-                onRefresh = { viewModel.refresh() },
-                onFocus = { showFocusSheet = true },
-            )
+            Box(Modifier.padding(horizontal = Spacing.lg)) {
+                QuickActions(
+                    onRing = { showRingSheet = true },
+                    onLocate = onOpenMap,
+                    onRefresh = { viewModel.refresh() },
+                    onFocus = { showFocusSheet = true },
+                )
+            }
         }
         item(key = "screentime") {
-            ScreenTimeCard(
-                totalMinutes = state.screenTimeMinutes,
-                yesterdayMinutes = if (weekly.size >= 2) weekly[weekly.lastIndex - 1].minutes else null,
-                weekMinutes = weekly.map { it.minutes },
-                apps = state.topApps,
-            )
+            Box(Modifier.padding(horizontal = Spacing.lg)) {
+                ScreenTimeCard(
+                    totalMinutes = state.screenTimeMinutes,
+                    yesterdayMinutes = if (weekly.size >= 2) weekly[weekly.lastIndex - 1].minutes else null,
+                    weekMinutes = weekly.map { it.minutes },
+                    apps = state.topApps,
+                )
+            }
         }
-        item(key = "bedtime") { BedtimeBanner(focus = focus) }
+        item(key = "bedtime") { Box(Modifier.padding(horizontal = Spacing.lg)) { BedtimeBanner(focus = focus) } }
 
         if (pendingApps.isNotEmpty()) {
             item(key = "pending") {
-                DashSection("New apps to review") {
-                    PendingAppsCard(
-                        apps = pendingApps,
-                        onAllow = { pendingVm.allow(it) },
-                        onKeepBlocked = { pendingVm.keepBlocked(it) },
-                    )
+                Box(Modifier.padding(horizontal = Spacing.lg)) {
+                    DashSection("New apps to review") {
+                        PendingAppsCard(
+                            apps = pendingApps,
+                            onAllow = { pendingVm.allow(it) },
+                            onKeepBlocked = { pendingVm.keepBlocked(it) },
+                        )
+                    }
                 }
             }
         }
 
         item(key = "screen") {
-            DashSection("Screen") {
-                com.shahaabapps.watchdog.feature.screenshot.ScreenshotSection()
+            Box(Modifier.padding(horizontal = Spacing.lg)) {
+                DashSection("Screen") {
+                    com.shahaabapps.watchdog.feature.screenshot.ScreenshotSection()
+                }
             }
         }
         item(key = "focus") {
-            DashSection("Focus modes") {
-                com.shahaabapps.watchdog.feature.focus.FocusCard(settings = focus, onEdit = { showFocusSheet = true })
+            Box(Modifier.padding(horizontal = Spacing.lg)) {
+                DashSection("Focus modes") {
+                    com.shahaabapps.watchdog.feature.focus.FocusCard(settings = focus, onEdit = { showFocusSheet = true })
+                }
             }
         }
         item(key = "protection") {
-            DashSection("Protection") {
-                ProtectionCard(blocked = protection.uninstallBlocked, onClick = { showProtectionSheet = true })
+            Box(Modifier.padding(horizontal = Spacing.lg)) {
+                DashSection("Protection") {
+                    ProtectionCard(blocked = protection.uninstallBlocked, onClick = { showProtectionSheet = true })
+                }
             }
         }
         if (weekly.any { it.minutes > 0 }) {
             item(key = "week") {
-                DashSection("This week") {
-                    WeeklyTrendChart(weekly)
+                Box(Modifier.padding(horizontal = Spacing.lg)) {
+                    DashSection("This week") {
+                        WeeklyTrendChart(weekly)
+                    }
                 }
             }
         }
@@ -250,6 +257,108 @@ fun OverviewScreen(
 }
 
 /** Status hero: a map strip with a live online chip, then the status + battery. */
+@Composable
+/**
+ * Full-bleed hero: the live map fills the top of the screen (behind the status
+ * bar) with the name pill and notifications bell overlaid on top, and the
+ * place/battery status over a bottom scrim.
+ */
+@Composable
+private fun HomeHero(
+    location: ChildLocation?,
+    place: String?,
+    online: Boolean,
+    batteryPercent: Int,
+    childName: String,
+    onOpenSwitcher: () -> Unit,
+    onOpenAlerts: () -> Unit,
+    onOpenMap: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(320.dp)
+            .clickable(onClick = onOpenMap),
+    ) {
+        if (location != null) {
+            com.shahaabapps.watchdog.util.OpenFreeMapSnapshot(
+                lat = location.latitude,
+                lng = location.longitude,
+                zoom = 16.0,
+                dotColor = AppTheme.colors.accent,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Box(
+                modifier = Modifier.fillMaxSize().background(AppTheme.colors.separator.copy(alpha = 0.3f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.LocationOff, contentDescription = null, tint = AppTheme.colors.secondaryLabel)
+            }
+        }
+        // Bottom scrim so the white status text stays legible over the map.
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(150.dp)
+                .background(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
+                    ),
+                ),
+        )
+        // Overlaid name pill + notifications bell.
+        HomeTopRow(
+            childName = childName,
+            onOpenSwitcher = onOpenSwitcher,
+            onOpenAlerts = onOpenAlerts,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+        )
+        // Status overlay.
+        Column(modifier = Modifier.align(Alignment.BottomStart).padding(Spacing.lg)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier.size(8.dp).clip(CircleShape)
+                        .background(if (online) AppTheme.colors.success else Color.White.copy(alpha = 0.7f)),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    if (online) "Online" else "Offline",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Text(
+                when {
+                    place != null -> "At $place"
+                    location != null -> "Outside known areas"
+                    else -> "Location unknown"
+                },
+                color = Color.White,
+                fontFamily = AppFonts.display,
+                fontSize = 26.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = (-0.5).sp,
+            )
+            val sub = buildString {
+                if (batteryPercent > 0) append("$batteryPercent% battery")
+                location?.let {
+                    if (isNotEmpty()) append(" · ")
+                    append("updated ${relativeTime(it.timestampMillis)}")
+                }
+            }
+            if (sub.isNotBlank()) {
+                Text(sub, color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
 @Composable
 private fun HomeTopRow(
     childName: String,

@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 
 /** User-selectable light/dark preference. */
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
@@ -81,8 +82,15 @@ fun AppTheme(
         MaterialTheme(
             colorScheme = if (dark) darkColors(accent, accentPalette) else lightColors(accent, accentPalette),
             typography = CupertinoTypography,
-            content = content,
-        )
+        ) {
+            // Make Figtree the default for plain Text() that sets only size/weight
+            // (they otherwise fall back to the system font).
+            CompositionLocalProvider(
+                androidx.compose.material3.LocalTextStyle provides
+                    androidx.compose.material3.LocalTextStyle.current.merge(TextStyle(fontFamily = AppFonts.body)),
+                content = content,
+            )
+        }
     }
 }
 

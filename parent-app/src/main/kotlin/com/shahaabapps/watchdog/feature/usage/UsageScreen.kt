@@ -166,7 +166,7 @@ fun UsageScreen(
                 contentPadding = PaddingValues(start = Spacing.lg, end = Spacing.lg, top = Spacing.sm, bottom = Spacing.lg),
                 verticalArrangement = Arrangement.spacedBy(Spacing.sm),
             ) {
-                val maxMinutes = state.rows.maxOfOrNull { it.minutes }?.coerceAtLeast(1L) ?: 1L
+                val maxMinutes = state.rows.maxOfOrNull { it.minutes }?.coerceAtLeast(1) ?: 1
                 items(state.rows, key = { it.app.packageName }) { row ->
                     AppCard(
                         row = row,

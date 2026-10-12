@@ -203,7 +203,7 @@ fun GeofenceScreen(
         ?: geofences.firstOrNull()?.let { it.latitude to it.longitude }
         ?: events.firstOrNull()?.let { it.latitude to it.longitude }
         ?: DEFAULT_CENTER
-    val controller = rememberOpenFreeMapController(initialCenter.first, initialCenter.second, 14.0)
+    val controller = rememberOpenFreeMapController(initialCenter.first, initialCenter.second, 16.0)
 
     // Fly the camera to the child (or first place) once data arrives after the
     // map is ready.
@@ -214,7 +214,7 @@ fun GeofenceScreen(
                 ?: geofences.firstOrNull()?.let { it.latitude to it.longitude }
             if (target != null) {
                 didInitialCenter = true
-                runCatching { controller.animateTo(target.first, target.second, 15.0) }
+                runCatching { controller.animateTo(target.first, target.second, 16.5) }
             }
         }
     }
@@ -288,7 +288,7 @@ fun GeofenceScreen(
             historyCentered = true
             val cLat = trail.sumOf { it.latitude } / trail.size
             val cLng = trail.sumOf { it.longitude } / trail.size
-            runCatching { controller.moveTo(cLat, cLng, 14.0) }
+            runCatching { controller.moveTo(cLat, cLng, 15.5) }
         }
     }
 

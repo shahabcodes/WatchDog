@@ -8,13 +8,13 @@ import androidx.compose.ui.graphics.Color
  */
 internal object Palette {
     // Neutral surfaces (light)
-    val BackgroundLight = Color(0xFFF7F9F8)
+    val BackgroundLight = Color(0xFFF3F4EF)
     val SurfaceLight = Color(0xFFFFFFFF)
-    val SurfaceVariantLight = Color(0xFFEDF3EF)
+    val SurfaceVariantLight = Color(0xFFE7EDE4)
     val OutlineLight = Color(0x22000000)
     val LabelLight = Color(0xFF1A1C1E)
-    val SecondaryLabelLight = Color(0xFF5A6660)
-    val SeparatorLight = Color(0x14000000)
+    val SecondaryLabelLight = Color(0xFF5C6270)
+    val SeparatorLight = Color(0x1F15171C)
 
     // Neutral surfaces (dark)
     val BackgroundDark = Color(0xFF111412)
@@ -36,7 +36,7 @@ internal object Palette {
     val AllowedDark = Color(0xFF7FD1A3)
     val AllowedBgDark = Color(0xFF17301F)
 
-    val WarnLight = Color(0xFFC77700)
+    val WarnLight = Color(0xFFD9622B)
     val WarnDark = Color(0xFFFBC02D)
 
     val SuccessLight = Color(0xFF1E8E5A)
@@ -63,6 +63,16 @@ enum class AccentPalette(
     /** Flag emoji, used only in the full-screen save/delete celebration. */
     val flag: String? = null,
 ) {
+    GUARDIAN(
+        label = "Guardian",
+        accentLight = Color(0xFF0E6B5E),
+        accentDark = Color(0xFF5BC9AE),
+        gradient = listOf(Color(0xFF15A58C), Color(0xFF0E6B5E), Color(0xFF0B5248)),
+        backgroundLight = Color(0xFFF3F4EF),
+        backgroundDark = Color(0xFF121419),
+        variantLight = Color(0xFFE7EDE4),
+        variantDark = Color(0xFF1C1F26),
+    ),
     MEADOW(
         label = "Meadow",
         accentLight = Color(0xFF1E8E5A),

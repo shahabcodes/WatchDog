@@ -13,7 +13,7 @@ import androidx.compose.ui.graphics.Color
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 /** The currently active accent palette, for UI that adapts to it (e.g. flags). */
-val LocalAccentPalette = staticCompositionLocalOf { AccentPalette.MEADOW }
+val LocalAccentPalette = staticCompositionLocalOf { AccentPalette.GUARDIAN }
 
 private fun lightColors(accent: Color, palette: AccentPalette) = lightColorScheme(
     primary = accent,
@@ -64,7 +64,7 @@ private fun cupertinoColors(dark: Boolean, palette: AccentPalette) = CupertinoCo
 @Composable
 fun AppTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
-    accentPalette: AccentPalette = AccentPalette.MEADOW,
+    accentPalette: AccentPalette = AccentPalette.GUARDIAN,
     content: @Composable () -> Unit,
 ) {
     val dark = when (themeMode) {

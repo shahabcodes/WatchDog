@@ -124,14 +124,15 @@ class OverviewViewModel @Inject constructor(
     val isRefreshing: StateFlow<Boolean> = _isRefreshing
 
     /**
-     * Manual pull-to-refresh. The dashboard already updates live from Firestore;
-     * this shows the indicator briefly so the gesture feels responsive.
+     * Manual pull-to-refresh: asks the child device to publish a fresh location fix
+     * now; the dashboard's live listeners pick up the update.
      */
     fun refresh() {
         if (_isRefreshing.value) return
         viewModelScope.launch {
             _isRefreshing.value = true
-            kotlinx.coroutines.delay(900)
+            runCatching { deviceRepository.requestLocation(childId) }
+            kotlinx.coroutines.delay(1_200)
             _isRefreshing.value = false
         }
     }

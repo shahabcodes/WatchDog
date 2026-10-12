@@ -124,7 +124,35 @@ class GeofenceSyncService : Service() {
                 }
             }
         }
+        // Parent pull-to-refresh: publish a fresh high-accuracy fix on demand.
+        scope.launch {
+            var lastLocationNonce = 0L
+            var firstEmit = true
+            deviceRepository.observeLocationRequests(childId).collectLatest { nonce ->
+                val recent = System.currentTimeMillis() - nonce < FRESH_REQUEST_MS
+                if (firstEmit) {
+                    firstEmit = false
+                    lastLocationNonce = nonce
+                    return@collectLatest
+                }
+                if (nonce > lastLocationNonce && recent) {
+                    lastLocationNonce = nonce
+                    publishFreshFix(childId)
+                }
+            }
+        }
         startLocationUpdates(childId)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun publishFreshFix(childId: String) {
+        val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+        val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
+        if (fine != PackageManager.PERMISSION_GRANTED && coarse != PackageManager.PERMISSION_GRANTED) return
+        runCatching {
+            fusedClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+                .addOnSuccessListener { loc -> loc?.let { publishLocation(childId, it) } }
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -327,6 +355,9 @@ class GeofenceSyncService : Service() {
         private const val NOTIFICATION_ID = 42
         private const val LOCATION_INTERVAL_MS = 60_000L
         private const val LOCATION_FASTEST_MS = 30_000L
+
+        // Only honour a fresh-location request this recent (avoids replay on restart).
+        private const val FRESH_REQUEST_MS = 2 * 60_000L
 
         // Travel-history "stop" detection.
         private const val STOP_RADIUS_METERS = 150f

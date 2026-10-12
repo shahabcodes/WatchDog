@@ -127,6 +127,25 @@ class FirebaseDeviceRepository @Inject constructor(
         awaitClose { registration.remove() }
     }
 
+    override suspend fun requestLocation(childId: String): AppResult<Unit> = runCatchingResult {
+        firestore.collection(CHILDREN).document(childId)
+            .collection(COMMANDS).document(LOCATION)
+            .set(mapOf("nonce" to System.currentTimeMillis())).await()
+        Unit
+    }
+
+    override fun observeLocationRequests(childId: String): Flow<Long> = callbackFlow {
+        val registration = firestore.collection(CHILDREN).document(childId)
+            .collection(COMMANDS).document(LOCATION)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    trySend(0L); return@addSnapshotListener
+                }
+                trySend(snapshot?.getLong("nonce") ?: 0L)
+            }
+        awaitClose { registration.remove() }
+    }
+
     private fun live(childId: String) =
         firestore.collection(CHILDREN).document(childId).collection(LIVE)
 
@@ -161,6 +180,7 @@ class FirebaseDeviceRepository @Inject constructor(
     private companion object {
         const val CHILDREN = "children"
         const val LIVE = "live"
+        const val COMMANDS = "commands"
         const val LOCATION = "location"
         const val RING = "ring"
         const val TRAVEL_HISTORY = "travelHistory"

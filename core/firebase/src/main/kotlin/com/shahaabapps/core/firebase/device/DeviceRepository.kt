@@ -42,4 +42,10 @@ interface DeviceRepository {
 
     /** Parent observes the continuous location trail for a given day (chronological). */
     fun observeTrail(childId: String, date: String): Flow<List<TrailPoint>>
+
+    /** Parent asks the child to publish a fresh location fix now (pull-to-refresh). */
+    suspend fun requestLocation(childId: String): AppResult<Unit>
+
+    /** Child observes fresh-location requests (emits the latest request nonce). */
+    fun observeLocationRequests(childId: String): Flow<Long>
 }

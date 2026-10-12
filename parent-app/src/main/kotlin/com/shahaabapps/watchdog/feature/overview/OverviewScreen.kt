@@ -17,14 +17,17 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Apps
-import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.BatteryStd
 import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -57,7 +60,6 @@ import com.shahaabapps.core.ui.components.CupertinoPrimaryButton
 import com.shahaabapps.core.ui.components.CupertinoSwitch
 import com.shahaabapps.core.ui.components.CupertinoTextButton
 import com.shahaabapps.core.ui.components.CupertinoTextField
-import com.shahaabapps.core.ui.components.StatTile
 import com.shahaabapps.core.ui.components.StatusChip
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
@@ -91,64 +93,35 @@ fun OverviewScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                androidx.compose.ui.graphics.Brush.verticalGradient(
-                    listOf(Color(0xFFF3F4EF), Color(0xFFF3F4EF), AppTheme.colors.groupedBackground),
-                ),
-            )
+            .background(AppTheme.colors.groupedBackground)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = Spacing.lg),
-        // One uniform gap between every block. The 2x2 stat grid keeps its own
-        // tighter internal spacing; a section header sits in a header+card group so
-        // the header hugs its card.
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
-        OverviewHeader(
+        StatusHero(
+            location = childLocation,
             online = state.online,
-            lastSeenMillis = state.lastSeenMillis,
+            batteryPercent = state.batteryPercent,
+            deviceModel = state.deviceModel,
+            onOpenMap = onOpenMap,
             modifier = Modifier.padding(top = Spacing.md),
         )
 
-        // Count cards at the top for an at-a-glance summary.
-        Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                StatTile(
-                    value = formatDuration(state.screenTimeMinutes),
-                    label = "Screen time",
-                    icon = Icons.Filled.BarChart,
-                    tint = Color(0xFF0E6B5E),
-                    modifier = Modifier.weight(1f),
-                )
-                StatTile(
-                    value = state.limitedOrBlocked.toString(),
-                    label = "Apps limited",
-                    icon = Icons.Filled.Apps,
-                    tint = Color(0xFFD9622B),
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                StatTile(
-                    value = state.placesCount.toString(),
-                    label = "Places",
-                    icon = Icons.Filled.Place,
-                    tint = Color(0xFF3B6FF6),
-                    modifier = Modifier.weight(1f),
-                    onClick = onOpenMap,
-                )
-                StatTile(
-                    value = if (state.batteryPercent > 0) "${state.batteryPercent}%" else "—",
-                    label = "Battery",
-                    icon = Icons.Filled.BatteryStd,
-                    tint = Color(0xFF1E9E5A),
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
+        QuickActions(
+            onRing = { showRingSheet = true },
+            onLocate = onOpenMap,
+            onRefresh = { viewModel.refresh() },
+            onFocus = { showFocusSheet = true },
+        )
 
-        DashSection("Screen") {
-            com.shahaabapps.watchdog.feature.screenshot.ScreenshotSection()
-        }
+        ScreenTimeCard(
+            totalMinutes = state.screenTimeMinutes,
+            yesterdayMinutes = if (weekly.size >= 2) weekly[weekly.lastIndex - 1].minutes else null,
+            weekMinutes = weekly.map { it.minutes },
+            apps = state.topApps,
+        )
+
+        BedtimeBanner(focus = focus)
 
         if (pendingApps.isNotEmpty()) {
             DashSection("New apps to review") {
@@ -160,14 +133,8 @@ fun OverviewScreen(
             }
         }
 
-        DashSection("Location") {
-            LocationCard(
-                location = childLocation,
-                deviceModel = state.deviceModel,
-                online = state.online,
-                onOpenMap = onOpenMap,
-                onRing = { showRingSheet = true },
-            )
+        DashSection("Screen") {
+            com.shahaabapps.watchdog.feature.screenshot.ScreenshotSection()
         }
 
         DashSection("Focus modes") {
@@ -182,10 +149,6 @@ fun OverviewScreen(
             DashSection("This week") {
                 WeeklyTrendChart(weekly)
             }
-        }
-
-        DashSection("App usage today") {
-            UsageChart(state.screenTimeMinutes, state.topApps)
         }
         Spacer(Modifier.height(Spacing.sm))
     }
@@ -230,21 +193,218 @@ fun OverviewScreen(
     }
 }
 
-/** Dashboard status line: a live online/offline pill (name lives in the top bar). */
+/** Status hero: a map strip with a live online chip, then the status + battery. */
 @Composable
-private fun OverviewHeader(online: Boolean, lastSeenMillis: Long, modifier: Modifier = Modifier) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier.fillMaxWidth()) {
-        StatusChip(
-            text = if (online) "Online" else "Offline",
-            color = if (online) AppTheme.colors.success else AppTheme.colors.secondaryLabel,
-        )
-        if (!online && lastSeenMillis > 0) {
-            Text(
-                "seen ${relativeTime(lastSeenMillis)}",
-                style = MaterialTheme.typography.bodySmall,
-                color = AppTheme.colors.secondaryLabel,
-                modifier = Modifier.padding(start = Spacing.sm),
-            )
+private fun StatusHero(
+    location: ChildLocation?,
+    online: Boolean,
+    batteryPercent: Int,
+    deviceModel: String,
+    onOpenMap: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    CupertinoCard(onClick = onOpenMap, modifier = modifier) {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(150.dp)
+                    .clip(RoundedCornerShape(18.dp)),
+                contentAlignment = Alignment.TopStart,
+            ) {
+                if (location != null) {
+                    com.shahaabapps.watchdog.util.OpenFreeMapSnapshot(
+                        lat = location.latitude,
+                        lng = location.longitude,
+                        zoom = 15.0,
+                        dotColor = AppTheme.colors.accent,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxSize().background(AppTheme.colors.separator.copy(alpha = 0.3f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Filled.LocationOff, contentDescription = null, tint = AppTheme.colors.secondaryLabel)
+                    }
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .padding(10.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(AppTheme.colors.card)
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                ) {
+                    Box(
+                        modifier = Modifier.size(8.dp).clip(CircleShape)
+                            .background(if (online) AppTheme.colors.success else AppTheme.colors.secondaryLabel),
+                    )
+                    Text(
+                        if (online) "Online" else "Offline",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(start = 6.dp),
+                    )
+                }
+            }
+            Column {
+                Text(
+                    if (online) "Online now" else "Offline",
+                    style = MaterialTheme.typography.headlineMedium,
+                )
+                val sub = buildString {
+                    if (batteryPercent > 0) append("$batteryPercent% battery")
+                    if (deviceModel.isNotBlank()) {
+                        if (isNotEmpty()) append(" · ")
+                        append(deviceModel)
+                    }
+                    location?.let {
+                        if (isNotEmpty()) append(" · ")
+                        append("updated ${relativeTime(it.timestampMillis)}")
+                    }
+                }
+                if (sub.isNotBlank()) {
+                    Text(sub, style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
+                }
+            }
+        }
+    }
+}
+
+/** Four big quick-action tiles; Ring is the primary (dark) one. */
+@Composable
+private fun QuickActions(
+    onRing: () -> Unit,
+    onLocate: () -> Unit,
+    onRefresh: () -> Unit,
+    onFocus: () -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        QuickActionTile("Ring", Icons.Filled.NotificationsActive, primary = true, onClick = onRing, modifier = Modifier.weight(1f))
+        QuickActionTile("Locate", Icons.Filled.MyLocation, onClick = onLocate, modifier = Modifier.weight(1f))
+        QuickActionTile("Refresh", Icons.Filled.Refresh, onClick = onRefresh, modifier = Modifier.weight(1f))
+        QuickActionTile("Focus", Icons.Filled.Bedtime, onClick = onFocus, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun QuickActionTile(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    primary: Boolean = false,
+) {
+    val bg = if (primary) Color(0xFF15171C) else AppTheme.colors.card
+    val fg = if (primary) Color.White else MaterialTheme.colorScheme.onBackground
+    Column(
+        modifier = modifier
+            .height(80.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(bg)
+            .then(if (primary) Modifier else Modifier.border(1.dp, AppTheme.colors.separator, RoundedCornerShape(20.dp)))
+            .clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = fg)
+        Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = fg, modifier = Modifier.padding(top = 8.dp))
+    }
+}
+
+/** Screen-time card: big number, vs-yesterday delta, 7-day sparkline, stacked bar, app rows. */
+@Composable
+private fun ScreenTimeCard(totalMinutes: Int, yesterdayMinutes: Int?, weekMinutes: List<Int>, apps: List<AppUsageItem>) {
+    CupertinoCard {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Screen time today", style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
+                    Text(
+                        formatDuration(totalMinutes),
+                        fontFamily = com.shahaabapps.core.ui.theme.AppFonts.display,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 38.sp,
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                    yesterdayMinutes?.let { y ->
+                        val diff = totalMinutes - y
+                        val label = when {
+                            diff == 0 -> "same as yesterday"
+                            diff < 0 -> "${formatDuration(-diff)} less than yesterday"
+                            else -> "${formatDuration(diff)} more than yesterday"
+                        }
+                        Text(label, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = if (diff <= 0) AppTheme.colors.accent else AppTheme.colors.warn)
+                    }
+                }
+                if (weekMinutes.any { it > 0 }) {
+                    val max = (weekMinutes.maxOrNull() ?: 1).coerceAtLeast(1)
+                    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.height(52.dp)) {
+                        weekMinutes.forEachIndexed { i, m ->
+                            val isToday = i == weekMinutes.lastIndex
+                            Box(
+                                modifier = Modifier
+                                    .width(10.dp)
+                                    .fillMaxHeight(fraction = (m.toFloat() / max).coerceIn(0.08f, 1f))
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(if (isToday) AppTheme.colors.accent else AppTheme.colors.separator),
+                            )
+                        }
+                    }
+                }
+            }
+            if (apps.isNotEmpty()) {
+                val sumTop = apps.sumOf { it.minutes }
+                val other = (totalMinutes - sumTop).coerceAtLeast(0)
+                Row(modifier = Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(50))) {
+                    apps.forEachIndexed { i, a ->
+                        Box(modifier = Modifier.weight(a.minutes.toFloat().coerceAtLeast(0.01f)).fillMaxHeight().background(USAGE_PALETTE[i % USAGE_PALETTE.size]))
+                    }
+                    if (other > 0) Box(modifier = Modifier.weight(other.toFloat()).fillMaxHeight().background(AppTheme.colors.separator.copy(alpha = 0.5f)))
+                }
+                apps.forEachIndexed { i, item ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(modifier = Modifier.size(10.dp).clip(RoundedCornerShape(50)).background(USAGE_PALETTE[i % USAGE_PALETTE.size]))
+                        AppIcon(base64 = item.iconBase64, label = item.label, size = 28.dp, modifier = Modifier.padding(start = Spacing.sm))
+                        Text(item.label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = Spacing.sm))
+                        Text(formatDuration(item.minutes), style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
+                    }
+                }
+            } else {
+                Text("No app usage recorded today yet.", style = MaterialTheme.typography.bodyMedium, color = AppTheme.colors.secondaryLabel)
+            }
+        }
+    }
+}
+
+/** Navy banner showing the next scheduled focus window (bedtime / school). */
+@Composable
+private fun BedtimeBanner(focus: com.shahaabapps.core.model.FocusSettings) {
+    val window = when {
+        focus.bedtime.enabled -> "Bedtime" to focus.bedtime
+        focus.school.enabled -> "School" to focus.school
+        else -> null
+    } ?: return
+    fun clock(minute: Int): String {
+        val h = (minute / 60) % 24
+        val m = minute % 60
+        val ampm = if (h < 12) "AM" else "PM"
+        val h12 = when { h == 0 -> 12; h > 12 -> h - 12; else -> h }
+        return "%d:%02d %s".format(h12, m, ampm)
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .background(Color(0xFF1C2140))
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+    ) {
+        Icon(Icons.Filled.Bedtime, contentDescription = null, tint = Color(0xFFC9CFF5))
+        Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
+            Text("${window.first} at ${clock(window.second.startMinute)}", color = Color.White, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+            Text("Apps pause until ${clock(window.second.endMinute)}", color = Color(0xFFC9CFF5), style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -440,72 +600,6 @@ private fun ProtectionEditor(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun LocationCard(
-    location: ChildLocation?,
-    deviceModel: String,
-    online: Boolean,
-    onOpenMap: () -> Unit,
-    onRing: () -> Unit,
-) {
-    CupertinoCard(onClick = onOpenMap) {
-        Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(AppTheme.colors.accent.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        if (location != null) Icons.Filled.Place else Icons.Filled.LocationOff,
-                        contentDescription = null,
-                        tint = AppTheme.colors.accent,
-                    )
-                }
-                Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
-                    Text(if (online) "Live location" else "Last known location", style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        text = location?.let {
-                            buildString {
-                                if (!online) append("Offline · ")
-                                append("updated ${relativeTime(it.timestampMillis)}")
-                                if (deviceModel.isNotBlank()) append(" · $deviceModel")
-                            }
-                        } ?: "Waiting for location…",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.secondaryLabel,
-                    )
-                }
-                Icon(Icons.Filled.Map, contentDescription = null, tint = AppTheme.colors.secondaryLabel)
-            }
-
-            if (location != null) {
-                val accent = AppTheme.colors.accent
-                // A static snapshot (not a live GL map) keeps the dashboard light and
-                // tab switches smooth — the Map tab is the only interactive map.
-                com.shahaabapps.watchdog.util.OpenFreeMapSnapshot(
-                    lat = location.latitude,
-                    lng = location.longitude,
-                    zoom = 15.5,
-                    dotColor = accent,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(170.dp)
-                        .clip(RoundedCornerShape(16.dp)),
-                )
-            }
-
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                CupertinoPrimaryButton(text = "Ring device", onClick = onRing, modifier = Modifier.weight(1f))
-                CupertinoTextButton(text = "Open map", onClick = onOpenMap, modifier = Modifier.weight(1f))
-            }
-        }
-    }
-}
-
 private val USAGE_PALETTE = listOf(
     Color(0xFF0E6B5E),
     Color(0xFFD9622B),
@@ -513,68 +607,6 @@ private val USAGE_PALETTE = listOf(
     Color(0xFFE5A14B),
     Color(0xFF8A919E),
 )
-
-@Composable
-private fun UsageChart(totalMinutes: Int, apps: List<AppUsageItem>) {
-    CupertinoCard {
-        if (apps.isEmpty()) {
-            Text(
-                "No app usage recorded today yet. The top apps by screen time will appear here.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = AppTheme.colors.secondaryLabel,
-            )
-        } else {
-            val sumTop = apps.sumOf { it.minutes }
-            val other = (totalMinutes - sumTop).coerceAtLeast(0)
-            val otherColor = AppTheme.colors.secondaryLabel.copy(alpha = 0.25f)
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                Text("Screen time", style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
-                Text(formatDuration(totalMinutes), fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                // Multi-colour stacked usage bar.
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(12.dp)
-                        .clip(RoundedCornerShape(50)),
-                ) {
-                    apps.forEachIndexed { i, a ->
-                        Box(
-                            modifier = Modifier
-                                .weight(a.minutes.toFloat().coerceAtLeast(0.01f))
-                                .fillMaxHeight()
-                                .background(USAGE_PALETTE[i % USAGE_PALETTE.size]),
-                        )
-                    }
-                    if (other > 0) {
-                        Box(modifier = Modifier.weight(other.toFloat()).fillMaxHeight().background(otherColor))
-                    }
-                }
-                apps.forEachIndexed { i, item ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier.size(10.dp).clip(RoundedCornerShape(50))
-                                .background(USAGE_PALETTE[i % USAGE_PALETTE.size]),
-                        )
-                        AppIcon(base64 = item.iconBase64, label = item.label, size = 28.dp, modifier = Modifier.padding(start = Spacing.sm))
-                        Text(
-                            item.label,
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f).padding(start = Spacing.sm),
-                        )
-                        Text(
-                            formatDuration(item.minutes),
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = AppTheme.colors.secondaryLabel,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
 
 @Composable
 private fun RingEditor(onRing: (message: String) -> Unit) {

@@ -64,6 +64,28 @@ class OverviewViewModel @Inject constructor(
     val childLocation: StateFlow<ChildLocation?> = deviceRepository.observeLocation(childId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    /**
+     * Name of the saved place the child is currently inside (nearest one whose
+     * circle contains the live fix), or null when outside every saved place or
+     * there is no fix yet. Used for the dashboard "At Home / Outside" status.
+     */
+    val currentPlace: StateFlow<String?> = combine(
+        childLocation,
+        geofenceRepository.observeGeofences(childId),
+    ) { loc, geofences ->
+        if (loc == null) return@combine null
+        geofences
+            .filter { it.active }
+            .mapNotNull { g ->
+                val d = com.shahaabapps.core.model.GeoMath.distanceMeters(
+                    loc.latitude, loc.longitude, g.latitude, g.longitude,
+                )
+                if (d <= g.radiusMeters) g.name.ifBlank { "a saved place" } to d else null
+            }
+            .minByOrNull { it.second }
+            ?.first
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     /** Last 7 days of total screen time, oldest first, with zero-filled gaps. */
     val weekly: StateFlow<List<DayUsage>> =
         usageRepository.observeDailyTotals(childId, todayDate.minusDays(6).toString())

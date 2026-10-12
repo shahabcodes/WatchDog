@@ -5,6 +5,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import com.shahaabapps.core.ui.theme.AppFonts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -386,7 +388,7 @@ fun GeofenceScreen(
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .then(if (showBack) Modifier.statusBarsPadding() else Modifier)
+                .statusBarsPadding()
                 .fillMaxWidth()
                 .padding(top = Spacing.md),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -446,27 +448,24 @@ fun GeofenceScreen(
 
         // History playback bar + timeline (bottom)
         if (historyMode) {
-            Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
-                PlaybackBar(
-                    progress = progress,
-                    playing = playing,
-                    hasTrail = trail.isNotEmpty() && rangeMs > 0L,
-                    speed = speed,
-                    timeLabel = {
-                        if (trail.isEmpty()) "No path this day"
-                        else timeLabel(startMs + (progress.value * rangeMs).toLong())
-                    },
-                    onPlayPause = { playing = !playing },
-                    onScrub = { playing = false; scope.launch { progress.snapTo(it) } },
-                    onCycleSpeed = { speed = when (speed) { 1f -> 2f; 2f -> 4f; else -> 1f } },
-                    modifier = Modifier,
-                )
-                HistoryTimeline(
-                    stops = travelState.stops,
-                    accent = accent,
-                    onFocus = { la, ln -> runCatching { controller.animateTo(la, ln, 16.0) } },
-                )
-            }
+            HistorySheet(
+                dateLabel = dateLabel(travelState.date),
+                stops = travelState.stops,
+                progress = progress,
+                playing = playing,
+                hasTrail = trail.isNotEmpty() && rangeMs > 0L,
+                speed = speed,
+                timeLabel = {
+                    if (trail.isEmpty()) "No path this day"
+                    else timeLabel(startMs + (progress.value * rangeMs).toLong())
+                },
+                accent = accent,
+                onPlayPause = { playing = !playing },
+                onScrub = { playing = false; scope.launch { progress.snapTo(it) } },
+                onCycleSpeed = { speed = when (speed) { 1f -> 2f; 2f -> 4f; else -> 1f } },
+                onFocus = { la, ln -> runCatching { controller.animateTo(la, ln, 16.0) } },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
         } else if (mode == DrawMode.AREA && area.isNotEmpty()) {
             Surface(
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
@@ -1056,33 +1055,47 @@ private fun liveLocationPulse(animate: Boolean): Float {
     return pulse
 }
 
-/** A Parenpal-style location-history timeline of the day's stops (rail + dots). */
+/**
+ * One bottom sheet (prototype Map): drag handle + date/stops header, an inline
+ * playback scrubber (dark circular play, progress, time, speed), and the day's
+ * expandable stop timeline.
+ */
 @Composable
-private fun HistoryTimeline(
+private fun HistorySheet(
+    dateLabel: String,
     stops: List<com.shahaabapps.watchdog.feature.travel.TravelStopItem>,
+    progress: Animatable<Float, *>,
+    playing: Boolean,
+    hasTrail: Boolean,
+    speed: Float,
+    timeLabel: () -> String,
     accent: Color,
+    onPlayPause: () -> Unit,
+    onScrub: (Float) -> Unit,
+    onCycleSpeed: () -> Unit,
     onFocus: (Double, Double) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    // Collapsed by default so the map stays large; tap the header to expand.
     var expanded by rememberSaveable { mutableStateOf(false) }
     val chevronRotation by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
         label = "timelineChevron",
     )
     Surface(
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
         color = AppTheme.colors.card,
-        shadowElevation = 8.dp,
-        modifier = Modifier.fillMaxWidth(),
+        shadowElevation = 10.dp,
+        modifier = modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.md)) {
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
-                    .size(width = 36.dp, height = 4.dp)
+                    .size(width = 40.dp, height = 5.dp)
                     .clip(CircleShape)
                     .background(AppTheme.colors.secondaryLabel.copy(alpha = 0.3f)),
             )
+            // Header: date (Bricolage) + stop count + expand chevron.
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -1090,21 +1103,76 @@ private fun HistoryTimeline(
                     .clickable { expanded = !expanded }
                     .padding(top = Spacing.sm),
             ) {
-                Text("Location timeline", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                if (stops.isNotEmpty()) {
-                    Text(
-                        "${stops.size} stop${if (stops.size == 1) "" else "s"}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.secondaryLabel,
-                        modifier = Modifier.padding(end = Spacing.sm),
-                    )
-                }
+                Text(
+                    dateLabel,
+                    fontFamily = AppFonts.display,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = (-0.4).sp,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    "${stops.size} stop${if (stops.size == 1) "" else "s"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.secondaryLabel,
+                    modifier = Modifier.padding(end = Spacing.sm),
+                )
                 Icon(
                     Icons.Filled.ExpandMore,
                     contentDescription = if (expanded) "Collapse" else "Expand",
                     tint = AppTheme.colors.secondaryLabel,
                     modifier = Modifier.rotate(chevronRotation),
                 )
+            }
+            // Scrubber: dark circular play + progress + time + speed.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = Spacing.sm)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                    .background(AppTheme.colors.groupedBackground)
+                    .padding(horizontal = Spacing.sm, vertical = 6.dp),
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0xFF15171C),
+                    modifier = Modifier.size(40.dp).clickable(enabled = hasTrail, onClick = onPlayPause),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = if (playing) "Pause" else "Play",
+                            tint = Color.White.copy(alpha = if (hasTrail) 1f else 0.4f),
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+                Slider(
+                    value = progress.value,
+                    onValueChange = onScrub,
+                    enabled = hasTrail,
+                    modifier = Modifier.weight(1f),
+                    colors = androidx.compose.material3.SliderDefaults.colors(
+                        thumbColor = accent,
+                        activeTrackColor = accent,
+                    ),
+                )
+                Text(timeLabel(), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                Surface(
+                    shape = CircleShape,
+                    color = accent.copy(alpha = 0.15f),
+                    modifier = Modifier.clickable(onClick = onCycleSpeed),
+                ) {
+                    Text(
+                        "${speed.toInt()}x",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = accent,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    )
+                }
             }
             if (expanded) {
                 if (stops.isEmpty()) {
@@ -1178,56 +1246,6 @@ private fun relativeTime(millis: Long): String {
         mins < 60 -> "$mins min ago"
         mins < 1440 -> "${mins / 60} h ago"
         else -> "${mins / 1440} d ago"
-    }
-}
-
-// ---- History / playback UI ----
-
-@Composable
-private fun PlaybackBar(
-    progress: Animatable<Float, *>,
-    playing: Boolean,
-    hasTrail: Boolean,
-    speed: Float,
-    timeLabel: () -> String,
-    onPlayPause: () -> Unit,
-    onScrub: (Float) -> Unit,
-    onCycleSpeed: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
-        color = AppTheme.colors.card,
-        tonalElevation = 3.dp,
-        shadowElevation = 6.dp,
-        modifier = modifier.padding(Spacing.md).fillMaxWidth(),
-    ) {
-        Column(modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-            ) {
-                IconButton(onClick = onPlayPause, enabled = hasTrail) {
-                    Icon(
-                        if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (playing) "Pause" else "Play",
-                        tint = if (hasTrail) AppTheme.colors.accent else AppTheme.colors.secondaryLabel,
-                    )
-                }
-                Text(timeLabel(), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                Surface(
-                    shape = androidx.compose.foundation.shape.CircleShape,
-                    color = AppTheme.colors.accent.copy(alpha = 0.15f),
-                    modifier = Modifier.clickable(onClick = onCycleSpeed),
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-                        Icon(Icons.Filled.Speed, contentDescription = null, tint = AppTheme.colors.accent, modifier = Modifier.size(16.dp))
-                        Text("${speed.toInt()}x", style = MaterialTheme.typography.bodyMedium, color = AppTheme.colors.accent, modifier = Modifier.padding(start = 4.dp))
-                    }
-                }
-            }
-            Slider(value = progress.value, onValueChange = onScrub, enabled = hasTrail)
-        }
     }
 }
 

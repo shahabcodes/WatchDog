@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -21,6 +22,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Bedtime
@@ -29,6 +36,9 @@ import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -62,6 +72,7 @@ import com.shahaabapps.core.ui.components.CupertinoSwitch
 import com.shahaabapps.core.ui.components.CupertinoTextButton
 import com.shahaabapps.core.ui.components.CupertinoTextField
 import com.shahaabapps.core.ui.components.StatusChip
+import com.shahaabapps.core.ui.theme.AppFonts
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
 
@@ -69,11 +80,19 @@ import com.shahaabapps.core.ui.theme.Spacing
 @Composable
 fun OverviewScreen(
     onOpenMap: () -> Unit,
+    onOpenAlerts: () -> Unit = {},
+    childNames: List<Pair<String, String>> = emptyList(),
+    selectedId: String = "",
+    onSelectChild: (String) -> Unit = {},
+    onAddChild: () -> Unit = {},
+    onManage: () -> Unit = {},
+    onSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: OverviewViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val childLocation by viewModel.childLocation.collectAsStateWithLifecycle()
+    val currentPlace by viewModel.currentPlace.collectAsStateWithLifecycle()
     val weekly by viewModel.weekly.collectAsStateWithLifecycle()
     val protectionVm: com.shahaabapps.watchdog.feature.protection.ProtectionViewModel = hiltViewModel()
     val protection by protectionVm.settings.collectAsStateWithLifecycle()
@@ -95,17 +114,30 @@ fun OverviewScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(AppTheme.colors.groupedBackground)
+            .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
+        HomeTopRow(
+            childName = state.childName.ifBlank { "Child" },
+            childNames = childNames,
+            selectedId = selectedId,
+            onSelectChild = onSelectChild,
+            onAddChild = onAddChild,
+            onManage = onManage,
+            onSettings = onSettings,
+            onOpenAlerts = onOpenAlerts,
+            modifier = Modifier.padding(top = Spacing.md),
+        )
+
         StatusHero(
             location = childLocation,
+            place = currentPlace,
             online = state.online,
             batteryPercent = state.batteryPercent,
             deviceModel = state.deviceModel,
             onOpenMap = onOpenMap,
-            modifier = Modifier.padding(top = Spacing.md),
         )
 
         QuickActions(
@@ -196,8 +228,113 @@ fun OverviewScreen(
 
 /** Status hero: a map strip with a live online chip, then the status + battery. */
 @Composable
+private fun HomeTopRow(
+    childName: String,
+    childNames: List<Pair<String, String>>,
+    selectedId: String,
+    onSelectChild: (String) -> Unit,
+    onAddChild: () -> Unit,
+    onManage: () -> Unit,
+    onSettings: () -> Unit,
+    onOpenAlerts: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        var menu by remember { mutableStateOf(false) }
+        val initial = childName.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?"
+        Box {
+            // Avatar + name pill; tap to switch child or add another.
+            Surface(
+                shape = CircleShape,
+                color = AppTheme.colors.card,
+                border = androidx.compose.foundation.BorderStroke(1.dp, AppTheme.colors.separator),
+                modifier = Modifier.clip(CircleShape).clickable { menu = true },
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.height(48.dp).padding(start = 6.dp, end = 14.dp),
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.size(36.dp).clip(CircleShape)
+                            .background(AppTheme.colors.accent.copy(alpha = 0.16f)),
+                    ) {
+                        Text(initial, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = AppTheme.colors.accent)
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        childName,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Icon(Icons.Filled.ArrowDropDown, contentDescription = "Switch child", tint = AppTheme.colors.secondaryLabel)
+                }
+            }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                childNames.forEach { (id, name) ->
+                    DropdownMenuItem(
+                        text = { Text(name.ifBlank { "Child" }) },
+                        onClick = { menu = false; onSelectChild(id) },
+                        trailingIcon = {
+                            if (id == selectedId) Icon(Icons.Filled.Check, contentDescription = null, tint = AppTheme.colors.accent)
+                        },
+                    )
+                }
+                DropdownMenuItem(
+                    text = { Text("Add child") },
+                    onClick = { menu = false; onAddChild() },
+                    leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                )
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text("Manage children") },
+                    onClick = { menu = false; onManage() },
+                    leadingIcon = { Icon(Icons.Filled.Group, contentDescription = null) },
+                )
+                DropdownMenuItem(
+                    text = { Text("Settings") },
+                    onClick = { menu = false; onSettings() },
+                    leadingIcon = { Icon(Icons.Filled.Settings, contentDescription = null) },
+                )
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        // Notifications bell with unread dot -> Alerts.
+        Box {
+            Surface(
+                shape = CircleShape,
+                color = AppTheme.colors.card,
+                border = androidx.compose.foundation.BorderStroke(1.dp, AppTheme.colors.separator),
+                modifier = Modifier.size(48.dp).clickable(onClick = onOpenAlerts),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Notifications, contentDescription = "Alerts", tint = MaterialTheme.colorScheme.onBackground)
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 10.dp, end = 11.dp)
+                    .size(9.dp)
+                    .clip(CircleShape)
+                    .background(AppTheme.colors.warn)
+                    .border(2.dp, AppTheme.colors.card, CircleShape),
+            )
+        }
+    }
+}
+
+@Composable
 private fun StatusHero(
     location: ChildLocation?,
+    place: String?,
     online: Boolean,
     batteryPercent: Int,
     deviceModel: String,
@@ -258,19 +395,20 @@ private fun StatusHero(
                 }
             }
             Column(modifier = Modifier.padding(16.dp)) {
+                val headline = when {
+                    place != null -> "At $place"
+                    location != null -> "Outside known areas"
+                    else -> "Location unknown"
+                }
                 Text(
-                    if (online) "Online now" else "Offline",
+                    headline,
                     style = MaterialTheme.typography.headlineMedium,
                 )
                 val sub = buildString {
-                    if (batteryPercent > 0) append("$batteryPercent% battery")
-                    if (deviceModel.isNotBlank()) {
-                        if (isNotEmpty()) append(" · ")
-                        append(deviceModel)
-                    }
+                    append(if (online) "Online" else "Offline")
+                    if (batteryPercent > 0) append(" · $batteryPercent% battery")
                     location?.let {
-                        if (isNotEmpty()) append(" · ")
-                        append("updated ${relativeTime(it.timestampMillis)}")
+                        append(" · updated ${relativeTime(it.timestampMillis)}")
                     }
                 }
                 if (sub.isNotBlank()) {

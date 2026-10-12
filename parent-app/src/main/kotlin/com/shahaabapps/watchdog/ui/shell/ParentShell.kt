@@ -83,6 +83,7 @@ import com.shahaabapps.core.ui.components.CupertinoTextButton
 import com.shahaabapps.core.ui.components.LoadingView
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
+import com.shahaabapps.watchdog.feature.alerts.AlertsScreen
 import com.shahaabapps.watchdog.feature.dashboard.DashboardViewModel
 import com.shahaabapps.watchdog.feature.dashboard.LinkState
 import com.shahaabapps.watchdog.feature.dashboard.ReconnectState
@@ -163,23 +164,10 @@ fun ParentShell(
 
     Scaffold(
         containerColor = AppTheme.colors.groupedBackground,
-        topBar = {
-            if (showChrome) {
-                FlatTopBar(
-                    greeting = "Hi, ${profile.name}",
-                    title = selectedChild.profile.name.ifBlank { "Child" },
-                    parentName = profile.name,
-                    parentPhoto = profile.photoUrl,
-                    onManage = { navController.navigate("manage") },
-                    onSettings = { navController.navigate("settings") },
-                    children = children,
-                    selectedId = currentChildId,
-                    onSelectChild = { id ->
-                        navController.navigate("$currentTab/$id") { launchSingleTop = true }
-                    },
-                )
-            }
-        },
+        // No top bar: each screen owns its top (status-bar) inset. Zeroing the
+        // content insets keeps the Map full-bleed behind the status bar and
+        // avoids double-padding the screens that add their own header insets.
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         bottomBar = {
             if (showChrome) {
                 ParentBottomBar(currentTab = currentTab) { tab ->
@@ -207,9 +195,21 @@ fun ParentShell(
             composable("overview/{childId}", childArg) {
                 OverviewScreen(
                     onOpenMap = { navController.navigate("${Tab.MAP.route}/$currentChildId") { launchSingleTop = true } },
+                    onOpenAlerts = { navController.navigate("alerts/$currentChildId") { launchSingleTop = true } },
+                    childNames = children.map { it.childId to it.profile.name.ifBlank { "Child" } },
+                    selectedId = currentChildId,
+                    onSelectChild = { id ->
+                        navController.navigate("${Tab.OVERVIEW.route}/$id") { launchSingleTop = true }
+                    },
+                    onAddChild = { navController.navigate("add") },
+                    onManage = { navController.navigate("manage") },
+                    onSettings = { navController.navigate("settings") },
                 )
             }
             composable("map/{childId}", childArg) { GeofenceScreen(onBack = { }, showBack = false) }
+            composable("alerts/{childId}", childArg) {
+                AlertsScreen(onBack = { navController.popBackStack() })
+            }
             composable("screentime/{childId}", childArg) { UsageScreen(onBack = { }, embedded = true) }
             composable("settings") {
                 SettingsScreen(onBack = { navController.popBackStack() })
@@ -225,143 +225,6 @@ fun ParentShell(
             }
             composable("add") {
                 AddChildScreen(profile = profile, linkState = linkState, viewModel = viewModel, onBack = { navController.popBackStack() })
-            }
-        }
-    }
-}
-
-@Composable
-private fun FlatTopBar(
-    greeting: String,
-    title: String,
-    parentName: String,
-    parentPhoto: String?,
-    onManage: () -> Unit,
-    onSettings: () -> Unit,
-    children: List<ChildAccount> = emptyList(),
-    selectedId: String = "",
-    onSelectChild: (String) -> Unit = {},
-) {
-    val canSwitch = children.size > 1
-    Surface(color = AppTheme.colors.card) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 14.dp),
-        ) {
-            var childMenu by remember { mutableStateOf(false) }
-            Box(modifier = Modifier.weight(1f)) {
-                val initial = title.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?"
-                Surface(
-                    shape = androidx.compose.foundation.shape.CircleShape,
-                    color = AppTheme.colors.card,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, AppTheme.colors.separator),
-                    modifier = Modifier
-                        .clip(androidx.compose.foundation.shape.CircleShape)
-                        .clickable(enabled = canSwitch) { childMenu = true },
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .height(48.dp)
-                            .padding(start = 6.dp, end = 14.dp),
-                    ) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(androidx.compose.foundation.shape.CircleShape)
-                                .background(AppTheme.colors.accent.copy(alpha = 0.16f)),
-                        ) {
-                            Text(
-                                initial,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = AppTheme.colors.accent,
-                            )
-                        }
-                        Spacer(Modifier.width(10.dp))
-                        Text(
-                            title,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                        )
-                        if (canSwitch) {
-                            Spacer(Modifier.width(6.dp))
-                            androidx.compose.material3.Icon(
-                                Icons.Filled.ArrowDropDown,
-                                contentDescription = "Switch child",
-                                tint = AppTheme.colors.secondaryLabel,
-                            )
-                        }
-                    }
-                }
-                androidx.compose.material3.DropdownMenu(expanded = childMenu, onDismissRequest = { childMenu = false }) {
-                        children.forEach { child ->
-                            androidx.compose.material3.DropdownMenuItem(
-                                text = { Text(child.profile.name.ifBlank { "Child" }) },
-                                onClick = { childMenu = false; onSelectChild(child.childId) },
-                                trailingIcon = {
-                                    if (child.childId == selectedId) {
-                                        androidx.compose.material3.Icon(Icons.Filled.Check, contentDescription = null, tint = AppTheme.colors.accent)
-                                    }
-                                },
-                            )
-                        }
-                        androidx.compose.material3.HorizontalDivider()
-                        androidx.compose.material3.DropdownMenuItem(
-                            text = { Text("Manage children") },
-                            onClick = { childMenu = false; onManage() },
-                            leadingIcon = { androidx.compose.material3.Icon(Icons.Filled.Group, contentDescription = null) },
-                        )
-                    }
-            }
-            var menu by remember { mutableStateOf(false) }
-            Box {
-                Surface(
-                    shape = androidx.compose.foundation.shape.CircleShape,
-                    color = AppTheme.colors.card,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, AppTheme.colors.separator),
-                    modifier = Modifier.size(48.dp).clickable { menu = true },
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        androidx.compose.material3.Icon(
-                            Icons.Filled.Notifications,
-                            contentDescription = "Notifications and settings",
-                            tint = MaterialTheme.colorScheme.onBackground,
-                        )
-                    }
-                }
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 10.dp, end = 11.dp)
-                        .size(9.dp)
-                        .clip(androidx.compose.foundation.shape.CircleShape)
-                        .background(AppTheme.colors.warn)
-                        .border(2.dp, AppTheme.colors.card, androidx.compose.foundation.shape.CircleShape),
-                )
-                androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    androidx.compose.material3.DropdownMenuItem(
-                        text = { Text("Manage children") },
-                        onClick = { menu = false; onManage() },
-                        leadingIcon = {
-                            androidx.compose.material3.Icon(Icons.Filled.Group, contentDescription = null)
-                        },
-                    )
-                    androidx.compose.material3.DropdownMenuItem(
-                        text = { Text("Settings") },
-                        onClick = { menu = false; onSettings() },
-                        leadingIcon = {
-                            androidx.compose.material3.Icon(Icons.Filled.Settings, contentDescription = null)
-                        },
-                    )
-                }
             }
         }
     }
@@ -440,14 +303,7 @@ private fun AddChildScreen(
         if (onBack != null) {
             SimpleHeader(title = "Add a child", onBack = onBack)
         } else {
-            FlatTopBar(
-                greeting = "Hi, ${profile.name}",
-                title = "Watch Dog",
-                parentName = profile.name,
-                parentPhoto = profile.photoUrl,
-                onManage = { },
-                onSettings = { },
-            )
+            androidx.compose.foundation.layout.Spacer(Modifier.statusBarsPadding())
         }
         Column(
             modifier = Modifier.fillMaxWidth().padding(Spacing.lg),

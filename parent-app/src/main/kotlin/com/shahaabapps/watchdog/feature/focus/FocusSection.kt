@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -342,10 +344,10 @@ private fun AllowedAppsDialog(
                     color = AppTheme.colors.secondaryLabel,
                 )
             } else {
-                androidx.compose.foundation.lazy.LazyColumn(
+                LazyColumn(
                     modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp),
                 ) {
-                    androidx.compose.foundation.lazy.items(apps, key = { it.packageName }) { app ->
+                    items(apps, key = { it.packageName }) { app ->
                         val on = app.packageName in picked
                         Row(
                             verticalAlignment = Alignment.CenterVertically,

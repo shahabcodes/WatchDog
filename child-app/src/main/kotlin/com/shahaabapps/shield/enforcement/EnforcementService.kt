@@ -169,9 +169,10 @@ class EnforcementService : AccessibilityService() {
         if (!supervised) return // device no longer supervised — no restrictions
         if (packageName == this.packageName) return
 
-        // Focus windows (Bedtime / School) block everything except essentials.
+        // Focus windows (Bedtime / School) block everything except essentials
+        // and the apps the parent allowlisted for the active window.
         val focusReason = activeFocusReason()
-        if (focusReason != null && packageName !in focusExempt) {
+        if (focusReason != null && packageName !in focusExempt && packageName !in activeFocusAllowed()) {
             blockApp(packageName, appLabelFor(packageName), focusReason)
             return
         }
@@ -194,6 +195,17 @@ class EnforcementService : AccessibilityService() {
             focus.school.activeAt(minute, iso) -> "School time — stay focused 📚"
             else -> null
         }
+    }
+
+    /** Packages the parent allowlisted for whichever focus window is active now. */
+    private fun activeFocusAllowed(): Set<String> {
+        val now = LocalDateTime.now()
+        val minute = now.hour * 60 + now.minute
+        val iso = now.dayOfWeek.value
+        val allowed = mutableSetOf<String>()
+        if (focus.bedtime.activeAt(minute, iso)) allowed += focus.bedtime.allowedPackages
+        if (focus.school.activeAt(minute, iso)) allowed += focus.school.allowedPackages
+        return allowed
     }
 
     private fun appLabelFor(packageName: String): String {

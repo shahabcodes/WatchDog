@@ -9,10 +9,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -121,17 +126,26 @@ private fun FocusSummaryRow(icon: ImageVector, tint: Color, title: String, windo
 
 /** Bottom-sheet editor body for both focus windows. */
 @Composable
-fun FocusEditor(initial: FocusSettings, onSave: (FocusSettings) -> Unit) {
+fun FocusEditor(
+    initial: FocusSettings,
+    installedApps: List<com.shahaabapps.core.model.InstalledApp>,
+    onSave: (FocusSettings) -> Unit,
+) {
     var bedtime by remember { mutableStateOf(initial.bedtime) }
     var school by remember { mutableStateOf(initial.school) }
 
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl),
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = Spacing.lg)
+            .padding(bottom = Spacing.xl),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
         Text("Focus modes", style = MaterialTheme.typography.headlineMedium)
         Text(
-            "Apps are blocked on the child's phone during these hours. Phone calls still work.",
+            "Apps are blocked on the child's phone during these hours. Phone calls still work, " +
+                "plus any apps you allow for each mode.",
             style = MaterialTheme.typography.bodySmall,
             color = AppTheme.colors.secondaryLabel,
         )
@@ -140,6 +154,7 @@ fun FocusEditor(initial: FocusSettings, onSave: (FocusSettings) -> Unit) {
             tint = BEDTIME_TINT,
             title = "Bedtime",
             window = bedtime,
+            installedApps = installedApps,
             onChange = { bedtime = it },
         )
         WindowEditor(
@@ -147,6 +162,7 @@ fun FocusEditor(initial: FocusSettings, onSave: (FocusSettings) -> Unit) {
             tint = SCHOOL_TINT,
             title = "School",
             window = school,
+            installedApps = installedApps,
             onChange = { school = it },
         )
         CupertinoPrimaryButton(
@@ -162,10 +178,12 @@ private fun WindowEditor(
     tint: Color,
     title: String,
     window: FocusWindow,
+    installedApps: List<com.shahaabapps.core.model.InstalledApp>,
     onChange: (FocusWindow) -> Unit,
 ) {
     var pickStart by remember { mutableStateOf(false) }
     var pickEnd by remember { mutableStateOf(false) }
+    var pickApps by remember { mutableStateOf(false) }
 
     CupertinoCard {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
@@ -199,8 +217,50 @@ private fun WindowEditor(
                     val next = window.days.toMutableSet().apply { if (!add(day)) remove(day) }
                     onChange(window.copy(days = next))
                 })
+                // Allowed apps: stay usable while this window is active.
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { pickApps = true }
+                        .background(tint.copy(alpha = 0.10f))
+                        .padding(horizontal = Spacing.md, vertical = Spacing.sm),
+                ) {
+                    androidx.compose.material3.Icon(
+                        Icons.Filled.CheckCircle,
+                        contentDescription = null,
+                        tint = tint,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
+                        Text("Allowed apps", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            if (window.allowedPackages.isEmpty()) "None — everything is blocked"
+                            else "${window.allowedPackages.size} app${if (window.allowedPackages.size == 1) "" else "s"} stay usable",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AppTheme.colors.secondaryLabel,
+                        )
+                    }
+                    androidx.compose.material3.Icon(
+                        Icons.Filled.ChevronRight,
+                        contentDescription = null,
+                        tint = AppTheme.colors.secondaryLabel,
+                    )
+                }
             }
         }
+    }
+
+    if (pickApps) {
+        AllowedAppsDialog(
+            title = "$title · allowed apps",
+            apps = installedApps,
+            selected = window.allowedPackages,
+            tint = tint,
+            onDismiss = { pickApps = false },
+            onConfirm = { onChange(window.copy(allowedPackages = it)); pickApps = false },
+        )
     }
 
     if (pickStart) {
@@ -256,6 +316,71 @@ private fun DayPicker(days: Set<Int>, tint: Color, onToggle: (Int) -> Unit) {
             }
         }
     }
+}
+
+/** Multi-select dialog of installed apps to allow during a focus window. */
+@Composable
+private fun AllowedAppsDialog(
+    title: String,
+    apps: List<com.shahaabapps.core.model.InstalledApp>,
+    selected: Set<String>,
+    tint: Color,
+    onDismiss: () -> Unit,
+    onConfirm: (Set<String>) -> Unit,
+) {
+    var picked by remember { mutableStateOf(selected) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = { onConfirm(picked) }) { Text("Done") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        title = { Text(title, style = MaterialTheme.typography.titleMedium) },
+        text = {
+            if (apps.isEmpty()) {
+                Text(
+                    "No apps yet. Open Shield on the child's phone so its apps appear here.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = AppTheme.colors.secondaryLabel,
+                )
+            } else {
+                androidx.compose.foundation.lazy.LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp),
+                ) {
+                    androidx.compose.foundation.lazy.items(apps, key = { it.packageName }) { app ->
+                        val on = app.packageName in picked
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    picked = picked.toMutableSet().apply { if (!add(app.packageName)) remove(app.packageName) }
+                                }
+                                .padding(vertical = 8.dp),
+                        ) {
+                            com.shahaabapps.core.ui.components.AppIcon(
+                                base64 = app.icon,
+                                label = app.label,
+                                size = 32.dp,
+                                modifier = Modifier.padding(end = Spacing.md),
+                            )
+                            Text(
+                                app.label.ifBlank { app.packageName },
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.weight(1f),
+                            )
+                            androidx.compose.material3.Checkbox(
+                                checked = on,
+                                onCheckedChange = {
+                                    picked = picked.toMutableSet().apply { if (!add(app.packageName)) remove(app.packageName) }
+                                },
+                                colors = androidx.compose.material3.CheckboxDefaults.colors(checkedColor = tint),
+                            )
+                        }
+                    }
+                }
+            }
+        },
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

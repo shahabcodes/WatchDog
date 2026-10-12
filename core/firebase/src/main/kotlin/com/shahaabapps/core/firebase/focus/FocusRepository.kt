@@ -64,17 +64,20 @@ class FirebaseFocusRepository @Inject constructor(
         "startMinute" to startMinute,
         "endMinute" to endMinute,
         "days" to days.sorted().map { it.toLong() },
+        "allowedPackages" to allowedPackages.sorted(),
     )
 
     @Suppress("UNCHECKED_CAST")
     private fun DocumentSnapshot.window(key: String, fallback: FocusWindow): FocusWindow {
         val raw = get(key) as? Map<String, Any> ?: return fallback
         val days = (raw["days"] as? List<*>)?.mapNotNull { (it as? Number)?.toInt() }?.toSet()
+        val allowed = (raw["allowedPackages"] as? List<*>)?.mapNotNull { it as? String }?.toSet() ?: emptySet()
         return FocusWindow(
             enabled = raw["enabled"] as? Boolean ?: false,
             startMinute = (raw["startMinute"] as? Number)?.toInt() ?: fallback.startMinute,
             endMinute = (raw["endMinute"] as? Number)?.toInt() ?: fallback.endMinute,
             days = if (days.isNullOrEmpty()) fallback.days else days,
+            allowedPackages = allowed,
         )
     }
 }

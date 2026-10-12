@@ -10,6 +10,8 @@ data class FocusWindow(
     val startMinute: Int = 0,
     val endMinute: Int = 0,
     val days: Set<Int> = setOf(1, 2, 3, 4, 5, 6, 7),
+    /** Package names that stay usable while this window is active (an allowlist). */
+    val allowedPackages: Set<String> = emptySet(),
 ) {
     fun activeAt(minuteOfDay: Int, isoDayOfWeek: Int): Boolean {
         if (!enabled) return false

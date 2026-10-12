@@ -236,8 +236,10 @@ fun OverviewScreen(
     if (showFocusSheet) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(onDismissRequest = { showFocusSheet = false }, sheetState = sheetState) {
+            val focusApps by focusVm.installedApps.collectAsStateWithLifecycle()
             com.shahaabapps.watchdog.feature.focus.FocusEditor(
                 initial = focus,
+                installedApps = focusApps,
                 onSave = { settings ->
                     focusVm.save(settings)
                     showFocusSheet = false

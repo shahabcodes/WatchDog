@@ -44,7 +44,7 @@ fun CupertinoSwitch(
     )
 }
 
-/** A filled, full-width iOS-style primary button with a subtle brand gradient. */
+/** A filled, full-width primary button: solid accent, bold white (Guardian). */
 @Composable
 fun CupertinoPrimaryButton(
     text: String,
@@ -52,27 +52,21 @@ fun CupertinoPrimaryButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    val shape = Shapes.button
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 52.dp)
-            .clip(shape)
-            .then(
-                if (enabled) {
-                    Modifier.background(com.shahaabapps.core.ui.theme.Brand.accentGradient)
-                } else {
-                    Modifier.background(AppTheme.colors.accent.copy(alpha = 0.4f))
-                },
-            )
+            .heightIn(min = 54.dp)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+            .background(if (enabled) AppTheme.colors.accent else AppTheme.colors.accent.copy(alpha = 0.4f))
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(vertical = 14.dp),
+            .padding(vertical = 15.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = text,
             color = Color.White,
             style = MaterialTheme.typography.titleMedium,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
         )
     }
 }

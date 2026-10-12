@@ -27,9 +27,10 @@ import com.shahaabapps.core.ui.components.AboutSection
 import com.shahaabapps.core.ui.components.ConfirmDialog
 import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.components.CupertinoListRow
-import com.shahaabapps.core.ui.components.Hero
-import com.shahaabapps.core.ui.components.HeroIconButton
+import com.shahaabapps.core.ui.components.GuardianHeader
 import com.shahaabapps.core.ui.components.ThemeSettingsSection
+import androidx.compose.foundation.background
+import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
 
 @Composable
@@ -46,17 +47,11 @@ fun SettingsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(AppTheme.colors.groupedBackground)
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(Spacing.lg),
     ) {
-        Hero(
-            title = "Settings",
-            actions = {
-                HeroIconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
-                }
-            },
-        )
+        GuardianHeader(title = "Settings", onBack = onBack)
 
         ThemeSettingsSection(
             mode = mode,

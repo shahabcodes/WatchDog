@@ -25,7 +25,8 @@ fun CupertinoCard(
         shape = RoundedCornerShape(22.dp),
         color = AppTheme.colors.card,
         tonalElevation = 0.dp,
-        shadowElevation = 3.dp,
+        shadowElevation = 1.dp,
+        border = androidx.compose.foundation.BorderStroke(1.dp, AppTheme.colors.separator),
         modifier = modifier
             .fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),

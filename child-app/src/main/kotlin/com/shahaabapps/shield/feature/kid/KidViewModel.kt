@@ -47,7 +47,7 @@ class KidViewModel @Inject constructor(
     private val childId: String? = authRepository.currentUserIdOrNull()
     private val today: LocalDate = LocalDate.now()
 
-    val uiState: StateFlow<KidUiState> =
+    private val source =
         if (childId == null) {
             flowOf(KidUiState(loading = false))
         } else {
@@ -86,5 +86,8 @@ class KidViewModel @Inject constructor(
                 }
                 KidUiState(total, appList, week, focus, loading = false)
             }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), KidUiState())
+        }
+
+    val uiState: StateFlow<KidUiState> =
+        source.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), KidUiState())
 }

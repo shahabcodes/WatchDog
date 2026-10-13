@@ -20,6 +20,8 @@ import com.shahaabapps.core.firebase.protection.FirebasePendingAppsRepository
 import com.shahaabapps.core.firebase.protection.FirebaseProtectionRepository
 import com.shahaabapps.core.firebase.protection.PendingAppsRepository
 import com.shahaabapps.core.firebase.protection.ProtectionRepository
+import com.shahaabapps.core.firebase.request.FirebaseRequestRepository
+import com.shahaabapps.core.firebase.request.RequestRepository
 import com.shahaabapps.core.firebase.rules.AppRulesRepository
 import com.shahaabapps.core.firebase.rules.FirebaseAppRulesRepository
 import com.shahaabapps.core.firebase.usage.FirebaseUsageRepository
@@ -78,6 +80,10 @@ interface FirebaseBindsModule {
     @Binds
     @Singleton
     fun bindGeofenceRepository(impl: FirebaseGeofenceRepository): GeofenceRepository
+
+    @Binds
+    @Singleton
+    fun bindRequestRepository(impl: FirebaseRequestRepository): RequestRepository
 
     @Binds
     @Singleton

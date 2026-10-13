@@ -299,6 +299,7 @@ class EnforcementService : AccessibilityService() {
         val intent = Intent(this, BlockActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
             putExtra(BlockActivity.EXTRA_APP_LABEL, label)
+            putExtra(BlockActivity.EXTRA_APP_PACKAGE, packageName)
             putExtra(BlockActivity.EXTRA_REASON, reason)
         }
         startActivity(intent)

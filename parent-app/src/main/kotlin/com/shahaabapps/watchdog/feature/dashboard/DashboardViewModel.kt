@@ -53,10 +53,14 @@ class DashboardViewModel @Inject constructor(
             initialValue = emptyList(),
         )
 
-    /** True until the first children snapshot arrives, so the UI can show a spinner. */
+    /**
+     * True until the first children snapshot arrives for the current user, so the
+     * UI shows a spinner — not the empty/first-run "add a child" screen — during
+     * the brief gap right after sign-in before the children query responds.
+     */
     val loading: StateFlow<Boolean> = authRepository.currentUserId
         .flatMapLatest { uid ->
-            if (uid == null) flowOf(false) else childRepository.observeLinkedChildren(uid).map { false }
+            if (uid == null) flowOf(true) else childRepository.observeLinkedChildren(uid).map { false }
         }
         .stateIn(
             scope = viewModelScope,

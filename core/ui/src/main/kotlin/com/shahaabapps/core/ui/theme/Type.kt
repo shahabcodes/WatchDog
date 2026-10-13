@@ -21,9 +21,10 @@ private fun bric(weight: Int, fw: FontWeight) =
 private fun sora(weight: Int, fw: FontWeight) =
     Font(R.font.sora, fw, variationSettings = FontVariation.Settings(FontVariation.weight(weight)))
 
-/** Sora — the typeface for the Lighthouse auth and Shield screens. */
+/** Sora — the app's typeface (Lighthouse), used everywhere for one consistent feel. */
 val SoraFamily = FontFamily(
     sora(400, FontWeight.Normal),
+    sora(500, FontWeight.Medium),
     sora(600, FontWeight.SemiBold),
     sora(700, FontWeight.Bold),
     sora(800, FontWeight.ExtraBold),
@@ -46,10 +47,9 @@ val BricolageFamily = FontFamily(
 
 /** App font families: [body] everywhere, [display] for big titles and key numbers. */
 object AppFonts {
-    val body = FigtreeFamily
-    val display = BricolageFamily
-
-    /** Lighthouse screens (auth + Shield) use one typeface throughout. */
+    // One typeface across the whole app so login and post-login feel the same.
+    val body = SoraFamily
+    val display = SoraFamily
     val lighthouse = SoraFamily
 }
 
@@ -65,19 +65,19 @@ fun LighthouseType(content: @androidx.compose.runtime.Composable () -> Unit) {
 
 val CupertinoTypography = Typography(
     // Large Title — display face
-    displayLarge = TextStyle(fontFamily = BricolageFamily, fontWeight = FontWeight.ExtraBold, fontSize = 34.sp, lineHeight = 40.sp),
+    displayLarge = TextStyle(fontFamily = SoraFamily, fontWeight = FontWeight.ExtraBold, fontSize = 34.sp, lineHeight = 40.sp),
     // Title 1 — display face
-    headlineLarge = TextStyle(fontFamily = BricolageFamily, fontWeight = FontWeight.ExtraBold, fontSize = 28.sp, lineHeight = 34.sp),
+    headlineLarge = TextStyle(fontFamily = SoraFamily, fontWeight = FontWeight.ExtraBold, fontSize = 28.sp, lineHeight = 34.sp),
     // Title 2 — display face
-    headlineMedium = TextStyle(fontFamily = BricolageFamily, fontWeight = FontWeight.Bold, fontSize = 22.sp, lineHeight = 28.sp),
+    headlineMedium = TextStyle(fontFamily = SoraFamily, fontWeight = FontWeight.Bold, fontSize = 22.sp, lineHeight = 28.sp),
     // Headline — body face, semibold
-    titleMedium = TextStyle(fontFamily = FigtreeFamily, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, lineHeight = 22.sp),
+    titleMedium = TextStyle(fontFamily = SoraFamily, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, lineHeight = 22.sp),
     // Body
-    bodyLarge = TextStyle(fontFamily = FigtreeFamily, fontWeight = FontWeight.Normal, fontSize = 17.sp, lineHeight = 22.sp),
+    bodyLarge = TextStyle(fontFamily = SoraFamily, fontWeight = FontWeight.Normal, fontSize = 17.sp, lineHeight = 22.sp),
     // Subhead
-    bodyMedium = TextStyle(fontFamily = FigtreeFamily, fontWeight = FontWeight.Normal, fontSize = 15.sp, lineHeight = 20.sp),
+    bodyMedium = TextStyle(fontFamily = SoraFamily, fontWeight = FontWeight.Normal, fontSize = 15.sp, lineHeight = 20.sp),
     // Footnote
-    bodySmall = TextStyle(fontFamily = FigtreeFamily, fontWeight = FontWeight.Normal, fontSize = 13.sp, lineHeight = 18.sp),
+    bodySmall = TextStyle(fontFamily = SoraFamily, fontWeight = FontWeight.Normal, fontSize = 13.sp, lineHeight = 18.sp),
     // Caption
-    labelMedium = TextStyle(fontFamily = FigtreeFamily, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp),
+    labelMedium = TextStyle(fontFamily = SoraFamily, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp),
 )

@@ -963,12 +963,14 @@ private fun ProtectionEditor(
     }
 }
 
+// Navy shades + the brand gold + a neutral grey, so per-app bars stay
+// distinguishable without introducing a third brand colour.
 private val USAGE_PALETTE = listOf(
-    Color(0xFF0E6B5E),
-    Color(0xFFD9622B),
-    Color(0xFF6E7FD6),
-    Color(0xFFE5A14B),
-    Color(0xFF8A919E),
+    Color(0xFF012169), // navy (accent)
+    Color(0xFFF5B83D), // gold
+    Color(0xFF1E4FB0), // mid navy
+    Color(0xFF86A6E8), // light navy
+    Color(0xFF8A919E), // neutral grey
 )
 
 @Composable
@@ -1039,7 +1041,7 @@ private fun WeeklyTrendChart(days: List<DayUsage>) {
                 verticalAlignment = Alignment.Bottom,
             ) {
                 days.forEach { day ->
-                    val barColor = if (day.isToday) Color(0xFF0E6B5E) else Color(0xFF0E6B5E).copy(alpha = 0.22f)
+                    val barColor = if (day.isToday) AppTheme.colors.accent else AppTheme.colors.accent.copy(alpha = 0.22f)
                     Column(
                         modifier = Modifier.weight(1f),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -1072,7 +1074,7 @@ private fun WeeklyTrendChart(days: List<DayUsage>) {
                             WEEK_LETTERS[day.date.dayOfWeek.value - 1],
                             fontSize = 11.sp,
                             fontWeight = if (day.isToday) FontWeight.Bold else FontWeight.Normal,
-                            color = if (day.isToday) Color(0xFF0E6B5E) else AppTheme.colors.secondaryLabel,
+                            color = if (day.isToday) AppTheme.colors.accent else AppTheme.colors.secondaryLabel,
                             modifier = Modifier.padding(top = 6.dp),
                         )
                     }

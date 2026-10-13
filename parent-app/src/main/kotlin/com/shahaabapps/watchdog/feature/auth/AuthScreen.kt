@@ -1,9 +1,9 @@
 package com.shahaabapps.watchdog.feature.auth
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -19,7 +19,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,13 +28,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -46,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -56,7 +57,18 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shahaabapps.core.ui.theme.AppFonts
-import com.shahaabapps.core.ui.theme.AppTheme
+import com.shahaabapps.watchdog.R
+
+// Lighthouse palette (fixed — the auth screens are pre-login and always on-brand).
+private val NAVY_DEEP = Color(0xFF00133F)
+private val NAVY = Color(0xFF012169)
+private val NAVY_BORDER = Color(0xFF3A5AA8)
+private val GOLD = Color(0xFFF5B83D)
+private val SUBTITLE = Color(0xFFC7D3F0)
+private val INK = Color(0xFF1A1C1E)
+private val FIELD_BG = Color(0xFFF7F9FD)
+private val FIELD_BORDER = Color(0xFFD4DDF0)
+private val LABEL = Color(0xFF4A5878)
 
 @Composable
 fun AuthScreen(
@@ -64,226 +76,212 @@ fun AuthScreen(
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val onBg = MaterialTheme.colorScheme.onBackground
-    val accent = AppTheme.colors.accent
+    var agreed by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(AppTheme.colors.groupedBackground)
-            .systemBarsPadding()
-            .imePadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp, vertical = 24.dp),
+            .background(NAVY_DEEP)
+            .imePadding(),
     ) {
-        // Back button for the secondary modes; logo mark for sign in.
-        if (state.mode == AuthMode.SIGN_IN) {
-            Spacer(Modifier.height(40.dp))
-            Box(
-                modifier = Modifier
-                    .size(64.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(accent),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Filled.Lock,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(30.dp),
-                )
-            }
-        } else {
-            Surface(
-                shape = CircleShape,
-                color = AppTheme.colors.card,
-                border = BorderStroke(1.dp, AppTheme.colors.separator),
-                modifier = Modifier.size(44.dp).clickable { viewModel.setMode(AuthMode.SIGN_IN) },
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = onBg,
-                        modifier = Modifier.size(20.dp),
+        // Navy header.
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 22.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                if (state.mode != AuthMode.SIGN_IN) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(Color.Transparent)
+                            .clickable { viewModel.setMode(AuthMode.SIGN_IN) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = Color.White,
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                // Lighthouse mark.
+                Box(
+                    modifier = Modifier
+                        .size(60.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(NAVY),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    androidx.compose.foundation.Image(
+                        painter = painterResource(R.drawable.ic_lighthouse),
+                        contentDescription = "Watch Dog",
+                        modifier = Modifier.size(54.dp),
                     )
                 }
             }
-        }
-
-        Spacer(Modifier.height(24.dp))
-        Text(
-            text = when (state.mode) {
-                AuthMode.SIGN_IN -> "Welcome back"
-                AuthMode.SIGN_UP -> "Create your account"
-                AuthMode.FORGOT -> "Reset password"
-            },
-            fontFamily = AppFonts.display,
-            fontSize = 32.sp,
-            fontWeight = FontWeight.ExtraBold,
-            letterSpacing = (-0.8).sp,
-            color = onBg,
-        )
-        Text(
-            text = when (state.mode) {
-                AuthMode.SIGN_IN -> "Log in to keep an eye on your family."
-                AuthMode.SIGN_UP -> "A parent account controls the family."
-                AuthMode.FORGOT -> "Enter your email and we'll send you a link to set a new password."
-            },
-            style = MaterialTheme.typography.bodyLarge,
-            color = AppTheme.colors.secondaryLabel,
-            modifier = Modifier.padding(top = 10.dp),
-        )
-
-        Spacer(Modifier.height(26.dp))
-
-        FieldLabel("Email")
-        AuthField(
-            value = state.email,
-            onValueChange = viewModel::onEmailChange,
-            placeholder = "you@example.com",
-            keyboardType = KeyboardType.Email,
-        )
-
-        AnimatedVisibility(
-            visible = !state.isForgot,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically(),
-        ) {
-            Column {
-                Spacer(Modifier.height(16.dp))
-                FieldLabel("Password")
-                PasswordField(
-                    value = state.password,
-                    onValueChange = viewModel::onPasswordChange,
-                    placeholder = "••••••••",
-                )
-            }
-        }
-
-        AnimatedVisibility(
-            visible = state.isSignUp,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically(),
-        ) {
-            Column {
-                Spacer(Modifier.height(16.dp))
-                FieldLabel("Confirm password")
-                PasswordField(
-                    value = state.confirmPassword,
-                    onValueChange = viewModel::onConfirmPasswordChange,
-                    placeholder = "••••••••",
-                    isError = state.passwordsMismatch,
-                )
-                if (state.passwordsMismatch) {
-                    Text(
-                        "Passwords don't match",
-                        color = AppTheme.colors.destructive,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(start = 4.dp, top = 6.dp),
-                    )
-                }
-            }
-        }
-
-        // Forgot-password link on the sign-in form.
-        if (state.mode == AuthMode.SIGN_IN) {
-            Text(
-                "Forgot password?",
-                color = accent,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .align(Alignment.End)
-                    .padding(top = 12.dp)
-                    .clickable { viewModel.setMode(AuthMode.FORGOT) },
-            )
-        }
-
-        state.errorMessage?.let {
-            Text(
-                it,
-                color = AppTheme.colors.destructive,
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-            )
-        }
-        state.infoMessage?.let {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = AppTheme.colors.card,
-                border = BorderStroke(1.dp, AppTheme.colors.separator),
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-            ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    it,
-                    color = accent,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(14.dp),
+                    when (state.mode) {
+                        AuthMode.SIGN_IN -> "Welcome back"
+                        AuthMode.SIGN_UP -> "Light the way"
+                        AuthMode.FORGOT -> "Reset password"
+                    },
+                    fontFamily = AppFonts.display,
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = (-0.7).sp,
+                    color = Color.White,
+                )
+                Text(
+                    when (state.mode) {
+                        AuthMode.SIGN_IN -> "Sign in to check in on your family."
+                        AuthMode.SIGN_UP -> "Create your parent account. Your children won't need one."
+                        AuthMode.FORGOT -> "We'll email you a secure reset link."
+                    },
+                    fontSize = 15.sp,
+                    color = SUBTITLE,
                 )
             }
         }
 
-        Spacer(Modifier.height(24.dp))
-        PrimaryButton(
-            text = when (state.mode) {
-                AuthMode.SIGN_IN -> "Log in"
-                AuthMode.SIGN_UP -> "Create account"
-                AuthMode.FORGOT -> "Send reset link"
-            },
-            enabled = state.canSubmit,
-            loading = state.isSubmitting,
-            onClick = viewModel::submit,
-        )
-
-        Spacer(Modifier.height(28.dp))
-        // Footer: switch between sign in and sign up.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
+        // White sheet.
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(Color.White)
+                .verticalScroll(rememberScrollState())
+                .padding(start = 24.dp, end = 24.dp, top = 26.dp, bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            when (state.mode) {
-                AuthMode.SIGN_UP, AuthMode.FORGOT -> {
-                    Text("Already have an account? ", color = AppTheme.colors.secondaryLabel, fontSize = 15.sp)
-                    Text(
-                        "Log in",
-                        color = accent,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.clickable { viewModel.setMode(AuthMode.SIGN_IN) },
-                    )
+            FieldLabel("Email")
+            LhField(
+                value = state.email,
+                onValueChange = viewModel::onEmailChange,
+                placeholder = "you@example.com",
+                keyboardType = KeyboardType.Email,
+            )
+
+            AnimatedVisibility(!state.isForgot, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FieldLabel("Password")
+                    LhPasswordField(value = state.password, onValueChange = viewModel::onPasswordChange, placeholder = "Your password")
+                    if (state.isSignUp) PasswordStrength(state.password)
                 }
-                AuthMode.SIGN_IN -> {
-                    Text("New here? ", color = AppTheme.colors.secondaryLabel, fontSize = 15.sp)
+            }
+
+            AnimatedVisibility(state.isSignUp, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FieldLabel("Confirm password")
+                    LhPasswordField(
+                        value = state.confirmPassword,
+                        onValueChange = viewModel::onConfirmPasswordChange,
+                        placeholder = "Re-enter your password",
+                        isError = state.passwordsMismatch,
+                    )
+                    if (state.passwordsMismatch) {
+                        Text("Passwords don't match", color = Color(0xFFC1362B), fontSize = 12.sp)
+                    }
+                }
+            }
+
+            // Forgot link on sign in.
+            if (state.mode == AuthMode.SIGN_IN) {
+                Text(
+                    "Forgot password?",
+                    color = NAVY,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .clickable { viewModel.setMode(AuthMode.FORGOT) },
+                )
+            }
+
+            // Terms on sign up.
+            if (state.isSignUp) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = agreed,
+                        onCheckedChange = { agreed = it },
+                        colors = CheckboxDefaults.colors(checkedColor = NAVY),
+                    )
                     Text(
-                        "Create an account",
-                        color = accent,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.clickable { viewModel.setMode(AuthMode.SIGN_UP) },
+                        "I'm the parent or guardian and agree to the Terms and Privacy Policy.",
+                        color = LABEL,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(start = 4.dp),
                     )
                 }
             }
+
+            state.errorMessage?.let {
+                Text(it, color = Color(0xFFC1362B), fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            }
+            state.infoMessage?.let {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFFE4F1EA))
+                        .padding(14.dp),
+                ) {
+                    Text(it, color = Color(0xFF145C3B), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+
+            val canSubmit = state.canSubmit && (!state.isSignUp || agreed)
+            GoldButton(
+                text = when (state.mode) {
+                    AuthMode.SIGN_IN -> "Sign in"
+                    AuthMode.SIGN_UP -> "Create account"
+                    AuthMode.FORGOT -> "Send reset link"
+                },
+                enabled = canSubmit,
+                loading = state.isSubmitting,
+                onClick = viewModel::submit,
+            )
+
+            Spacer(Modifier.weight(1f))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                when (state.mode) {
+                    AuthMode.SIGN_IN -> {
+                        Text("New to Watch Dog? ", color = LABEL, fontSize = 15.sp)
+                        Text("Create an account", color = NAVY, fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable { viewModel.setMode(AuthMode.SIGN_UP) })
+                    }
+                    else -> {
+                        Text("Already have an account? ", color = LABEL, fontSize = 15.sp)
+                        Text("Sign in", color = NAVY, fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable { viewModel.setMode(AuthMode.SIGN_IN) })
+                    }
+                }
+            }
         }
-        Spacer(Modifier.height(16.dp))
     }
 }
 
 @Composable
 private fun FieldLabel(text: String) {
-    Text(
-        text,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
-        color = AppTheme.colors.secondaryLabel,
-        modifier = Modifier.padding(bottom = 8.dp),
-    )
+    Text(text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = LABEL)
 }
 
 @Composable
-private fun AuthField(
+private fun LhField(
     value: String,
     onValueChange: (String) -> Unit,
     placeholder: String,
@@ -297,34 +295,34 @@ private fun AuthField(
         onValueChange = onValueChange,
         singleLine = true,
         isError = isError,
-        placeholder = { Text(placeholder, color = AppTheme.colors.secondaryLabel.copy(alpha = 0.7f)) },
+        placeholder = { Text(placeholder, color = LABEL.copy(alpha = 0.7f)) },
         trailingIcon = trailing,
         visualTransformation = visualTransformation,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         shape = RoundedCornerShape(14.dp),
-        modifier = Modifier.fillMaxWidth().height(54.dp),
+        modifier = Modifier.fillMaxWidth().height(52.dp),
         colors = TextFieldDefaults.colors(
-            focusedContainerColor = AppTheme.colors.card,
-            unfocusedContainerColor = AppTheme.colors.card,
-            errorContainerColor = AppTheme.colors.card,
-            focusedIndicatorColor = AppTheme.colors.accent,
-            unfocusedIndicatorColor = AppTheme.colors.separator,
-            errorIndicatorColor = AppTheme.colors.destructive,
-            focusedTextColor = MaterialTheme.colorScheme.onBackground,
-            unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
+            focusedContainerColor = FIELD_BG,
+            unfocusedContainerColor = FIELD_BG,
+            errorContainerColor = FIELD_BG,
+            focusedIndicatorColor = NAVY,
+            unfocusedIndicatorColor = FIELD_BORDER,
+            errorIndicatorColor = Color(0xFFC1362B),
+            focusedTextColor = INK,
+            unfocusedTextColor = INK,
         ),
     )
 }
 
 @Composable
-private fun PasswordField(
+private fun LhPasswordField(
     value: String,
     onValueChange: (String) -> Unit,
     placeholder: String,
     isError: Boolean = false,
 ) {
     var visible by remember { mutableStateOf(false) }
-    AuthField(
+    LhField(
         value = value,
         onValueChange = onValueChange,
         placeholder = placeholder,
@@ -335,7 +333,7 @@ private fun PasswordField(
             Icon(
                 if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
                 contentDescription = if (visible) "Hide password" else "Show password",
-                tint = AppTheme.colors.secondaryLabel,
+                tint = LABEL,
                 modifier = Modifier.clickable { visible = !visible },
             )
         },
@@ -343,27 +341,51 @@ private fun PasswordField(
 }
 
 @Composable
-private fun PrimaryButton(
-    text: String,
-    enabled: Boolean,
-    loading: Boolean,
-    onClick: () -> Unit,
-) {
-    val accent = AppTheme.colors.accent
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = if (enabled) accent else accent.copy(alpha = 0.4f),
+private fun PasswordStrength(pw: String) {
+    var score = 0
+    if (pw.length >= 8) score++
+    if (pw.any { it.isUpperCase() } && pw.any { it.isLowerCase() }) score++
+    if (pw.any { it.isDigit() }) score++
+    if (pw.any { !it.isLetterOrDigit() } || pw.length >= 14) score++
+    val palette = listOf(Color(0xFFC1362B), Color(0xFFD9622B), Color(0xFFB7860B), Color(0xFF1E8E5A))
+    val labels = listOf("Too short", "Weak", "Okay", "Good", "Strong")
+    val color = if (score > 0) palette[score - 1] else FIELD_BORDER
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+            repeat(4) { i ->
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(5.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(if (i < score) color else FIELD_BORDER),
+                )
+            }
+        }
+        Text(
+            if (pw.isEmpty()) "Use 8+ characters with a number" else "${labels[score]} password",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = if (pw.isEmpty()) LABEL else color,
+        )
+    }
+}
+
+@Composable
+private fun GoldButton(text: String, enabled: Boolean, loading: Boolean, onClick: () -> Unit) {
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(54.dp)
+            .height(56.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (enabled) GOLD else GOLD.copy(alpha = 0.45f))
             .clickable(enabled = enabled && !loading, onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            if (loading) {
-                CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
-            } else {
-                Text(text, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            }
+        if (loading) {
+            CircularProgressIndicator(color = NAVY_DEEP, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+        } else {
+            Text(text, color = NAVY_DEEP, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
     }
 }

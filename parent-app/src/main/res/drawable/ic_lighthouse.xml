@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Lighthouse mark on a transparent ground (sits on a navy tile). -->
+    <path android:fillColor="#F5B83D" android:fillAlpha="0.45" android:pathData="M54,36 L22,27 L22,45 Z" />
+    <path android:fillColor="#F5B83D" android:fillAlpha="0.45" android:pathData="M54,36 L86,27 L86,45 Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M46,42 L62,42 L66,84 L42,84 Z" />
+    <path android:fillColor="#012169" android:pathData="M44.7,57 L63.3,57 L64.1,66 L43.9,66 Z" />
+    <path android:fillColor="#F5B83D" android:pathData="M47,30 h14 v12 h-14 z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M45,31 L54,22 L63,31 Z" />
+</vector>

@@ -67,7 +67,7 @@ fun PairingScreen(
         Text(
             text = "Hi ${child.profile.name.ifBlank { "there" }}!",
             color = NAVY,
-            fontFamily = AppFonts.display,
+            fontFamily = AppFonts.lighthouse,
             fontSize = 28.sp,
             fontWeight = FontWeight.ExtraBold,
             letterSpacing = (-0.7).sp,

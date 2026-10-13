@@ -63,13 +63,15 @@ class BlockActivity : ComponentActivity() {
         val variant = variantFor(reason)
 
         setContent {
-            BlockContent(
-                variant = variant,
-                label = label,
-                reason = reason,
-                onAsk = { askParent(variant, pkg, label) },
-                onDismiss = ::goHome,
-            )
+            com.shahaabapps.core.ui.theme.LighthouseType {
+                BlockContent(
+                    variant = variant,
+                    label = label,
+                    reason = reason,
+                    onAsk = { askParent(variant, pkg, label) },
+                    onDismiss = ::goHome,
+                )
+            }
         }
     }
 

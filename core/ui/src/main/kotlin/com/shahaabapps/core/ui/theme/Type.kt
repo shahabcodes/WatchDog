@@ -18,6 +18,17 @@ private fun fig(weight: Int, fw: FontWeight) =
 private fun bric(weight: Int, fw: FontWeight) =
     Font(R.font.bricolage_grotesque, fw, variationSettings = FontVariation.Settings(FontVariation.weight(weight)))
 
+private fun sora(weight: Int, fw: FontWeight) =
+    Font(R.font.sora, fw, variationSettings = FontVariation.Settings(FontVariation.weight(weight)))
+
+/** Sora — the typeface for the Lighthouse auth and Shield screens. */
+val SoraFamily = FontFamily(
+    sora(400, FontWeight.Normal),
+    sora(600, FontWeight.SemiBold),
+    sora(700, FontWeight.Bold),
+    sora(800, FontWeight.ExtraBold),
+)
+
 /** Figtree — the body / UI typeface (Direction 1). */
 val FigtreeFamily = FontFamily(
     fig(400, FontWeight.Normal),
@@ -37,6 +48,19 @@ val BricolageFamily = FontFamily(
 object AppFonts {
     val body = FigtreeFamily
     val display = BricolageFamily
+
+    /** Lighthouse screens (auth + Shield) use one typeface throughout. */
+    val lighthouse = SoraFamily
+}
+
+/** Makes every Text inside default to Sora — the Lighthouse screens' typeface. */
+@androidx.compose.runtime.Composable
+fun LighthouseType(content: @androidx.compose.runtime.Composable () -> Unit) {
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.material3.LocalTextStyle provides
+            androidx.compose.material3.LocalTextStyle.current.merge(TextStyle(fontFamily = SoraFamily)),
+        content = content,
+    )
 }
 
 val CupertinoTypography = Typography(

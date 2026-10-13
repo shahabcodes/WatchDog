@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Bedtime
@@ -87,6 +88,7 @@ fun OverviewScreen(
     onAddChild: () -> Unit = {},
     onManage: () -> Unit = {},
     onSettings: () -> Unit = {},
+    onSignOut: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: OverviewViewModel = hiltViewModel(),
 ) {
@@ -211,6 +213,7 @@ fun OverviewScreen(
                 onSelectChild = { showChildSheet = false; onSelectChild(it) },
                 onAddChild = { showChildSheet = false; onAddChild() },
                 onSettings = { showChildSheet = false; onSettings() },
+                onSignOut = { showChildSheet = false; onSignOut() },
             )
         }
     }
@@ -435,6 +438,7 @@ private fun ChildSwitcherSheet(
     onSelectChild: (String) -> Unit,
     onAddChild: () -> Unit,
     onSettings: () -> Unit,
+    onSignOut: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -526,6 +530,19 @@ private fun ChildSwitcherSheet(
             Icon(Icons.Filled.Settings, contentDescription = null, tint = AppTheme.colors.secondaryLabel)
             Spacer(Modifier.width(12.dp))
             Text("Settings", style = MaterialTheme.typography.bodyLarge, color = AppTheme.colors.secondaryLabel)
+        }
+        // Log out
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .clickable(onClick = onSignOut)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, tint = AppTheme.colors.destructive)
+            Spacer(Modifier.width(12.dp))
+            Text("Log out", style = MaterialTheme.typography.bodyLarge, color = AppTheme.colors.destructive)
         }
     }
 }

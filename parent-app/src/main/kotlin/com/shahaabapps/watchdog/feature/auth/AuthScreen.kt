@@ -81,13 +81,15 @@ private val LABEL = Color(0xFF4A5878)
 @Composable
 fun AuthFlow(viewModel: AuthViewModel = hiltViewModel()) {
     var showWelcome by rememberSaveable { mutableStateOf(true) }
-    if (showWelcome) {
-        WelcomeScreen(
-            onCreateAccount = { viewModel.setMode(AuthMode.SIGN_UP); showWelcome = false },
-            onSignIn = { viewModel.setMode(AuthMode.SIGN_IN); showWelcome = false },
-        )
-    } else {
-        AuthScreen(onBack = { showWelcome = true }, viewModel = viewModel)
+    com.shahaabapps.core.ui.theme.LighthouseType {
+        if (showWelcome) {
+            WelcomeScreen(
+                onCreateAccount = { viewModel.setMode(AuthMode.SIGN_UP); showWelcome = false },
+                onSignIn = { viewModel.setMode(AuthMode.SIGN_IN); showWelcome = false },
+            )
+        } else {
+            AuthScreen(onBack = { showWelcome = true }, viewModel = viewModel)
+        }
     }
 }
 
@@ -113,7 +115,7 @@ private fun WelcomeScreen(onCreateAccount: () -> Unit, onSignIn: () -> Unit) {
             Text(
                 "A guiding light\nfor your family.",
                 color = Color.White,
-                fontFamily = AppFonts.display,
+                fontFamily = AppFonts.lighthouse,
                 fontSize = 32.sp,
                 fontWeight = FontWeight.ExtraBold,
                 lineHeight = 36.sp,
@@ -216,7 +218,7 @@ fun AuthScreen(
                         AuthMode.SIGN_UP -> "Light the way"
                         AuthMode.FORGOT -> "Reset password"
                     },
-                    fontFamily = AppFonts.display,
+                    fontFamily = AppFonts.lighthouse,
                     fontSize = 30.sp,
                     fontWeight = FontWeight.ExtraBold,
                     letterSpacing = (-0.7).sp,

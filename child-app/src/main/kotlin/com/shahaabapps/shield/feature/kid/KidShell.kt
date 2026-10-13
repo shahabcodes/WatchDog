@@ -213,18 +213,10 @@ private fun KidHome(child: ChildAccount, state: KidUiState, onSeeApps: () -> Uni
             }
         }
 
-        // Ask for more time.
-        if (pendingAsk == null) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-                modifier = Modifier.fillMaxWidth().height(54.dp).clip(RoundedCornerShape(18.dp)).border(2.dp, NAVY2, RoundedCornerShape(18.dp)).clickable { askVm.askMoreTime(30) },
-            ) {
-                Icon(Icons.Filled.MoreTime, contentDescription = null, tint = NAVY2, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Ask for more time", color = NAVY2, fontWeight = FontWeight.Bold)
-            }
-        } else {
+        // Ask for more time — only when a time limit actually applies.
+        val hasTimeLimit = state.apps.any { it.limitMinutes != null } ||
+            state.focus.bedtime.enabled || state.focus.school.enabled
+        if (pendingAsk != null) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(CARD).padding(horizontal = 14.dp, vertical = 12.dp),
@@ -233,6 +225,16 @@ private fun KidHome(child: ChildAccount, state: KidUiState, onSeeApps: () -> Uni
                 Spacer(Modifier.width(10.dp))
                 Text("Asked for ${pendingAsk!!.summary}", color = NAVY, modifier = Modifier.weight(1f), fontSize = 14.sp)
                 Text("Cancel", color = NAVY2, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.clickable { pendingAsk?.let { askVm.cancel(it.id) } }.padding(start = 8.dp))
+            }
+        } else if (hasTimeLimit) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth().height(54.dp).clip(RoundedCornerShape(18.dp)).border(2.dp, NAVY2, RoundedCornerShape(18.dp)).clickable { askVm.askMoreTime(30) },
+            ) {
+                Icon(Icons.Filled.MoreTime, contentDescription = null, tint = NAVY2, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Ask for more time", color = NAVY2, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -267,12 +269,11 @@ private fun KidTime(state: KidUiState) {
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(CARD).padding(horizontal = 12.dp, vertical = 10.dp),
                 ) {
-                    Box(
-                        modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(NAVY2),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(app.label.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?", color = Color.White, fontWeight = FontWeight.ExtraBold)
-                    }
+                    com.shahaabapps.core.ui.components.AppIcon(
+                        base64 = app.iconBase64,
+                        label = app.label,
+                        size = 40.dp,
+                    )
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(app.label, color = NAVY, fontWeight = FontWeight.Bold, fontSize = 14.sp)

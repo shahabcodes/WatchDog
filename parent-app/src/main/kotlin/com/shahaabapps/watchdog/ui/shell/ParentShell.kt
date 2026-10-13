@@ -149,15 +149,19 @@ fun ParentShell(
     }
 
     if (children.isEmpty()) {
-        AddChildScreen(profile = profile, linkState = linkState, viewModel = viewModel)
+        com.shahaabapps.core.ui.theme.LighthouseType {
+            AddChildScreen(profile = profile, linkState = linkState, viewModel = viewModel)
+        }
         return
     }
 
     if (justConnected) {
-        ConnectedChildScreen(
-            childName = children.firstOrNull()?.profile?.name,
-            onContinue = { justConnected = false; sawEmpty = false; viewModel.clearLinkState() },
-        )
+        com.shahaabapps.core.ui.theme.LighthouseType {
+            ConnectedChildScreen(
+                childName = children.firstOrNull()?.profile?.name,
+                onContinue = { justConnected = false; sawEmpty = false; viewModel.clearLinkState() },
+            )
+        }
         return
     }
 
@@ -236,6 +240,7 @@ fun ParentShell(
                     onAddChild = { navController.navigate("add") },
                     onManage = { navController.navigate("manage") },
                     onSettings = { navController.navigate("settings") },
+                    onSignOut = { viewModel.signOut() },
                 )
             }
             composable("map/{childId}", childArg) { GeofenceScreen(onBack = { }, showBack = false) }
@@ -256,7 +261,9 @@ fun ParentShell(
                 )
             }
             composable("add") {
-                AddChildScreen(profile = profile, linkState = linkState, viewModel = viewModel, onBack = { navController.popBackStack() })
+                com.shahaabapps.core.ui.theme.LighthouseType {
+                    AddChildScreen(profile = profile, linkState = linkState, viewModel = viewModel, onBack = { navController.popBackStack() })
+                }
             }
         }
     }
@@ -329,7 +336,7 @@ private fun ConnectedChildScreen(childName: String?, onContinue: () -> Unit) {
             Text(
                 "${childName?.ifBlank { null } ?: "Your child"} is connected",
                 color = Color.White,
-                fontFamily = AppFonts.display,
+                fontFamily = AppFonts.lighthouse,
                 fontSize = 30.sp,
                 fontWeight = FontWeight.ExtraBold,
                 letterSpacing = (-0.7).sp,
@@ -423,7 +430,7 @@ private fun AddChildScreen(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     "Pair your child's phone",
-                    fontFamily = AppFonts.display,
+                    fontFamily = AppFonts.lighthouse,
                     fontSize = 28.sp,
                     fontWeight = FontWeight.ExtraBold,
                     letterSpacing = (-0.7).sp,

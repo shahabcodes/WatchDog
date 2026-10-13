@@ -97,6 +97,11 @@ class DashboardViewModel @Inject constructor(
         _linkState.value = LinkState.Idle
     }
 
+    /** Signs the parent out; the app returns to the auth flow. */
+    fun signOut() {
+        authRepository.signOut()
+    }
+
     /** Unlinks (removes) a child from this parent. */
     fun removeChild(childId: String) {
         val parentId = authRepository.currentUserIdOrNull() ?: return

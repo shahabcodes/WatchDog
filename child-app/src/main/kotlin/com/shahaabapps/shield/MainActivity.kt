@@ -57,7 +57,7 @@ private fun ChildAppRoot(
         ChildAppState.Loading -> LoadingScreen(Modifier)
         is ChildAppState.Error -> ErrorScreen(message = current.message, onRetry = viewModel::retry)
         is ChildAppState.NeedsProfile -> ProfileSetupScreen(onSaved = { /* state reacts automatically */ })
-        is ChildAppState.Pairing -> PairingScreen(child = current.child)
-        is ChildAppState.Protected -> com.shahaabapps.shield.feature.kid.KidShell(child = current.child)
+        is ChildAppState.Pairing -> com.shahaabapps.core.ui.theme.LighthouseType { PairingScreen(child = current.child) }
+        is ChildAppState.Protected -> com.shahaabapps.core.ui.theme.LighthouseType { com.shahaabapps.shield.feature.kid.KidShell(child = current.child) }
     }
 }

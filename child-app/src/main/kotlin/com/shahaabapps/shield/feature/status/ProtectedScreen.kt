@@ -33,6 +33,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.filled.MoreTime
+import com.shahaabapps.core.model.TimeRequest
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -58,6 +67,9 @@ fun ProtectedScreen(
     viewModel: ProtectedViewModel = hiltViewModel(),
 ) {
     LaunchedEffect(child.childId) { viewModel.reportState() }
+
+    val askVm: com.shahaabapps.shield.feature.ask.AskViewModel = hiltViewModel()
+    val pendingAsk by askVm.pending.collectAsStateWithLifecycle()
 
     var showSettings by remember { mutableStateOf(false) }
     if (showSettings) {
@@ -120,6 +132,11 @@ fun ProtectedScreen(
                 .padding(start = Spacing.lg, end = Spacing.lg, top = Spacing.lg, bottom = Spacing.xl),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
+            AskCard(
+                pending = pendingAsk,
+                onAsk = { askVm.askMoreTime(30) },
+                onCancel = { pendingAsk?.let { askVm.cancel(it.id) } },
+            )
             Text(
                 text = "SET UP",
                 style = MaterialTheme.typography.bodySmall,
@@ -132,6 +149,54 @@ fun ProtectedScreen(
             BatterySetupCard()
             AlertsSetupCard()
             ProtectionSetupCard()
+        }
+    }
+}
+
+private val LH_NAVY = Color(0xFF012169)
+private val LH_GOLD = Color(0xFFF5B83D)
+
+/** "Ask for more time" button, or a pending "waiting for an answer" row. */
+@Composable
+private fun AskCard(pending: TimeRequest?, onAsk: () -> Unit, onCancel: () -> Unit) {
+    if (pending == null) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .border(BorderStroke(2.dp, LH_NAVY), RoundedCornerShape(18.dp))
+                .clickable(onClick = onAsk),
+        ) {
+            Icon(Icons.Filled.MoreTime, contentDescription = null, tint = LH_NAVY, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Ask for more time", color = LH_NAVY, fontWeight = FontWeight.Bold)
+        }
+    } else {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(Color.White)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(LH_GOLD))
+            Spacer(Modifier.width(10.dp))
+            Text(
+                "Asked for ${pending.summary}",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                "Cancel",
+                color = LH_NAVY,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.clickable(onClick = onCancel).padding(start = 8.dp),
+            )
         }
     }
 }

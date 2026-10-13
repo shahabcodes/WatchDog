@@ -4,7 +4,11 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.shahaabapps.core.firebase.geofence.GeofenceRepository
+import com.shahaabapps.core.firebase.request.RequestRepository
 import com.shahaabapps.core.model.GeofenceEvent
+import com.shahaabapps.core.model.RequestStatus
+import com.shahaabapps.core.model.TimeRequest
+import kotlinx.coroutines.flow.map
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -28,9 +32,20 @@ data class AlertItem(
 class AlertsViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val geofenceRepository: GeofenceRepository,
+    private val requestRepository: RequestRepository,
 ) : ViewModel() {
 
     private val childId: String = checkNotNull(savedStateHandle["childId"])
+
+    /** The child's pending "asks" awaiting a parent decision. */
+    val pendingRequests: StateFlow<List<TimeRequest>> =
+        requestRepository.observe(childId, 30)
+            .map { list -> list.filter { it.status == RequestStatus.PENDING } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun respond(requestId: String, approved: Boolean) {
+        viewModelScope.launch { requestRepository.respond(childId, requestId, approved) }
+    }
 
     // Join events with the current geofences so each alert shows the saved
     // place's name, and so an event whose place no longer exists (or never had

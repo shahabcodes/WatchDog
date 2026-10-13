@@ -2,6 +2,8 @@ package com.shahaabapps.watchdog.feature.alerts
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -52,6 +54,7 @@ fun AlertsScreen(
     viewModel: AlertsViewModel = hiltViewModel(),
 ) {
     val items by viewModel.items.collectAsStateWithLifecycle()
+    val requests by viewModel.pendingRequests.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier
@@ -104,7 +107,7 @@ fun AlertsScreen(
             }
         }
 
-        if (items.isEmpty()) {
+        if (items.isEmpty() && requests.isEmpty()) {
             EmptyAlerts()
         } else {
             val today = LocalDate.now()
@@ -114,6 +117,16 @@ fun AlertsScreen(
                 verticalArrangement = Arrangement.spacedBy(Spacing.sm),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = Spacing.xl),
             ) {
+                if (requests.isNotEmpty()) {
+                    item { SectionLabel("REQUESTS") }
+                    items(requests, key = { it.id }) { req ->
+                        RequestCard(
+                            request = req,
+                            onApprove = { viewModel.respond(req.id, true) },
+                            onDeny = { viewModel.respond(req.id, false) },
+                        )
+                    }
+                }
                 grouped[true]?.let { todayItems ->
                     item { SectionLabel("TODAY") }
                     item { AlertCard(todayItems) }
@@ -121,6 +134,48 @@ fun AlertsScreen(
                 grouped[false]?.let { earlier ->
                     item { SectionLabel("EARLIER") }
                     item { AlertCard(earlier) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RequestCard(
+    request: com.shahaabapps.core.model.TimeRequest,
+    onApprove: () -> Unit,
+    onDeny: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(22.dp),
+        color = AppTheme.colors.card,
+        border = BorderStroke(1.dp, AppTheme.colors.accent.copy(alpha = 0.5f)),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Your child is asking ${request.summary}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(AppTheme.colors.accent)
+                        .clickable(onClick = onApprove),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("Approve", color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Bold)
+                }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .border(BorderStroke(1.dp, AppTheme.colors.separator), RoundedCornerShape(14.dp))
+                        .clickable(onClick = onDeny),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("Not now", color = AppTheme.colors.secondaryLabel, fontWeight = FontWeight.Bold)
                 }
             }
         }

@@ -27,6 +27,9 @@ interface RequestRepository {
 
     /** Parent approves or denies a pending ask. */
     suspend fun respond(childId: String, requestId: String, approved: Boolean): AppResult<Unit>
+
+    /** Child withdraws a pending ask. */
+    suspend fun cancel(childId: String, requestId: String): AppResult<Unit>
 }
 
 class FirebaseRequestRepository @Inject constructor(
@@ -71,6 +74,9 @@ class FirebaseRequestRepository @Inject constructor(
             ).await()
             Unit
         }
+
+    override suspend fun cancel(childId: String, requestId: String): AppResult<Unit> =
+        runCatchingResult { requests(childId).document(requestId).delete().await(); Unit }
 
     private fun requests(childId: String) =
         firestore.collection("children").document(childId).collection("requests")

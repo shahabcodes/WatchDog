@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
@@ -59,7 +60,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import com.shahaabapps.watchdog.R
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -113,6 +118,15 @@ fun ParentShell(
     val loading by viewModel.loading.collectAsStateWithLifecycle()
     val linkState by viewModel.linkState.collectAsStateWithLifecycle()
 
+    // Show a one-time "connected" screen after the first child is paired during
+    // onboarding (we only arrived here from the empty/first-run state).
+    var justConnected by rememberSaveable { mutableStateOf(false) }
+    var sawEmpty by rememberSaveable { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(children) { if (children.isEmpty()) sawEmpty = true }
+    androidx.compose.runtime.LaunchedEffect(linkState) {
+        if (linkState is LinkState.Success && sawEmpty) justConnected = true
+    }
+
     // Ask for notification permission on first launch (Android 13+).
     val notifContext = androidx.compose.ui.platform.LocalContext.current
     val notificationLauncher = rememberLauncherForActivityResult(
@@ -136,6 +150,14 @@ fun ParentShell(
 
     if (children.isEmpty()) {
         AddChildScreen(profile = profile, linkState = linkState, viewModel = viewModel)
+        return
+    }
+
+    if (justConnected) {
+        ConnectedChildScreen(
+            childName = children.firstOrNull()?.profile?.name,
+            onContinue = { justConnected = false; sawEmpty = false; viewModel.clearLinkState() },
+        )
         return
     }
 
@@ -281,6 +303,60 @@ private fun ParentBottomBar(currentTab: String, onSelect: (Tab) -> Unit) {
     }
 }
 
+/** Lighthouse-styled "child connected" success screen after first pairing. */
+@Composable
+private fun ConnectedChildScreen(childName: String?, onContinue: () -> Unit) {
+    val navy = Color(0xFF00133F)
+    val gold = Color(0xFFF5B83D)
+    val subtitle = Color(0xFFC7D3F0)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(navy)
+            .statusBarsPadding()
+            .padding(start = 24.dp, end = 24.dp, top = 56.dp, bottom = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(22.dp),
+    ) {
+        Image(
+            painter = painterResource(R.drawable.ic_lighthouse_scene),
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxWidth().height(230.dp),
+        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("ALL SET", color = gold, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+            Text(
+                "${childName?.ifBlank { null } ?: "Your child"} is connected",
+                color = Color.White,
+                fontFamily = AppFonts.display,
+                fontSize = 30.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = (-0.7).sp,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                "Shield is running on their phone. You can adjust their rules any time.",
+                color = subtitle,
+                fontSize = 15.sp,
+                textAlign = TextAlign.Center,
+            )
+        }
+        Spacer(Modifier.weight(1f))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(gold)
+                .clickable(onClick = onContinue),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("Open the family map", color = navy, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
 @Composable
 private fun AddChildScreen(
     profile: UserProfile,
@@ -313,56 +389,88 @@ private fun AddChildScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(AppTheme.colors.groupedBackground)
-            .verticalScroll(rememberScrollState()),
-    ) {
-        if (onBack != null) {
-            SimpleHeader(title = "Add a child", onBack = onBack)
-        } else {
-            androidx.compose.foundation.layout.Spacer(Modifier.statusBarsPadding())
-        }
+    val navy = Color(0xFF00133F)
+    val gold = Color(0xFFF5B83D)
+    val subtitle = Color(0xFFC7D3F0)
+    Column(modifier = Modifier.fillMaxSize().background(navy)) {
+        // Navy header.
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg),
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 22.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            if (onBack != null) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .border(BorderStroke(1.5.dp, Color(0xFF3A5AA8)), CircleShape)
+                        .clickable(onClick = onBack),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    androidx.compose.material3.Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            } else {
+                Spacer(Modifier.height(8.dp))
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Pair your child's phone",
+                    fontFamily = AppFonts.display,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = (-0.7).sp,
+                    color = Color.White,
+                )
+                Text(
+                    "On the child's phone, open Shield and show its code. Point your camera at it.",
+                    fontSize = 14.sp,
+                    color = subtitle,
+                )
+            }
+        }
+        // White sheet.
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(Color.White)
+                .verticalScroll(rememberScrollState())
+                .padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(Spacing.md),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             if (linkState is LinkState.Error) {
-                Text(linkState.message, color = AppTheme.colors.destructive, textAlign = TextAlign.Center)
+                Text(linkState.message, color = Color(0xFFC1362B), textAlign = TextAlign.Center)
             }
-            Text(
-                "Pair your child's phone",
-                fontFamily = AppFonts.display,
-                fontSize = 30.sp,
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = (-0.8).sp,
-                color = MaterialTheme.colorScheme.onBackground,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(top = Spacing.lg),
-            )
-            Text(
-                "On the child's phone, open Shield and show its code. Point your camera at it.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = AppTheme.colors.secondaryLabel,
-                textAlign = TextAlign.Center,
-            )
             QrScanner(
                 hasCamera = hasCamera,
                 onRequestPermission = { cameraPermLauncher.launch(android.Manifest.permission.CAMERA) },
                 onDecoded = { viewModel.onQrScanned(it) },
-                modifier = Modifier.padding(top = Spacing.md),
+                modifier = Modifier.padding(top = Spacing.sm),
             )
-            Spacer(Modifier.weight(1f))
-            CupertinoPrimaryButton(
-                text = "Scan QR from gallery",
-                onClick = {
-                    imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(Spacing.md))
+            Spacer(Modifier.height(4.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(gold)
+                    .clickable {
+                        imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("Scan QR from gallery", color = navy, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }

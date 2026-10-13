@@ -44,7 +44,11 @@ fun CupertinoSwitch(
     )
 }
 
-/** A filled, full-width primary button: solid accent, bold white (Guardian). */
+/**
+ * The app's primary action: a filled, full-width gold button with deep-navy ink —
+ * the Lighthouse signature CTA, identical to the auth screens so sign-in and the
+ * dashboard read as one product.
+ */
 @Composable
 fun CupertinoPrimaryButton(
     text: String,
@@ -57,14 +61,14 @@ fun CupertinoPrimaryButton(
             .fillMaxWidth()
             .heightIn(min = 54.dp)
             .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
-            .background(if (enabled) AppTheme.colors.accent else AppTheme.colors.accent.copy(alpha = 0.4f))
+            .background(if (enabled) AppTheme.colors.gold else AppTheme.colors.gold.copy(alpha = 0.4f))
             .clickable(enabled = enabled, onClick = onClick)
             .padding(vertical = 15.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = text,
-            color = Color.White,
+            color = AppTheme.colors.onGold,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
         )

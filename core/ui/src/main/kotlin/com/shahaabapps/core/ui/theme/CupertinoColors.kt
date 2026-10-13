@@ -17,6 +17,10 @@ data class CupertinoColors(
     val secondaryLabel: Color,
     val separator: Color,
     val accent: Color,
+    /** Brand gold — the primary CTA fill (the app's signature action colour). */
+    val gold: Color,
+    /** Ink colour for text/icons sitting on [gold]. */
+    val onGold: Color,
     val gradient: List<Color>,
     val destructive: Color,
     val success: Color,
@@ -39,6 +43,8 @@ val LocalCupertinoColors = staticCompositionLocalOf {
         secondaryLabel = Palette.SecondaryLabelLight,
         separator = Palette.SeparatorLight,
         accent = AccentPalette.GUARDIAN.accentLight,
+        gold = Palette.Gold,
+        onGold = Palette.OnGold,
         gradient = AccentPalette.GUARDIAN.gradient,
         destructive = Palette.BlockedLight,
         success = Palette.SuccessLight,

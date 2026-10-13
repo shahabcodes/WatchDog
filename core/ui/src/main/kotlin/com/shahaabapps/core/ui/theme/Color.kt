@@ -25,6 +25,12 @@ internal object Palette {
     val SecondaryLabelDark = Color(0xFF9AA69F)
     val SeparatorDark = Color(0x22FFFFFF)
 
+    // Brand gold — the Lighthouse signature, used for the primary CTA across the
+    // whole app so sign-in and the dashboard feel like one product. Deep navy ink
+    // on top for high contrast (same as the auth screens).
+    val Gold = Color(0xFFF5B83D)
+    val OnGold = Color(0xFF00133F)
+
     // Semantic (palette-independent)
     val BlockedLight = Color(0xFFC1362B)
     val BlockedBgLight = Color(0xFFFBEAE8)

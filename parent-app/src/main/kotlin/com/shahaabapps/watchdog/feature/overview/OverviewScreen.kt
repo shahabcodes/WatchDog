@@ -659,8 +659,9 @@ private fun QuickActionTile(
     modifier: Modifier = Modifier,
     primary: Boolean = false,
 ) {
-    val bg = if (primary) Color(0xFF15171C) else AppTheme.colors.card
-    val fg = if (primary) Color.White else MaterialTheme.colorScheme.onBackground
+    val bg = if (primary) AppTheme.colors.accent else AppTheme.colors.card
+    val labelColor = if (primary) Color.White else MaterialTheme.colorScheme.onBackground
+    val iconTint = if (primary) AppTheme.colors.gold else AppTheme.colors.accent
     Column(
         modifier = modifier
             .height(80.dp)
@@ -671,8 +672,8 @@ private fun QuickActionTile(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = fg)
-        Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = fg, modifier = Modifier.padding(top = 8.dp))
+        Icon(icon, contentDescription = null, tint = iconTint)
+        Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = labelColor, modifier = Modifier.padding(top = 8.dp))
     }
 }
 
@@ -689,7 +690,7 @@ private fun ScreenTimeCard(totalMinutes: Int, yesterdayMinutes: Int?, weekMinute
                         fontFamily = com.shahaabapps.core.ui.theme.AppFonts.display,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 38.sp,
-                        color = MaterialTheme.colorScheme.onBackground,
+                        color = AppTheme.colors.accent,
                     )
                     yesterdayMinutes?.let { y ->
                         val diff = totalMinutes - y
@@ -779,9 +780,9 @@ private fun DashSection(title: String, content: @Composable () -> Unit) {
         Text(
             text = title.uppercase(),
             style = MaterialTheme.typography.labelMedium,
-            color = AppTheme.colors.secondaryLabel,
+            color = AppTheme.colors.accent,
             fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
+            fontWeight = FontWeight.Bold,
             letterSpacing = 0.5.sp,
             modifier = Modifier.padding(start = Spacing.xs),
         )

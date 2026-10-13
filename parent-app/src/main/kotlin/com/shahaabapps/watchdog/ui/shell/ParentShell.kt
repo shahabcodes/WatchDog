@@ -271,8 +271,8 @@ fun ParentShell(
 
 @Composable
 private fun ParentBottomBar(currentTab: String, onSelect: (Tab) -> Unit) {
-    // Floating dark pill with a white chip on the active tab (prototype nav bar).
-    val barColor = Color(0xFF15171C)
+    // Floating navy pill with a gold chip on the active tab (sign-in palette).
+    val barColor = Color(0xFF00133F)
     Surface(
         shape = RoundedCornerShape(34.dp),
         color = barColor,
@@ -294,7 +294,7 @@ private fun ParentBottomBar(currentTab: String, onSelect: (Tab) -> Unit) {
                     modifier = Modifier
                         .height(48.dp)
                         .clip(RoundedCornerShape(24.dp))
-                        .background(if (selected) Color.White else Color.Transparent)
+                        .background(if (selected) Color(0xFFF5B83D) else Color.Transparent)
                         .clickable { onSelect(tab) }
                         .padding(horizontal = if (selected) 18.dp else 12.dp),
                 ) {
@@ -302,7 +302,7 @@ private fun ParentBottomBar(currentTab: String, onSelect: (Tab) -> Unit) {
                         tab.label,
                         fontSize = 14.sp,
                         fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-                        color = if (selected) Color(0xFF15171C) else Color(0xFFC3C6CE),
+                        color = if (selected) Color(0xFF00133F) else Color(0xFFC7D3F0),
                     )
                 }
             }
@@ -499,7 +499,7 @@ private fun QrScanner(
         modifier = modifier
             .size(260.dp)
             .clip(RoundedCornerShape(28.dp))
-            .background(Color(0xFF15171C)),
+            .background(Color(0xFF00133F)),
         contentAlignment = Alignment.Center,
     ) {
         if (hasCamera) {

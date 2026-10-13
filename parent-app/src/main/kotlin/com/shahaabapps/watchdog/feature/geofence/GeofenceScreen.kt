@@ -679,7 +679,7 @@ private fun ModeSegment(label: String, selected: Boolean, onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .clip(androidx.compose.foundation.shape.RoundedCornerShape(50))
-            .background(if (selected) Color(0xFF15171C) else Color.Transparent)
+            .background(if (selected) AppTheme.colors.accent else Color.Transparent)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
@@ -1162,7 +1162,7 @@ private fun HistorySheet(
             ) {
                 Surface(
                     shape = CircleShape,
-                    color = Color(0xFF15171C),
+                    color = AppTheme.colors.accent,
                     modifier = Modifier.size(40.dp).clickable(enabled = hasTrail, onClick = onPlayPause),
                 ) {
                     Box(contentAlignment = Alignment.Center) {

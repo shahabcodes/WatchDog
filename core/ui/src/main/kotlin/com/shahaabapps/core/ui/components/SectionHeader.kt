@@ -23,9 +23,9 @@ fun SectionHeader(
     Text(
         text = text.uppercase(),
         style = MaterialTheme.typography.labelMedium,
-        color = AppTheme.colors.secondaryLabel,
+        color = AppTheme.colors.accent,
         fontSize = 12.sp,
-        fontWeight = FontWeight.Medium,
+        fontWeight = FontWeight.Bold,
         letterSpacing = 0.5.sp,
         modifier = modifier.padding(start = Spacing.xs, top = 18.dp, bottom = Spacing.sm),
     )

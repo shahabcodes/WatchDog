@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The two gold beams, same viewBox as ic_lighthouse_scene so they overlay exactly.
+     Full alpha here; the Welcome screen pulses the layer's alpha to glow and dim. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="300dp"
+    android:height="263dp"
+    android:viewportWidth="300"
+    android:viewportHeight="263">
+    <path android:fillColor="#F5B83D" android:pathData="M150,89 L0,52 L0,126 Z" />
+    <path android:fillColor="#F5B83D" android:pathData="M150,89 L300,52 L300,126 Z" />
+</vector>

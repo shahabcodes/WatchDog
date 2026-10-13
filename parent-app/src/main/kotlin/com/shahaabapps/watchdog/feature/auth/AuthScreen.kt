@@ -1,6 +1,7 @@
 package com.shahaabapps.watchdog.feature.auth
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -93,6 +94,55 @@ fun AuthFlow(viewModel: AuthViewModel = hiltViewModel()) {
     }
 }
 
+/**
+ * The lighthouse scene with its two gold beams glowing and dimming, matching the
+ * prototype's slow pulse (opacity ~0.18↔0.42 over ~3.2s). The beams live in their
+ * own drawable overlaid exactly on the static scene so only they animate. A still,
+ * mid-glow frame is shown when the system has animations disabled.
+ */
+@Composable
+private fun LighthouseScene(modifier: Modifier = Modifier) {
+    val reduceMotion = remember {
+        try {
+            android.animation.ValueAnimator.getDurationScale() == 0f
+        } catch (_: Throwable) {
+            false
+        }
+    }
+    val beamAlpha = if (reduceMotion) {
+        0.32f
+    } else {
+        val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "beam")
+        transition.animateFloat(
+            initialValue = 0.18f,
+            targetValue = 0.42f,
+            animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                animation = androidx.compose.animation.core.tween(
+                    durationMillis = 1600,
+                    easing = androidx.compose.animation.core.FastOutSlowInEasing,
+                ),
+                repeatMode = androidx.compose.animation.core.RepeatMode.Reverse,
+            ),
+            label = "beamAlpha",
+        ).value
+    }
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        androidx.compose.foundation.Image(
+            painter = painterResource(R.drawable.ic_lighthouse_scene),
+            contentDescription = "A lighthouse shining over the sea at night",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize(),
+        )
+        androidx.compose.foundation.Image(
+            painter = painterResource(R.drawable.ic_lighthouse_beams),
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            alpha = beamAlpha,
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
+}
+
 @Composable
 private fun WelcomeScreen(onCreateAccount: () -> Unit, onSignIn: () -> Unit) {
     Column(
@@ -104,12 +154,7 @@ private fun WelcomeScreen(onCreateAccount: () -> Unit, onSignIn: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        androidx.compose.foundation.Image(
-            painter = painterResource(R.drawable.ic_lighthouse_scene),
-            contentDescription = "A lighthouse shining over the sea at night",
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxWidth().height(290.dp),
-        )
+        LighthouseScene(modifier = Modifier.fillMaxWidth().height(290.dp))
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("WATCH DOG", color = GOLD, fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
             Text(

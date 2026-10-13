@@ -85,21 +85,10 @@ fun ProtectedScreen(
                     Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = Color.White.copy(alpha = 0.9f))
                 }
             }
-            Box(
-                modifier = Modifier
-                    .padding(top = Spacing.sm)
-                    .size(84.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.14f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Shield,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(42.dp),
-                )
-            }
+            com.shahaabapps.shield.ui.ShieldMark(
+                modifier = Modifier.padding(top = Spacing.sm),
+                size = 84.dp,
+            )
             Text(
                 text = "You're protected",
                 style = MaterialTheme.typography.headlineLarge,
@@ -126,7 +115,7 @@ fun ProtectedScreen(
                 .fillMaxWidth()
                 .weight(1f)
                 .clip(RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp))
-                .background(AppTheme.colors.groupedBackground)
+                .background(Color(0xFFFFF6E0))
                 .verticalScroll(rememberScrollState())
                 .padding(start = Spacing.lg, end = Spacing.lg, top = Spacing.lg, bottom = Spacing.xl),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),

@@ -29,6 +29,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Checkbox
@@ -244,13 +245,16 @@ fun AuthScreen(
                 .padding(start = 24.dp, end = 24.dp, top = 26.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            FieldLabel("Email")
-            LhField(
-                value = state.email,
-                onValueChange = viewModel::onEmailChange,
-                placeholder = "you@example.com",
-                keyboardType = KeyboardType.Email,
-            )
+            val forgotSent = state.isForgot && state.infoMessage != null
+            if (!forgotSent) {
+                FieldLabel("Email")
+                LhField(
+                    value = state.email,
+                    onValueChange = viewModel::onEmailChange,
+                    placeholder = "you@example.com",
+                    keyboardType = KeyboardType.Email,
+                )
+            }
 
             AnimatedVisibility(!state.isForgot, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -308,29 +312,53 @@ fun AuthScreen(
             state.errorMessage?.let {
                 Text(it, color = Color(0xFFC1362B), fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
             }
-            state.infoMessage?.let {
-                Box(
+            if (forgotSent) {
+                // "Check your inbox" confirmation card.
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Color(0xFFE4F1EA))
-                        .padding(14.dp),
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color(0xFFEEF1F8))
+                        .padding(28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Text(it, color = Color(0xFF145C3B), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Icon(Icons.Filled.Email, contentDescription = null, tint = NAVY, modifier = Modifier.size(56.dp))
+                    Text("Check your inbox", color = NAVY, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        state.infoMessage ?: "If an account exists for that email, a reset link is on its way.",
+                        color = LABEL,
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            } else {
+                state.infoMessage?.let {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xFFE4F1EA))
+                            .padding(14.dp),
+                    ) {
+                        Text(it, color = Color(0xFF145C3B), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
 
-            val canSubmit = state.canSubmit && (!state.isSignUp || agreed)
-            GoldButton(
-                text = when (state.mode) {
-                    AuthMode.SIGN_IN -> "Sign in"
-                    AuthMode.SIGN_UP -> "Create account"
-                    AuthMode.FORGOT -> "Send reset link"
-                },
-                enabled = canSubmit,
-                loading = state.isSubmitting,
-                onClick = viewModel::submit,
-            )
+            if (!forgotSent) {
+                val canSubmit = state.canSubmit && (!state.isSignUp || agreed)
+                GoldButton(
+                    text = when (state.mode) {
+                        AuthMode.SIGN_IN -> "Sign in"
+                        AuthMode.SIGN_UP -> "Create account"
+                        AuthMode.FORGOT -> "Send reset link"
+                    },
+                    enabled = canSubmit,
+                    loading = state.isSubmitting,
+                    onClick = viewModel::submit,
+                )
+            }
 
             Spacer(Modifier.weight(1f))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {

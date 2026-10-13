@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="300dp"
+    android:height="263dp"
+    android:viewportWidth="300"
+    android:viewportHeight="263">
+    <!-- Beams -->
+    <path android:fillColor="#F5B83D" android:fillAlpha="0.32" android:pathData="M150,89 L0,52 L0,126 Z" />
+    <path android:fillColor="#F5B83D" android:fillAlpha="0.32" android:pathData="M150,89 L300,52 L300,126 Z" />
+    <!-- Sea -->
+    <path android:fillColor="#012169" android:pathData="M0,240 C40,232 70,246 110,238 C150,230 190,246 230,238 C260,232 280,240 300,236 V263 H0 Z" />
+    <path android:fillColor="#0A2E80" android:pathData="M80,248 C96,222 204,222 220,248 Z" />
+    <!-- Tower -->
+    <path android:fillColor="#FFFFFF" android:pathData="M132,110 L168,110 L178,236 L122,236 Z" />
+    <path android:fillColor="#012169" android:pathData="M128.8,150 L171.2,150 L172.9,172 L127.1,172 Z" />
+    <path android:fillColor="#012169" android:pathData="M125.3,194 L174.7,194 L176.2,213 L123.8,213 Z" />
+    <path android:fillColor="#012169" android:pathData="M141,216 h18 v20 h-18 z" />
+    <!-- Gallery deck -->
+    <path android:fillColor="#FFFFFF" android:pathData="M124,102 h52 v8 h-52 z" />
+    <!-- Lamp room -->
+    <path android:fillColor="#F5B83D" android:pathData="M136,76 h28 v26 h-28 z" />
+    <path android:strokeColor="#E09A1A" android:strokeWidth="2" android:pathData="M145,76 V102 M155,76 V102" />
+    <!-- Roof -->
+    <path android:fillColor="#FFFFFF" android:pathData="M130,78 L150,56 L170,78 Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M146,52 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 z" />
+</vector>

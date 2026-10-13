@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,11 +42,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -70,9 +73,85 @@ private val FIELD_BG = Color(0xFFF7F9FD)
 private val FIELD_BORDER = Color(0xFFD4DDF0)
 private val LABEL = Color(0xFF4A5878)
 
+/**
+ * Signed-out flow: the Welcome landing screen first, then the sign in / sign up
+ * / reset form. Welcome is the entry; the form's back button returns to it.
+ */
+@Composable
+fun AuthFlow(viewModel: AuthViewModel = hiltViewModel()) {
+    var showWelcome by rememberSaveable { mutableStateOf(true) }
+    if (showWelcome) {
+        WelcomeScreen(
+            onCreateAccount = { viewModel.setMode(AuthMode.SIGN_UP); showWelcome = false },
+            onSignIn = { viewModel.setMode(AuthMode.SIGN_IN); showWelcome = false },
+        )
+    } else {
+        AuthScreen(onBack = { showWelcome = true }, viewModel = viewModel)
+    }
+}
+
+@Composable
+private fun WelcomeScreen(onCreateAccount: () -> Unit, onSignIn: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(NAVY_DEEP)
+            .statusBarsPadding()
+            .padding(start = 24.dp, end = 24.dp, top = 32.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        androidx.compose.foundation.Image(
+            painter = painterResource(R.drawable.ic_lighthouse_scene),
+            contentDescription = "A lighthouse shining over the sea at night",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxWidth().height(290.dp),
+        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("WATCH DOG", color = GOLD, fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+            Text(
+                "A guiding light\nfor your family.",
+                color = Color.White,
+                fontFamily = AppFonts.display,
+                fontSize = 32.sp,
+                fontWeight = FontWeight.ExtraBold,
+                lineHeight = 36.sp,
+                letterSpacing = (-0.8).sp,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                "See where they are, guide their screen time, and know they got home safe.",
+                color = SUBTITLE,
+                fontSize = 15.sp,
+                textAlign = TextAlign.Center,
+            )
+        }
+        Spacer(Modifier.weight(1f))
+        GoldButton(text = "Create an account", enabled = true, loading = false, onClick = onCreateAccount)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .border(BorderStroke(1.5.dp, NAVY_BORDER), RoundedCornerShape(16.dp))
+                .clickable(onClick = onSignIn),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("I already have an account", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        }
+        Text(
+            "Setting up a child's phone? Open the Shield app on it.",
+            color = SUBTITLE,
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
 @Composable
 fun AuthScreen(
     modifier: Modifier = Modifier,
+    onBack: () -> Unit = {},
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -93,43 +172,40 @@ fun AuthScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                if (state.mode != AuthMode.SIGN_IN) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(Color.Transparent)
-                            .clickable { viewModel.setMode(AuthMode.SIGN_IN) },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back",
-                                tint = Color.White,
-                            )
-                        }
-                    }
-                }
-                Spacer(Modifier.weight(1f))
-                // Lighthouse mark.
                 Box(
                     modifier = Modifier
-                        .size(60.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(NAVY),
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(Color.Transparent)
+                        .border(BorderStroke(1.5.dp, NAVY_BORDER), CircleShape)
+                        .clickable {
+                            if (state.mode == AuthMode.FORGOT) viewModel.setMode(AuthMode.SIGN_IN) else onBack()
+                        },
                     contentAlignment = Alignment.Center,
                 ) {
-                    androidx.compose.foundation.Image(
-                        painter = painterResource(R.drawable.ic_lighthouse),
-                        contentDescription = "Watch Dog",
-                        modifier = Modifier.size(54.dp),
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp),
                     )
+                }
+                Spacer(Modifier.weight(1f))
+                // Lighthouse mark on the sign-in screen.
+                if (state.mode == AuthMode.SIGN_IN) {
+                    Box(
+                        modifier = Modifier
+                            .size(60.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(NAVY),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        androidx.compose.foundation.Image(
+                            painter = painterResource(R.drawable.ic_lighthouse),
+                            contentDescription = "Watch Dog",
+                            modifier = Modifier.size(54.dp),
+                        )
+                    }
                 }
             }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

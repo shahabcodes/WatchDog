@@ -16,7 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shahaabapps.core.ui.theme.AppTheme
-import com.shahaabapps.watchdog.feature.auth.AuthScreen
+import com.shahaabapps.watchdog.feature.auth.AuthFlow
 import com.shahaabapps.watchdog.feature.profile.ProfileSetupScreen
 import com.shahaabapps.watchdog.ui.ParentAppState
 import com.shahaabapps.watchdog.ui.ParentAppViewModel
@@ -56,7 +56,7 @@ private fun ParentAppRoot(
 
     when (val current = state) {
         ParentAppState.Loading -> LoadingScreen()
-        ParentAppState.SignedOut -> AuthScreen()
+        ParentAppState.SignedOut -> AuthFlow()
         is ParentAppState.NeedsProfile -> ProfileSetupScreen(onSaved = { /* state reacts automatically */ })
         is ParentAppState.Ready -> {
             androidx.compose.runtime.LaunchedEffect(current.profile.id) {

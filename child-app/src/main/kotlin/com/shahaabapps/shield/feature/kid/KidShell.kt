@@ -21,7 +21,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.BatteryStd
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreTime
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Schedule
@@ -338,6 +343,17 @@ private fun KidMe(child: ChildAccount, onSettings: () -> Unit) {
                 )
             }
         }
+        Text("WHAT YOUR PARENT CAN SEE", color = MUTED, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        Column(
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(CARD).padding(horizontal = 14.dp),
+        ) {
+            SeeRow(Icons.Filled.LocationOn, "Where this phone is", "Live location and today's places")
+            SeeRow(Icons.Filled.Apps, "Apps and screen time", "Which apps you use, and for how long")
+            SeeRow(Icons.Filled.Image, "Your screen, when asked", "A screenshot if your parent requests one")
+            SeeRow(Icons.Filled.BatteryStd, "Battery level", "So they know if your phone is low", last = true)
+        }
+        Text("They can't read your messages or see your photos.", color = MUTED, fontSize = 12.sp)
+
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(CARD).clickable(onClick = onSettings).padding(16.dp),
@@ -352,6 +368,21 @@ private fun KidMe(child: ChildAccount, onSettings: () -> Unit) {
         BatterySetupCard()
         AlertsSetupCard()
         ProtectionSetupCard()
+    }
+}
+
+@Composable
+private fun SeeRow(icon: ImageVector, title: String, detail: String, last: Boolean = false) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = NAVY2, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Column {
+            Text(title, color = NAVY, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Text(detail, color = MUTED, fontSize = 12.sp)
+        }
     }
 }
 

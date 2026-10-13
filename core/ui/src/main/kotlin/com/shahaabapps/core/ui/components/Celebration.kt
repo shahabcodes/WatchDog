@@ -69,7 +69,7 @@ fun CelebrationHost(content: @Composable () -> Unit) {
     var seed by remember { mutableStateOf(0) }
     val accent = AppTheme.colors.accent
     val destructive = AppTheme.colors.destructive
-    val gradient = AppTheme.palette.gradient
+    val gradient = AppTheme.colors.gradient
     val reducedMotion = rememberReducedMotion()
 
     LaunchedEffect(reducedMotion) {

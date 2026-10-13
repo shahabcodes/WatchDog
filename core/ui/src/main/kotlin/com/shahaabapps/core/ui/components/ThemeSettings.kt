@@ -54,36 +54,6 @@ fun ThemeSettingsSection(
             label = { it.name.lowercase().replaceFirstChar { c -> c.uppercase() } },
             onSelect = onModeChange,
         )
-
-        Text(
-            text = "ACCENT",
-            style = MaterialTheme.typography.bodySmall,
-            color = AppTheme.colors.secondaryLabel,
-            modifier = Modifier.padding(top = Spacing.sm),
-        )
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(Spacing.md),
-            verticalArrangement = Arrangement.spacedBy(Spacing.md),
-        ) {
-            AccentPalette.entries.filter { !it.isCountry }.forEach { option ->
-                AccentSwatch(palette = option, selected = option == palette, onClick = { onPaletteChange(option) })
-            }
-        }
-
-        Text(
-            text = "COUNTRY THEMES",
-            style = MaterialTheme.typography.bodySmall,
-            color = AppTheme.colors.secondaryLabel,
-            modifier = Modifier.padding(top = Spacing.sm),
-        )
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(Spacing.md),
-            verticalArrangement = Arrangement.spacedBy(Spacing.md),
-        ) {
-            AccentPalette.entries.filter { it.isCountry }.forEach { option ->
-                AccentSwatch(palette = option, selected = option == palette, onClick = { onPaletteChange(option) })
-            }
-        }
     }
 }
 
@@ -134,32 +104,3 @@ private fun <T> SegmentedControl(
     }
 }
 
-@Composable
-private fun AccentSwatch(
-    palette: AccentPalette,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(CircleShape)
-                .background(Brush.linearGradient(palette.gradient))
-                .then(
-                    if (selected) {
-                        Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
-                    } else {
-                        Modifier
-                    },
-                )
-                .clickable(onClick = onClick),
-        )
-        Text(
-            text = palette.label,
-            style = MaterialTheme.typography.bodySmall,
-            color = AppTheme.colors.secondaryLabel,
-            modifier = Modifier.padding(top = 4.dp),
-        )
-    }
-}

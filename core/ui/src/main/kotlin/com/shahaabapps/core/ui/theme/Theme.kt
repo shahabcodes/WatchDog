@@ -14,43 +14,55 @@ import androidx.compose.ui.text.TextStyle
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 /** The currently active accent palette, for UI that adapts to it (e.g. flags). */
-val LocalAccentPalette = staticCompositionLocalOf { AccentPalette.GUARDIAN }
+val LocalAccentPalette = staticCompositionLocalOf { AccentPalette.NEW_ZEALAND }
 
-private fun lightColors(accent: Color, palette: AccentPalette) = lightColorScheme(
-    primary = accent,
+// The one fixed brand palette — the sign-in / sign-up (Lighthouse) colours, used
+// everywhere so the whole app is navy + gold. The selectable accent is ignored.
+private val LhNavy = Color(0xFF012169)        // accent / primary (light)
+private val LhNavyOnDark = Color(0xFF86A6E8)  // accent / primary on dark surfaces
+private val LhNavyDeep = Color(0xFF00133F)
+private val LhGradient = listOf(Color(0xFF1E4FB0), Color(0xFF012169), Color(0xFF00133F))
+private val LhBackgroundLight = Color(0xFFEEF1F8)
+private val LhBackgroundDark = Color(0xFF080B14)
+private val LhVariantLight = Color(0xFFD4DDF0)
+private val LhVariantDark = Color(0xFF121826)
+private val LhSecondaryLight = Color(0xFF4A5878)
+
+private fun lightColors() = lightColorScheme(
+    primary = LhNavy,
     onPrimary = Color.White,
-    secondary = accent,
+    secondary = LhNavy,
     error = Palette.BlockedLight,
-    background = palette.backgroundLight,
+    background = LhBackgroundLight,
     onBackground = Palette.LabelLight,
     surface = Palette.SurfaceLight,
     onSurface = Palette.LabelLight,
-    surfaceVariant = palette.variantLight,
+    surfaceVariant = LhVariantLight,
     outline = Palette.OutlineLight,
 )
 
-private fun darkColors(accent: Color, palette: AccentPalette) = darkColorScheme(
-    primary = accent,
-    onPrimary = Color(0xFF0B1F16),
-    secondary = accent,
+private fun darkColors() = darkColorScheme(
+    primary = LhNavyOnDark,
+    onPrimary = LhNavyDeep,
+    secondary = LhNavyOnDark,
     error = Palette.BlockedDark,
-    background = palette.backgroundDark,
+    background = LhBackgroundDark,
     onBackground = Palette.LabelDark,
     surface = Palette.SurfaceDark,
     onSurface = Palette.LabelDark,
-    surfaceVariant = palette.variantDark,
+    surfaceVariant = LhVariantDark,
     outline = Palette.OutlineDark,
 )
 
-private fun cupertinoColors(dark: Boolean, palette: AccentPalette) = CupertinoColors(
-    groupedBackground = if (dark) palette.backgroundDark else palette.backgroundLight,
+private fun cupertinoColors(dark: Boolean) = CupertinoColors(
+    groupedBackground = if (dark) LhBackgroundDark else LhBackgroundLight,
     card = if (dark) Palette.SurfaceDark else Palette.SurfaceLight,
-    secondaryLabel = if (dark) Palette.SecondaryLabelDark else Palette.SecondaryLabelLight,
+    secondaryLabel = if (dark) Palette.SecondaryLabelDark else LhSecondaryLight,
     separator = if (dark) Palette.SeparatorDark else Palette.SeparatorLight,
-    accent = if (dark) palette.accentDark else palette.accentLight,
+    accent = if (dark) LhNavyOnDark else LhNavy,
     gold = Palette.Gold,
     onGold = Palette.OnGold,
-    gradient = palette.gradient,
+    gradient = LhGradient,
     destructive = if (dark) Palette.BlockedDark else Palette.BlockedLight,
     success = if (dark) Palette.SuccessDark else Palette.SuccessLight,
     blocked = if (dark) Palette.BlockedDark else Palette.BlockedLight,
@@ -75,14 +87,13 @@ fun AppTheme(
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
-    val accent = if (dark) accentPalette.accentDark else accentPalette.accentLight
 
     CompositionLocalProvider(
-        LocalCupertinoColors provides cupertinoColors(dark, accentPalette),
+        LocalCupertinoColors provides cupertinoColors(dark),
         LocalAccentPalette provides accentPalette,
     ) {
         MaterialTheme(
-            colorScheme = if (dark) darkColors(accent, accentPalette) else lightColors(accent, accentPalette),
+            colorScheme = if (dark) darkColors() else lightColors(),
             typography = CupertinoTypography,
         ) {
             // Make Figtree the default for plain Text() that sets only size/weight

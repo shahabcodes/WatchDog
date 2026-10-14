@@ -301,7 +301,10 @@ fun GeofenceScreen(
             val remaining = (1f - progress.value).coerceAtLeast(0f)
             val base1x = (rangeMs / 100f).coerceIn(12_000f, 240_000f)
             val durationMs = (base1x * remaining / speed).toInt().coerceAtLeast(1)
-            runCatching { progress.animateTo(1f, tween(durationMs, easing = LinearEasing)) }
+            // No runCatching: a speed change cancels this effect, and swallowing
+            // the CancellationException here would wrongly pause playback. Let it
+            // propagate; `playing = false` then runs only on a natural finish.
+            progress.animateTo(1f, tween(durationMs, easing = LinearEasing))
             playing = false
         }
     }

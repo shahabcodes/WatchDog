@@ -27,6 +27,28 @@ object GeoMath {
     }
 
     /**
+     * Ray-casting point-in-polygon test (planar in lat/lon — accurate enough for
+     * the small areas geofences cover). [points] is the polygon's outline.
+     */
+    fun containsPoint(points: List<GeoPoint>, lat: Double, lon: Double): Boolean {
+        if (points.size < 3) return false
+        var inside = false
+        var j = points.size - 1
+        for (i in points.indices) {
+            val yi = points[i].latitude
+            val xi = points[i].longitude
+            val yj = points[j].latitude
+            val xj = points[j].longitude
+            val denom = (yj - yi).let { if (it == 0.0) 1e-12 else it }
+            if ((yi > lat) != (yj > lat) && lon < (xj - xi) * (lat - yi) / denom + xi) {
+                inside = !inside
+            }
+            j = i
+        }
+        return inside
+    }
+
+    /**
      * The centroid of a set of points and the smallest radius (metres) covering
      * all of them — used as a polygon's enforceable bounding circle.
      */

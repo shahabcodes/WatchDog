@@ -7,6 +7,7 @@ import com.shahaabapps.core.firebase.device.DeviceRepository
 import com.shahaabapps.core.firebase.geofence.GeofenceRepository
 import com.shahaabapps.core.model.GeoMath
 import com.shahaabapps.core.model.Geofence
+import com.shahaabapps.core.model.GeofenceShape
 import com.shahaabapps.core.model.TrailPoint
 import com.shahaabapps.core.model.TravelStop
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -131,10 +132,24 @@ class TravelHistoryViewModel @Inject constructor(
 
     private fun minuteOfDay(z: ZonedDateTime): Int = z.hour * 60 + z.minute
 
-    private fun placeFor(lat: Double, lon: Double, geofences: List<Geofence>): Geofence? =
-        geofences
+    private fun placeFor(lat: Double, lon: Double, geofences: List<Geofence>): Geofence? {
+        // A drawn area the stop falls inside wins outright (shape-accurate).
+        geofences.firstOrNull { g ->
+            g.shape == GeofenceShape.POLYGON && g.points.size >= 3 &&
+                GeoMath.containsPoint(g.points, lat, lon)
+        }?.let { return it }
+        // Otherwise the nearest place whose centre is within its radius plus a
+        // GPS-forgiving margin (the recorded stop point carries drift and sits at
+        // the dwell-cluster anchor, not the exact centre).
+        return geofences
             .map { it to GeoMath.distanceMeters(lat, lon, it.latitude, it.longitude) }
-            .filter { (g, d) -> d <= g.radiusMeters + 40 }
+            .filter { (g, d) -> d <= g.radiusMeters + MATCH_MARGIN_METERS }
             .minByOrNull { it.second }
             ?.first
+    }
+
+    private companion object {
+        /** Extra slack beyond a place's radius when labelling a stop (metres). */
+        const val MATCH_MARGIN_METERS = 80.0
+    }
 }

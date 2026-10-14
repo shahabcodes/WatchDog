@@ -23,14 +23,18 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.BatteryStd
+import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreTime
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -149,6 +153,13 @@ private fun KidHome(child: ChildAccount, state: KidUiState, onSeeApps: () -> Uni
     val askVm: AskViewModel = hiltViewModel()
     val pendingAsk by askVm.pending.collectAsStateWithLifecycle()
     val activeFocus = activeFocusLabel(state.focus)
+    val context = LocalContext.current
+    val battery = remember {
+        (context.getSystemService(android.content.Context.BATTERY_SERVICE) as? android.os.BatteryManager)
+            ?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
+            ?.takeIf { it in 1..100 } ?: 0
+    }
+    val appsUsed = state.apps.count { it.minutes > 0 }
 
     Column(
         modifier = Modifier
@@ -199,19 +210,29 @@ private fun KidHome(child: ChildAccount, state: KidUiState, onSeeApps: () -> Uni
             }
         }
 
-        // Screen time card with a ring.
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
+        // Today card: screen-time ring + quick stats.
+        Column(
             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(CARD).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            ScreenTimeRing(usedMinutes = state.totalMinutes, capMinutes = state.apps.mapNotNull { it.limitMinutes }.sum())
-            Spacer(Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Screen time", color = NAVY, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                Text("${formatDur(state.totalMinutes)} used today.", color = MUTED, fontSize = 13.sp)
-                Text("See my apps", color = NAVY2, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.clickable(onClick = onSeeApps).padding(vertical = 2.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ScreenTimeRing(usedMinutes = state.totalMinutes, capMinutes = state.apps.mapNotNull { it.limitMinutes }.sum())
+                Spacer(Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Screen time today", color = NAVY, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text("${formatDur(state.totalMinutes)} used.", color = MUTED, fontSize = 13.sp)
+                    Text("See my apps", color = NAVY2, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.clickable(onClick = onSeeApps).padding(vertical = 2.dp))
+                }
+            }
+            Row(modifier = Modifier.fillMaxWidth()) {
+                MiniStat(if (appsUsed > 0) "$appsUsed" else "0", if (appsUsed == 1) "app today" else "apps today", Modifier.weight(1f))
+                MiniStat(if (battery > 0) "$battery%" else "—", "battery", Modifier.weight(1f))
+                MiniStat("${state.apps.count { it.limitMinutes != null }}", "with limits", Modifier.weight(1f))
             }
         }
+
+        // Downtime schedule (bedtime / school) so the day is predictable.
+        ScheduleCard(focus = state.focus)
 
         // Ask for more time — only when a time limit actually applies.
         val hasTimeLimit = state.apps.any { it.limitMinutes != null } ||
@@ -262,7 +283,20 @@ private fun KidTime(state: KidUiState) {
         if (!week) {
             Text(formatDur(state.totalMinutes), color = NAVY, fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1).sp)
             if (state.apps.isEmpty()) {
-                Text("No app usage recorded today yet.", color = MUTED, fontSize = 14.sp)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(CARD).padding(vertical = 32.dp, horizontal = 16.dp),
+                ) {
+                    Box(
+                        modifier = Modifier.size(56.dp).clip(CircleShape).background(CHIP),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Filled.HourglassEmpty, contentDescription = null, tint = NAVY2, modifier = Modifier.size(28.dp))
+                    }
+                    Text("Nothing tracked yet today", color = NAVY, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text("Your apps show up here as you use them.", color = MUTED, fontSize = 13.sp)
+                }
             }
             state.apps.forEach { app ->
                 Row(
@@ -369,6 +403,70 @@ private fun KidMe(child: ChildAccount, onSettings: () -> Unit) {
         BatterySetupCard()
         AlertsSetupCard()
         ProtectionSetupCard()
+    }
+}
+
+@Composable
+private fun MiniStat(value: String, label: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, color = NAVY, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+        Text(label, color = MUTED, fontSize = 11.sp)
+    }
+}
+
+/** Shows the child's scheduled downtime (bedtime / school) so the day is predictable. */
+@Composable
+private fun ScheduleCard(focus: com.shahaabapps.core.model.FocusSettings) {
+    Column(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(CARD).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("YOUR DOWNTIME", color = MUTED, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        if (!focus.bedtime.enabled && !focus.school.enabled) {
+            Text("No scheduled downtime yet.", color = MUTED, fontSize = 13.sp)
+        } else {
+            if (focus.school.enabled) {
+                ScheduleRow(Icons.Filled.School, "School", focus.school.startMinute, focus.school.endMinute, focus.school.days)
+            }
+            if (focus.bedtime.enabled) {
+                ScheduleRow(Icons.Filled.Bedtime, "Bedtime", focus.bedtime.startMinute, focus.bedtime.endMinute, focus.bedtime.days)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScheduleRow(icon: ImageVector, name: String, startMinute: Int, endMinute: Int, days: Set<Int>) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(CHIP),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = NAVY2, modifier = Modifier.size(18.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(name, color = NAVY, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Text("${clock(startMinute)} – ${clock(endMinute)} · ${daysLabel(days)}", color = MUTED, fontSize = 12.sp)
+        }
+    }
+}
+
+private fun clock(minuteOfDay: Int): String {
+    val h = (minuteOfDay / 60) % 24
+    val m = minuteOfDay % 60
+    val ampm = if (h < 12) "AM" else "PM"
+    val h12 = when { h == 0 -> 12; h > 12 -> h - 12; else -> h }
+    return "%d:%02d %s".format(h12, m, ampm)
+}
+
+private fun daysLabel(days: Set<Int>): String = when {
+    days.size == 7 -> "Every day"
+    days == setOf(1, 2, 3, 4, 5) -> "Weekdays"
+    days == setOf(6, 7) -> "Weekends"
+    else -> {
+        val names = listOf("", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+        days.sorted().joinToString(", ") { names.getOrElse(it) { "" } }
     }
 }
 

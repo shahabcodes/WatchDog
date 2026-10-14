@@ -21,6 +21,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -73,6 +74,21 @@ class OpenFreeMapController internal constructor(
 
     fun animateTo(lat: Double, lng: Double, zoom: Double, durationMs: Int = 700) {
         map?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(lat, lng), zoom), durationMs)
+    }
+
+    /** Frame all [points] (route + stops) within the viewport with padding. */
+    fun fitBounds(points: List<Pair<Double, Double>>, paddingPx: Int = 140, durationMs: Int = 700) {
+        val m = map ?: return
+        if (points.isEmpty()) return
+        if (points.size == 1) {
+            animateTo(points[0].first, points[0].second, 16.5, durationMs)
+            return
+        }
+        val builder = LatLngBounds.Builder()
+        points.forEach { builder.include(LatLng(it.first, it.second)) }
+        runCatching {
+            m.animateCamera(CameraUpdateFactory.newLatLngBounds(builder.build(), paddingPx), durationMs)
+        }
     }
 
     /** Screen pixel position of a coordinate, or null before the map is ready. */
@@ -388,6 +404,32 @@ fun DrawScope.drawMapMarker(
             with(icon) { draw(size = Size(iconPx, iconPx), colorFilter = ColorFilter.tint(Color.White)) }
         }
     }
+}
+
+/** A stop pin with a chronological number, matching the timeline list. */
+fun DrawScope.drawNumberedMarker(
+    controller: OpenFreeMapController,
+    lat: Double,
+    lng: Double,
+    accent: Color,
+    diameterPx: Float,
+    number: Int,
+    ring: Color = Color.White,
+) {
+    val o = controller.toScreen(lat, lng) ?: return
+    val r = diameterPx / 2f
+    drawCircle(color = Color.Black.copy(alpha = 0.16f), radius = r * 0.98f, center = Offset(o.x, o.y + r * 0.32f))
+    drawCircle(color = ring, radius = r, center = o)
+    drawCircle(color = accent, radius = r * 0.84f, center = o)
+    val paint = android.graphics.Paint().apply {
+        color = android.graphics.Color.WHITE
+        textAlign = android.graphics.Paint.Align.CENTER
+        textSize = diameterPx * 0.5f
+        isFakeBoldText = true
+        isAntiAlias = true
+    }
+    val baseline = o.y - (paint.descent() + paint.ascent()) / 2f
+    drawContext.canvas.nativeCanvas.drawText(number.toString(), o.x, baseline, paint)
 }
 
 /** A Google-Maps-style "current location" dot: soft halo + white-bordered core. */

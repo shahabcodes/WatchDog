@@ -78,6 +78,7 @@ import com.shahaabapps.watchdog.util.drawGeoPolyline
 import com.shahaabapps.watchdog.util.drawGeoRoute
 import com.shahaabapps.watchdog.util.drawLiveDot
 import com.shahaabapps.watchdog.util.drawMapMarker
+import com.shahaabapps.watchdog.util.drawNumberedMarker
 import com.shahaabapps.watchdog.util.drawVertex
 import com.shahaabapps.watchdog.util.rememberOpenFreeMapController
 import com.shahaabapps.core.ui.components.rememberReducedMotion
@@ -116,6 +117,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.FitScreen
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -138,6 +140,20 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 private val DEFAULT_CENTER = 25.2854 to 51.5310 // Doha fallback (lat, lng)
+
+/** A live fix older than this is treated as stale (dot dims, chip shows age). */
+private const val STALE_FIX_MS = 5 * 60_000L
+
+/** "2 min ago" / "just now" from an age in millis. */
+private fun agoLabel(ageMs: Long): String {
+    val mins = ageMs / 60_000
+    return when {
+        mins < 1 -> "just now"
+        mins < 60 -> "$mins min ago"
+        mins < 1440 -> "${mins / 60} h ago"
+        else -> "${mins / 1440} d ago"
+    }
+}
 private enum class DrawMode { PIN, AREA }
 
 /** Quick place categories shown as Google-Maps-style pills on the map. */
@@ -296,6 +312,26 @@ fun GeofenceScreen(
         }
     }
 
+    // Chronological numbering for the day's stops (map markers ↔ timeline list).
+    val stopNumbers = remember(travelState.stops) {
+        travelState.stops.filter { !it.current }
+            .sortedBy { it.stop.arrivalMillis }
+            .mapIndexed { i, item -> item.stop.id to (i + 1) }
+            .toMap()
+    }
+    // Every point of the day, for the "fit day" button.
+    val fitPoints = remember(trail, travelState.stops, childLocation) {
+        buildList {
+            trail.forEach { add(it.latitude to it.longitude) }
+            travelState.stops.forEach { add(it.stop.latitude to it.stop.longitude) }
+            childLocation?.let { add(it.latitude to it.longitude) }
+        }
+    }
+    // How stale the live fix is (null when unknown); dims the dot + shows a chip.
+    val locationAgeMs = childLocation?.timestampMillis
+        ?.let { if (it > 0) System.currentTimeMillis() - it else null }
+    val liveStale = locationAgeMs != null && locationAgeMs > STALE_FIX_MS
+
     Box(modifier = Modifier.fillMaxSize()) {
         OpenFreeMap(
             controller = controller,
@@ -370,7 +406,10 @@ fun GeofenceScreen(
                         }
                     }
                     travelState.stops.forEach { s ->
-                        drawMapMarker(controller, s.stop.latitude, s.stop.longitude, accent.copy(alpha = 0.85f), placePx * 0.75f, icon = painterFor(s.placeIcon ?: "place"))
+                        val n = stopNumbers[s.stop.id]
+                        if (n != null) {
+                            drawNumberedMarker(controller, s.stop.latitude, s.stop.longitude, accent.copy(alpha = 0.95f), placePx * 0.85f, n)
+                        }
                     }
                     cur?.let { (la, ln) -> drawLiveDot(controller, la, ln, routeGreen, childPx * 0.5f) }
                 } else {
@@ -398,7 +437,14 @@ fun GeofenceScreen(
                                 strokeWidthPx = 2f,
                             )
                         }
-                        drawLiveDot(controller, loc.latitude, loc.longitude, accent, childPx * 0.5f, pulse = livePulse)
+                        // Dim + stop pulsing when the fix is stale.
+                        drawLiveDot(
+                            controller,
+                            loc.latitude, loc.longitude,
+                            if (liveStale) accent.copy(alpha = 0.45f) else accent,
+                            childPx * 0.5f,
+                            pulse = if (liveStale) 0f else livePulse,
+                        )
                     }
                 }
             },
@@ -461,6 +507,28 @@ fun GeofenceScreen(
                         "Tap points to outline an area (3+)"
                     },
                 )
+                if (locationAgeMs != null) {
+                    HintPill(text = "Updated ${agoLabel(locationAgeMs)}")
+                }
+            }
+        }
+
+        // Fit-day + recenter controls (history mode).
+        if (historyMode) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = Spacing.md),
+            ) {
+                MapRoundButton(Icons.Filled.FitScreen, "Fit the whole day") {
+                    runCatching { controller.fitBounds(fitPoints) }
+                }
+                MapRoundButton(Icons.Filled.MyLocation, "Recenter") {
+                    val target = childLocation?.let { it.latitude to it.longitude }
+                        ?: trail.lastOrNull()?.let { it.latitude to it.longitude }
+                    target?.let { runCatching { controller.animateTo(it.first, it.second, 17.0) } }
+                }
             }
         }
 
@@ -1113,6 +1181,13 @@ private fun HistorySheet(
     // the stop timeline.
     var expanded by rememberSaveable { mutableStateOf(false) }
     val digest = remember(stops) { dayDigest(stops) }
+    // Chronological numbering (matches the numbered map markers).
+    val numbers = remember(stops) {
+        stops.filter { !it.current }
+            .sortedBy { it.stop.arrivalMillis }
+            .mapIndexed { i, item -> item.stop.id to (i + 1) }
+            .toMap()
+    }
     val chevronRotation by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
         label = "sheetChevron",
@@ -1249,6 +1324,7 @@ private fun HistorySheet(
                                 accent = accent,
                                 isLast = i == stops.lastIndex,
                                 leg = leg,
+                                number = numbers[item.stop.id],
                                 onSaveAsPlace = if (item.placeName == null && !item.current) {
                                     { onSaveAsPlace(item.stop.latitude, item.stop.longitude) }
                                 } else {
@@ -1286,6 +1362,7 @@ private fun TimelineRow(
     accent: Color,
     isLast: Boolean,
     leg: String?,
+    number: Int?,
     onSaveAsPlace: (() -> Unit)?,
     onClick: () -> Unit,
 ) {
@@ -1299,6 +1376,13 @@ private fun TimelineRow(
                     contentAlignment = Alignment.Center,
                 ) {
                     Box(modifier = Modifier.size(9.dp).clip(CircleShape).background(accent))
+                }
+            } else if (number != null) {
+                Box(
+                    modifier = Modifier.size(22.dp).clip(CircleShape).background(accent),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("$number", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             } else {
                 Box(modifier = Modifier.size(14.dp).clip(CircleShape).background(accent))
@@ -1392,6 +1476,15 @@ private fun relativeTime(millis: Long): String {
         mins < 60 -> "$mins min ago"
         mins < 1440 -> "${mins / 60} h ago"
         else -> "${mins / 1440} d ago"
+    }
+}
+
+@Composable
+private fun MapRoundButton(icon: ImageVector, contentDescription: String, onClick: () -> Unit) {
+    Surface(shape = CircleShape, color = AppTheme.colors.card, shadowElevation = 4.dp) {
+        IconButton(onClick = onClick) {
+            Icon(icon, contentDescription = contentDescription, tint = AppTheme.colors.accent)
+        }
     }
 }
 

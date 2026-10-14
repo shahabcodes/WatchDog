@@ -40,6 +40,9 @@ interface ScreenshotRepository {
     /** Child: emits the latest request nonce (0 when none). */
     fun observeCaptureRequests(childId: String): Flow<Long>
 
+    /** Parent: observe the child's last reported capture status (null when none). */
+    fun observeStatus(childId: String): Flow<ScreenshotStatus?>
+
     /** Child: upload a captured JPEG and record it for the parent. */
     suspend fun uploadScreenshot(childId: String, imageBytes: ByteArray): AppResult<Unit>
 
@@ -49,6 +52,12 @@ interface ScreenshotRepository {
     /** Parent: delete one screenshot (doc only; storage object is lifecycle-managed). */
     suspend fun delete(childId: String, id: String): AppResult<Unit>
 }
+
+/** The child's last-reported capture status, for parent-side diagnosis. */
+data class ScreenshotStatus(
+    val status: String = "",
+    val atMillis: Long = 0L,
+)
 
 class FirebaseScreenshotRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
@@ -75,6 +84,7 @@ class FirebaseScreenshotRepository @Inject constructor(
                             url = doc.getString("url") ?: "",
                             capturedAtMillis = doc.getLong("capturedAtMillis") ?: 0L,
                             storagePath = doc.getString("storagePath") ?: "",
+                            data = doc.getString("data") ?: "",
                         )
                     },
                 )
@@ -92,31 +102,64 @@ class FirebaseScreenshotRepository @Inject constructor(
         awaitClose { registration.remove() }
     }
 
+    override fun observeStatus(childId: String): Flow<ScreenshotStatus?> = callbackFlow {
+        val registration = statusDoc(childId).addSnapshotListener { snapshot, error ->
+            if (error != null || snapshot == null || !snapshot.exists()) {
+                trySend(null); return@addSnapshotListener
+            }
+            trySend(
+                ScreenshotStatus(
+                    status = snapshot.getString("status") ?: "",
+                    atMillis = snapshot.getLong("atMillis") ?: 0L,
+                ),
+            )
+        }
+        awaitClose { registration.remove() }
+    }
+
     override suspend fun uploadScreenshot(childId: String, imageBytes: ByteArray): AppResult<Unit> =
         runCatchingResult {
             val now = System.currentTimeMillis()
-            val ref = storage.reference.child("screenshots/$childId/$now.jpg")
-            val metadata = StorageMetadata.Builder().setContentType("image/jpeg").build()
-            ref.putBytes(imageBytes, metadata).await()
-            val url = ref.downloadUrl.await().toString()
-            screenshotsCollection(childId).add(
-                mapOf(
-                    "url" to url,
-                    "storagePath" to ref.path,
-                    "capturedAtMillis" to now,
-                ),
-            ).await()
+            // Fast path: carry the (already downscaled) JPEG inline in the Firestore
+            // doc, so the parent's realtime listener delivers the bytes directly —
+            // no Storage upload, no downloadUrl round-trip, no parent download.
+            if (imageBytes.size <= INLINE_MAX_BYTES) {
+                val base64 = android.util.Base64.encodeToString(imageBytes, android.util.Base64.NO_WRAP)
+                screenshotsCollection(childId).add(
+                    mapOf(
+                        "data" to base64,
+                        "capturedAtMillis" to now,
+                    ),
+                ).await()
+            } else {
+                // Fallback for unusually large captures: Cloud Storage.
+                val ref = storage.reference.child("screenshots/$childId/$now.jpg")
+                val metadata = StorageMetadata.Builder().setContentType("image/jpeg").build()
+                ref.putBytes(imageBytes, metadata).await()
+                val url = ref.downloadUrl.await().toString()
+                screenshotsCollection(childId).add(
+                    mapOf(
+                        "url" to url,
+                        "storagePath" to ref.path,
+                        "capturedAtMillis" to now,
+                    ),
+                ).await()
+            }
             Unit
         }
 
     override suspend fun fetchAndClear(childId: String, shot: Screenshot): AppResult<ByteArray> =
         runCatchingResult {
-            // Download via the stored download URL (token-authenticated, independent
-            // of Storage read rules) — falling back to the SDK by path if absent.
-            val bytes = withContext(Dispatchers.IO) {
-                if (shot.url.isNotBlank()) {
+            val bytes = when {
+                // Fast path: bytes are inline in the doc — no network at all.
+                shot.data.isNotBlank() ->
+                    android.util.Base64.decode(shot.data, android.util.Base64.NO_WRAP)
+                // Download via the stored download URL (token-authenticated,
+                // independent of Storage read rules) — falling back to the SDK by path.
+                shot.url.isNotBlank() -> withContext(Dispatchers.IO) {
                     java.net.URL(shot.url).openStream().use { it.readBytes() }
-                } else {
+                }
+                else -> withContext(Dispatchers.IO) {
                     val ref = storage.reference.child(
                         shot.storagePath.ifBlank { "screenshots/$childId/${shot.capturedAtMillis}.png" }
                             .trimStart('/'),
@@ -145,11 +188,18 @@ class FirebaseScreenshotRepository @Inject constructor(
 
     private companion object {
         const val MAX_SCREENSHOT_BYTES = 12L * 1024 * 1024
+        // Inline up to ~600 KB of JPEG; base64 (~800 KB) stays well under Firestore's
+        // 1 MiB document limit. Larger captures fall back to Cloud Storage.
+        const val INLINE_MAX_BYTES = 600 * 1024
     }
 
     private fun commandDoc(childId: String) =
         firestore.collection("children").document(childId)
             .collection("commands").document("screenshot")
+
+    private fun statusDoc(childId: String) =
+        firestore.collection("children").document(childId)
+            .collection("commands").document("screenshotStatus")
 
     private fun screenshotsCollection(childId: String) =
         firestore.collection("children").document(childId).collection("screenshots")

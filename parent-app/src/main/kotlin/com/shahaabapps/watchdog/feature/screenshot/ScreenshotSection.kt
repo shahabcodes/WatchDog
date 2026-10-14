@@ -68,15 +68,14 @@ fun ScreenshotSection(
     viewModel: ScreenshotViewModel = hiltViewModel(),
 ) {
     val shots by viewModel.shots.collectAsStateWithLifecycle()
+    val captureState by viewModel.captureState.collectAsStateWithLifecycle()
     var viewerIndex by remember { mutableStateOf<Int?>(null) }
-    var requestedAt by remember { mutableStateOf(0L) }
-    val waiting = requestedAt > 0 && System.currentTimeMillis() - requestedAt < 25_000
+    val waiting = captureState is CaptureState.Working
+    val error = captureState as? CaptureState.Error
     val listState = rememberLazyListState()
 
-    // Clear the "waiting" hint once a newer screenshot has landed locally, and
-    // scroll the gallery to the newest (index 0) so it's visible after capture.
+    // Scroll the gallery to the newest (index 0) so it's visible after capture.
     LaunchedEffect(shots.firstOrNull()?.capturedAtMillis) {
-        if ((shots.firstOrNull()?.capturedAtMillis ?: 0L) >= requestedAt) requestedAt = 0L
         if (shots.isNotEmpty()) runCatching { listState.animateScrollToItem(0) }
     }
 
@@ -93,18 +92,33 @@ fun ScreenshotSection(
                     Icon(Icons.Filled.PhotoCamera, contentDescription = null, tint = AppTheme.colors.accent)
                 }
                 Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
+                    val message = when (val s = captureState) {
+                        is CaptureState.Working -> s.message
+                        is CaptureState.Error -> s.message
+                        CaptureState.Idle -> "Capture what's on the screen now"
+                    }
                     Text(
-                        if (waiting) "Requested — waiting for the device…" else "Capture what's on the screen now",
+                        message,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = AppTheme.colors.secondaryLabel,
+                        color = if (error != null) AppTheme.colors.destructive else AppTheme.colors.secondaryLabel,
                     )
+                    if (error != null) {
+                        Text(
+                            "Tap to try again",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = AppTheme.colors.accent,
+                            modifier = Modifier
+                                .padding(top = 2.dp)
+                                .clickable {
+                                    viewModel.clearCaptureState()
+                                    viewModel.request()
+                                },
+                        )
+                    }
                 }
                 CaptureButton(
                     waiting = waiting,
-                    onClick = {
-                        viewModel.request()
-                        requestedAt = System.currentTimeMillis()
-                    },
+                    onClick = { viewModel.request() },
                 )
             }
 

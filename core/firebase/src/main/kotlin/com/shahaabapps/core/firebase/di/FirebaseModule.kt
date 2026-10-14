@@ -30,6 +30,8 @@ import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreSettings
+import com.google.firebase.firestore.PersistentCacheSettings
 import com.google.firebase.firestore.firestore
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.storage
@@ -50,7 +52,21 @@ object FirebaseModule {
 
     @Provides
     @Singleton
-    fun provideFirestore(): FirebaseFirestore = Firebase.firestore
+    fun provideFirestore(): FirebaseFirestore = Firebase.firestore.apply {
+        // Explicitly enable on-disk persistence with a larger cache (256 MB) so
+        // location writes made while offline are reliably queued on disk and
+        // flushed when the connection returns — even across app kills / reboots.
+        // Guarded: settings can only be applied before the client is first used.
+        runCatching {
+            firestoreSettings = FirebaseFirestoreSettings.Builder()
+                .setLocalCacheSettings(
+                    PersistentCacheSettings.newBuilder()
+                        .setSizeBytes(256L * 1024 * 1024)
+                        .build(),
+                )
+                .build()
+        }
+    }
 
     @Provides
     @Singleton

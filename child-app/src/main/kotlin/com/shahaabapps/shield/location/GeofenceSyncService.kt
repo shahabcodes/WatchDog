@@ -23,6 +23,12 @@ import com.shahaabapps.core.firebase.auth.AuthRepository
 import com.shahaabapps.core.firebase.device.DeviceRepository
 import com.shahaabapps.core.firebase.geofence.GeofenceRepository
 import com.shahaabapps.core.model.ChildLocation
+import com.shahaabapps.core.model.Geofence
+import com.shahaabapps.core.model.GeofenceEvent
+import com.shahaabapps.core.model.GeofenceShape
+import com.shahaabapps.core.model.GeofenceTransition
+import com.shahaabapps.core.model.GeofenceTrigger
+import com.shahaabapps.core.model.GeoMath
 import com.shahaabapps.core.model.TrailPoint
 import com.shahaabapps.core.model.TravelStop
 import com.shahaabapps.shield.data.PendingTrailDao
@@ -56,6 +62,12 @@ class GeofenceSyncService : Service() {
     private var locationCallback: LocationCallback? = null
     private var started = false
     private var lastRingNonce: String? = null
+
+    // Active geofences + pending-arrival dwell timers, for stream-based
+    // enter/exit detection (a reliable backup to Play Services geofencing).
+    @Volatile
+    private var activeGeofences: List<Geofence> = emptyList()
+    private val dwellSince = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     // Battery sampling for the drain-rate estimate reported to the parent.
     private var lastBatteryPct = -1
@@ -101,6 +113,7 @@ class GeofenceSyncService : Service() {
         val childId = authRepository.currentUserIdOrNull() ?: return
         scope.launch {
             geofenceRepository.observeGeofences(childId).collectLatest { geofences ->
+                activeGeofences = geofences
                 runCatching { registrar.register(geofences) }
             }
         }
@@ -309,6 +322,72 @@ class GeofenceSyncService : Service() {
                 )
             }
         }
+        detectGeofenceTransitions(childId, lat, lng, acc, now)
+    }
+
+    /**
+     * Enter/exit detection from the continuous location stream — a reliable
+     * backstop to Play Services geofencing (which often drops transitions). Shares
+     * [GeofenceStateStore] with [GeofenceBroadcastReceiver], so whichever observes
+     * a transition first flips the state and the other won't double-report.
+     *
+     * Arrival requires dwelling [DWELL_DELAY_MS] inside (a pass-by doesn't count);
+     * departure requires moving beyond the radius + [EXIT_BUFFER_METERS] after a
+     * recorded arrival (hysteresis avoids boundary flip-flop).
+     */
+    @Synchronized
+    private fun detectGeofenceTransitions(childId: String, lat: Double, lng: Double, acc: Float, now: Long) {
+        if (acc > 0f && acc > GEO_ACCURACY_MAX_METERS) return
+        for (g in activeGeofences) {
+            if (!g.active || g.id.isBlank()) continue
+            val wantsEnter = g.trigger == GeofenceTrigger.ENTER || g.trigger == GeofenceTrigger.ENTER_EXIT
+            val wantsExit = g.trigger == GeofenceTrigger.EXIT || g.trigger == GeofenceTrigger.ENTER_EXIT
+            val distToCenter = GeoMath.distanceMeters(lat, lng, g.latitude, g.longitude)
+            val inside = if (g.shape == GeofenceShape.POLYGON && g.points.size >= 3) {
+                GeoMath.containsPoint(g.points, lat, lng)
+            } else {
+                distToCenter <= g.radiusMeters
+            }
+            val beyondExit = distToCenter > g.radiusMeters + EXIT_BUFFER_METERS
+            val wasInside = GeofenceStateStore.isInside(this, g.id)
+
+            when {
+                inside && !wasInside -> {
+                    val since = dwellSince.getOrPut(g.id) { now }
+                    if (now - since >= DWELL_DELAY_MS) {
+                        dwellSince.remove(g.id)
+                        GeofenceStateStore.setInside(this, g.id, true)
+                        if (wantsEnter) reportTransition(childId, g, GeofenceTransition.ENTER, lat, lng, now)
+                    }
+                }
+                inside -> dwellSince.remove(g.id) // already inside / counted
+                else -> {
+                    dwellSince.remove(g.id) // left before dwelling → cancel pending arrival
+                    if (wasInside && beyondExit) {
+                        GeofenceStateStore.setInside(this, g.id, false)
+                        if (wantsExit) reportTransition(childId, g, GeofenceTransition.EXIT, lat, lng, now)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun reportTransition(childId: String, g: Geofence, transition: GeofenceTransition, lat: Double, lng: Double, now: Long) {
+        scope.launch {
+            runCatching {
+                geofenceRepository.reportEvent(
+                    childId,
+                    GeofenceEvent(
+                        geofenceId = g.id,
+                        geofenceName = g.name,
+                        transition = transition,
+                        latitude = lat,
+                        longitude = lng,
+                        timestampMillis = now,
+                    ),
+                )
+            }
+        }
     }
 
     /** Current battery level 0-100, or 0 if unavailable. */
@@ -412,6 +491,7 @@ class GeofenceSyncService : Service() {
         // Jitter filtering (Phase 1 + 2).
         private const val ACCURACY_MAX_METERS = 50f   // drop fixes worse than this (stationary)
         private const val ACCURACY_MAX_MOVING_METERS = 120f // relaxed while travelling
+        private const val GEO_ACCURACY_MAX_METERS = 120f // max fix fuzziness for geofence enter/exit
         private const val MOVING_SPEED_MPS = 2.5f     // ~9 km/h: clearly moving
         private const val MOVE_MARGIN_METERS = 15f    // movement must beat the accuracy noise by this
         private const val MAX_SPEED_MPS = 60f         // ~216 km/h teleport ceiling

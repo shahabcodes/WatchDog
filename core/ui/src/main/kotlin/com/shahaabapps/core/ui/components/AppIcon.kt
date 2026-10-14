@@ -10,14 +10,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.shahaabapps.core.ui.theme.AppTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Renders an app's icon from a Base64 image (as reported by the child), falling
@@ -30,12 +34,16 @@ fun AppIcon(
     modifier: Modifier = Modifier,
     size: Dp = 40.dp,
 ) {
-    val image = remember(base64) {
-        base64?.let {
-            runCatching {
-                val bytes = Base64.decode(it, Base64.NO_WRAP)
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
-            }.getOrNull()
+    // Decode off the main thread so a card scrolling into view doesn't block the
+    // frame; the monogram shows until the bitmap is ready.
+    val image by produceState<ImageBitmap?>(initialValue = null, base64) {
+        value = base64?.let {
+            withContext(Dispatchers.Default) {
+                runCatching {
+                    val bytes = Base64.decode(it, Base64.NO_WRAP)
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                }.getOrNull()
+            }
         }
     }
     if (image != null) {

@@ -115,6 +115,26 @@ fun rememberOpenFreeMapController(
 ): OpenFreeMapController = remember { OpenFreeMapController(lat, lng, zoom) }
 
 /**
+ * Small LRU of rendered snapshots, so a preview scrolled off and back on screen
+ * (its composable disposed and recreated) reuses the bitmap instantly instead of
+ * re-running a GL render — which is what made the dashboard scroll janky.
+ */
+private const val SNAPSHOT_CACHE_MAX = 8
+private val snapshotCache = object :
+    LinkedHashMap<String, android.graphics.Bitmap>(SNAPSHOT_CACHE_MAX, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, android.graphics.Bitmap>) =
+        size > SNAPSHOT_CACHE_MAX
+}
+
+@Synchronized
+private fun snapshotCacheGet(key: String): android.graphics.Bitmap? = snapshotCache[key]
+
+@Synchronized
+private fun snapshotCachePut(key: String, bmp: android.graphics.Bitmap) {
+    snapshotCache[key] = bmp
+}
+
+/**
  * A lightweight, non-interactive map preview rendered as a one-shot bitmap via
  * [MapSnapshotter] — no persistent GL surface. Use this for small previews (e.g.
  * the dashboard) so there's only ever one live [MapView] (the Map tab), which
@@ -147,6 +167,9 @@ fun OpenFreeMapSnapshot(
         // (the Map tab's live map is tearing down at the same moment). The card shows
         // a light placeholder until the image is ready.
         LaunchedEffect(lat, lng, zoom, wPx, hPx) {
+            val cacheKey = "%.5f,%.5f,%.2f,%d,%d".format(lat, lng, zoom, wPx, hPx)
+            // Instant reuse on scroll re-entry — no GL render, no placeholder flash.
+            snapshotCacheGet(cacheKey)?.let { bitmap = it; return@LaunchedEffect }
             kotlinx.coroutines.delay(400)
             runCatching { snapshotter.value?.cancel() }
             MapLibre.getInstance(context)
@@ -176,9 +199,11 @@ fun OpenFreeMapSnapshot(
             s.start(
                 { snap ->
                     val full = snap.bitmap
-                    bitmap = runCatching {
+                    val cropped = runCatching {
                         android.graphics.Bitmap.createBitmap(full, 0, 0, full.width, hPx.coerceAtMost(full.height))
                     }.getOrDefault(full)
+                    bitmap = cropped
+                    snapshotCachePut(cacheKey, cropped)
                 },
                 { /* ignore snapshot errors */ },
             )

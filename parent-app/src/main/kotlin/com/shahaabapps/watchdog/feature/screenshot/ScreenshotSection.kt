@@ -6,8 +6,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -311,11 +314,23 @@ private fun ZoomableImage(shot: LocalShot, onTap: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            // Pinch to zoom + drag to pan (only meaningful when zoomed in).
+            // Pinch to zoom + drag to pan. Only consume gestures while zoomed in
+            // (or during a two-finger pinch); a single-finger swipe at 1x passes
+            // through so the pager can still page between screenshots.
             .pointerInput(shot.file.path) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    scale = (scale * zoom).coerceIn(1f, 5f)
-                    offset = if (scale > 1f) offset + pan else androidx.compose.ui.geometry.Offset.Zero
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        val event = awaitPointerEvent()
+                        val multiTouch = event.changes.count { it.pressed } >= 2
+                        if (scale > 1f || multiTouch) {
+                            val zoom = event.calculateZoom()
+                            val pan = event.calculatePan()
+                            scale = (scale * zoom).coerceIn(1f, 5f)
+                            offset = if (scale > 1f) offset + pan else androidx.compose.ui.geometry.Offset.Zero
+                            event.changes.forEach { if (it.pressed) it.consume() }
+                        }
+                    } while (event.changes.any { it.pressed })
                 }
             }
             // Single tap toggles chrome; double tap zooms in/out.

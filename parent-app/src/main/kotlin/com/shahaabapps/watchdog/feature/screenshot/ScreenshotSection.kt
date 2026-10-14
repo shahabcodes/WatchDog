@@ -4,7 +4,11 @@ import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -70,9 +74,11 @@ fun ScreenshotSection(
     val shots by viewModel.shots.collectAsStateWithLifecycle()
     val captureState by viewModel.captureState.collectAsStateWithLifecycle()
     var viewerIndex by remember { mutableStateOf<Int?>(null) }
+    var confirmDeleteAll by remember { mutableStateOf(false) }
     val waiting = captureState is CaptureState.Working
     val error = captureState as? CaptureState.Error
     val listState = rememberLazyListState()
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     // Scroll the gallery to the newest (index 0) so it's visible after capture.
     LaunchedEffect(shots.firstOrNull()?.capturedAtMillis) {
@@ -134,6 +140,15 @@ fun ScreenshotSection(
                         Thumbnail(shot = shot, onClick = { viewerIndex = index })
                     }
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    BulkAction(Icons.Filled.SaveAlt, "Save all", AppTheme.colors.accent) {
+                        saveAllToGallery(context, shots)
+                    }
+                    Spacer(Modifier.width(Spacing.lg))
+                    BulkAction(Icons.Filled.Delete, "Delete all", AppTheme.colors.destructive) {
+                        confirmDeleteAll = true
+                    }
+                }
             }
         }
     }
@@ -145,6 +160,36 @@ fun ScreenshotSection(
             onClose = { viewerIndex = null },
             onDelete = { viewModel.delete(it) },
         )
+    }
+
+    if (confirmDeleteAll) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmDeleteAll = false },
+            title = { Text("Delete all screenshots?") },
+            text = { Text("This removes all ${shots.size} screenshot${if (shots.size == 1) "" else "s"} from this device. This can't be undone.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    viewModel.deleteAll()
+                    confirmDeleteAll = false
+                    viewerIndex = null
+                }) { Text("Delete all", color = AppTheme.colors.destructive) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { confirmDeleteAll = false }) { Text("Cancel") }
+            },
+        )
+    }
+}
+
+@Composable
+private fun BulkAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, tint: Color, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).padding(vertical = 4.dp, horizontal = 2.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(label, color = tint, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -211,38 +256,48 @@ private fun ScreenshotViewer(
         pageCount = { shots.size },
     )
 
+    // Single tap toggles the chrome (header), like a photo gallery.
+    var chromeVisible by remember { mutableStateOf(true) }
+
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
             HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
-                ZoomableImage(shot = shots[page])
+                ZoomableImage(shot = shots[page], onTap = { chromeVisible = !chromeVisible })
             }
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.45f))
-                    .statusBarsPadding()
-                    .padding(horizontal = Spacing.sm, vertical = Spacing.sm),
+            androidx.compose.animation.AnimatedVisibility(
+                visible = chromeVisible,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.align(Alignment.TopCenter),
             ) {
-                IconButton(onClick = onClose) {
-                    Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White)
-                }
-                Text(
-                    "${(pagerState.currentPage + 1).coerceAtMost(shots.size)} / ${shots.size}",
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.weight(1f),
-                )
-                val current = shots.getOrNull(pagerState.currentPage)
-                IconButton(onClick = { current?.let { saveToGallery(context, it) } }) {
-                    Icon(Icons.Filled.SaveAlt, contentDescription = "Save to gallery", tint = Color.White)
-                }
-                IconButton(onClick = { current?.let { shareLocalShot(context, it) } }) {
-                    Icon(Icons.Filled.Share, contentDescription = "Share", tint = Color.White)
-                }
-                IconButton(onClick = { current?.let { onDelete(it) } }) {
-                    Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color.White)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .statusBarsPadding()
+                        .padding(horizontal = Spacing.sm, vertical = Spacing.sm),
+                ) {
+                    IconButton(onClick = onClose) {
+                        Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White)
+                    }
+                    Text(
+                        "${(pagerState.currentPage + 1).coerceAtMost(shots.size)} / ${shots.size}",
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    val current = shots.getOrNull(pagerState.currentPage)
+                    IconButton(onClick = { current?.let { saveToGallery(context, it) } }) {
+                        Icon(Icons.Filled.SaveAlt, contentDescription = "Save to gallery", tint = Color.White)
+                    }
+                    IconButton(onClick = { current?.let { shareLocalShot(context, it) } }) {
+                        Icon(Icons.Filled.Share, contentDescription = "Share", tint = Color.White)
+                    }
+                    IconButton(onClick = { current?.let { onDelete(it) } }) {
+                        Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color.White)
+                    }
                 }
             }
         }
@@ -250,14 +305,32 @@ private fun ScreenshotViewer(
 }
 
 @Composable
-private fun ZoomableImage(shot: LocalShot) {
-    var zoomed by remember(shot.file.path) { mutableStateOf(false) }
-    val target = if (zoomed) 2.5f else 1f
+private fun ZoomableImage(shot: LocalShot, onTap: () -> Unit) {
+    var scale by remember(shot.file.path) { mutableStateOf(1f) }
+    var offset by remember(shot.file.path) { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
     Box(
         modifier = Modifier
             .fillMaxSize()
+            // Pinch to zoom + drag to pan (only meaningful when zoomed in).
             .pointerInput(shot.file.path) {
-                detectTapGestures(onDoubleTap = { zoomed = !zoomed })
+                detectTransformGestures { _, pan, zoom, _ ->
+                    scale = (scale * zoom).coerceIn(1f, 5f)
+                    offset = if (scale > 1f) offset + pan else androidx.compose.ui.geometry.Offset.Zero
+                }
+            }
+            // Single tap toggles chrome; double tap zooms in/out.
+            .pointerInput(shot.file.path) {
+                detectTapGestures(
+                    onTap = { onTap() },
+                    onDoubleTap = {
+                        if (scale > 1f) {
+                            scale = 1f
+                            offset = androidx.compose.ui.geometry.Offset.Zero
+                        } else {
+                            scale = 2.5f
+                        }
+                    },
+                )
             },
         contentAlignment = Alignment.Center,
     ) {
@@ -267,7 +340,12 @@ private fun ZoomableImage(shot: LocalShot) {
             contentScale = ContentScale.Fit,
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer(scaleX = target, scaleY = target),
+                .graphicsLayer(
+                    scaleX = scale,
+                    scaleY = scale,
+                    translationX = offset.x,
+                    translationY = offset.y,
+                ),
         )
     }
 }
@@ -275,34 +353,46 @@ private fun ZoomableImage(shot: LocalShot) {
 private fun mimeFor(shot: LocalShot): String =
     if (shot.file.extension.equals("png", ignoreCase = true)) "image/png" else "image/jpeg"
 
-private fun saveToGallery(context: Context, shot: LocalShot) {
-    val ok = runCatching {
-        val name = "WatchDog_${shot.capturedAtMillis}.${shot.file.extension.ifBlank { "jpg" }}"
-        val values = android.content.ContentValues().apply {
-            put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name)
-            put(android.provider.MediaStore.Images.Media.MIME_TYPE, mimeFor(shot))
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                put(
-                    android.provider.MediaStore.Images.Media.RELATIVE_PATH,
-                    android.os.Environment.DIRECTORY_PICTURES + "/WatchDog",
-                )
-                put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
-            }
-        }
-        val resolver = context.contentResolver
-        val uri = resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-            ?: return@runCatching false
-        resolver.openOutputStream(uri)?.use { out -> shot.file.inputStream().use { it.copyTo(out) } }
+/** Writes one screenshot into the device gallery; returns success (no toast). */
+private fun writeToGallery(context: Context, shot: LocalShot): Boolean = runCatching {
+    val name = "WatchDog_${shot.capturedAtMillis}.${shot.file.extension.ifBlank { "jpg" }}"
+    val values = android.content.ContentValues().apply {
+        put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name)
+        put(android.provider.MediaStore.Images.Media.MIME_TYPE, mimeFor(shot))
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            values.clear()
-            values.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0)
-            resolver.update(uri, values, null, null)
+            put(
+                android.provider.MediaStore.Images.Media.RELATIVE_PATH,
+                android.os.Environment.DIRECTORY_PICTURES + "/WatchDog",
+            )
+            put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
         }
-        true
-    }.getOrDefault(false)
+    }
+    val resolver = context.contentResolver
+    val uri = resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+        ?: return@runCatching false
+    resolver.openOutputStream(uri)?.use { out -> shot.file.inputStream().use { it.copyTo(out) } }
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+        values.clear()
+        values.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0)
+        resolver.update(uri, values, null, null)
+    }
+    true
+}.getOrDefault(false)
+
+private fun saveToGallery(context: Context, shot: LocalShot) {
+    val ok = writeToGallery(context, shot)
     android.widget.Toast.makeText(
         context,
         if (ok) "Saved to gallery" else "Couldn't save to gallery",
+        android.widget.Toast.LENGTH_SHORT,
+    ).show()
+}
+
+private fun saveAllToGallery(context: Context, shots: List<LocalShot>) {
+    val saved = shots.count { writeToGallery(context, it) }
+    android.widget.Toast.makeText(
+        context,
+        if (saved > 0) "Saved $saved of ${shots.size} to gallery" else "Couldn't save to gallery",
         android.widget.Toast.LENGTH_SHORT,
     ).show()
 }

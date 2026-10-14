@@ -132,6 +132,12 @@ class ScreenshotViewModel @Inject constructor(
         refresh()
     }
 
+    /** Deletes every local screenshot for this child. */
+    fun deleteAll() {
+        _shots.value.forEach { LocalScreenshotStore.delete(it) }
+        refresh()
+    }
+
     private fun refresh() {
         _shots.value = LocalScreenshotStore.list(context, childId)
     }

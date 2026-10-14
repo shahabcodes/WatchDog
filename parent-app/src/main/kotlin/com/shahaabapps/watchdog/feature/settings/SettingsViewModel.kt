@@ -63,5 +63,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { themePreferences.setAccentPaletteName(palette.name) }
     }
 
-    fun signOut() = authRepository.signOut()
+    fun signOut() {
+        viewModelScope.launch { authRepository.signOut() }
+    }
 }

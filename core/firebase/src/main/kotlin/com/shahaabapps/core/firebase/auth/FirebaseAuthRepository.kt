@@ -2,7 +2,9 @@ package com.shahaabapps.core.firebase.auth
 
 import com.shahaabapps.core.common.AppResult
 import com.shahaabapps.core.common.runCatchingResult
+import com.shahaabapps.core.firebase.messaging.MessagingTokenRepository
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -11,6 +13,7 @@ import javax.inject.Inject
 
 class FirebaseAuthRepository @Inject constructor(
     private val auth: FirebaseAuth,
+    private val messagingTokenRepository: MessagingTokenRepository,
 ) : AuthRepository {
 
     override val currentUserId: Flow<String?> = callbackFlow {
@@ -46,5 +49,17 @@ class FirebaseAuthRepository @Inject constructor(
             auth.sendPasswordResetEmail(email).await()
         }
 
-    override fun signOut() = auth.signOut()
+    override suspend fun signOut() {
+        // Detach this device's FCM token from the signed-in account BEFORE signing
+        // out (afterwards the delete would be denied). Best-effort: a failure here
+        // must not block sign-out.
+        val uid = auth.currentUser?.uid
+        if (uid != null) {
+            runCatching {
+                val token = FirebaseMessaging.getInstance().token.await()
+                messagingTokenRepository.removeToken(uid, token)
+            }
+        }
+        auth.signOut()
+    }
 }

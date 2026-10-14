@@ -26,5 +26,12 @@ interface AuthRepository {
     /** Sends a password-reset email to [email]. */
     suspend fun sendPasswordReset(email: String): AppResult<Unit>
 
-    fun signOut()
+    /**
+     * Signs out. First removes this device's FCM token from the current user's
+     * `fcmTokens` so the device stops receiving that account's push notifications
+     * — otherwise, on a shared device, a later sign-in to a different account keeps
+     * getting the previous account's child alerts. Must run while still signed in
+     * (the delete needs auth), so this suspends until the token is cleared.
+     */
+    suspend fun signOut()
 }

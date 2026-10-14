@@ -103,7 +103,7 @@ class DashboardViewModel @Inject constructor(
 
     /** Signs the parent out; the app returns to the auth flow. */
     fun signOut() {
-        authRepository.signOut()
+        viewModelScope.launch { authRepository.signOut() }
     }
 
     /** Unlinks (removes) a child from this parent. */

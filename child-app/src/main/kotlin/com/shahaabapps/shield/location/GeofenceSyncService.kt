@@ -25,6 +25,8 @@ import com.shahaabapps.core.firebase.geofence.GeofenceRepository
 import com.shahaabapps.core.model.ChildLocation
 import com.shahaabapps.core.model.TrailPoint
 import com.shahaabapps.core.model.TravelStop
+import com.shahaabapps.shield.data.PendingTrailDao
+import com.shahaabapps.shield.data.PendingTrailPoint
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -47,6 +49,7 @@ class GeofenceSyncService : Service() {
     @Inject lateinit var childRepository: com.shahaabapps.core.firebase.child.ChildRepository
     @Inject lateinit var registrar: GeofenceRegistrar
     @Inject lateinit var ringController: RingController
+    @Inject lateinit var pendingTrailDao: PendingTrailDao
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val fusedClient by lazy { LocationServices.getFusedLocationProviderClient(this) }
@@ -145,6 +148,8 @@ class GeofenceSyncService : Service() {
         // Register the periodic backstop so location keeps flowing even if this
         // foreground service is later killed by the OS.
         runCatching { LocationSyncWorker.schedule(this) }
+        // Backstop that uploads any buffered breadcrumbs when the network returns.
+        runCatching { LocationFlushWorker.schedulePeriodic(this) }
     }
 
     @SuppressLint("MissingPermission")
@@ -257,14 +262,15 @@ class GeofenceSyncService : Service() {
         smoothWindow.clear()
         smoothWindow.addLast(loc)
         publishLive(childId, loc.latitude, loc.longitude, loc.accuracy, now)
+        // Buffer the breadcrumb durably on-device first (always succeeds, even
+        // offline), then let the network-constrained flush worker upload it.
         scope.launch {
             runCatching {
-                deviceRepository.appendTrailPoint(
-                    childId,
-                    today(now),
-                    TrailPoint(latitude = loc.latitude, longitude = loc.longitude, timestampMillis = now),
+                pendingTrailDao.insert(
+                    PendingTrailPoint(childId = childId, lat = loc.latitude, lng = loc.longitude, timestampMillis = now),
                 )
             }
+            LocationFlushWorker.flushNow(applicationContext)
         }
         trackStop(childId, loc, now)
     }

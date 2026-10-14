@@ -41,6 +41,7 @@ class LocationSyncWorker(
     interface Deps {
         fun deviceRepository(): DeviceRepository
         fun authRepository(): AuthRepository
+        fun pendingTrailDao(): com.shahaabapps.shield.data.PendingTrailDao
     }
 
     @SuppressLint("MissingPermission")
@@ -57,17 +58,25 @@ class LocationSyncWorker(
         val loc = awaitCurrentLocation(fused) ?: return Result.success()
 
         val now = System.currentTimeMillis()
+        // Live position: best-effort direct write. Breadcrumb: buffer durably and
+        // let the flush worker upload it (same queue as the foreground service).
         runCatching {
             deps.deviceRepository().updateLocation(
                 childId,
                 ChildLocation(loc.latitude, loc.longitude, loc.accuracy, now),
             )
-            deps.deviceRepository().appendTrailPoint(
-                childId,
-                Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).toLocalDate().toString(),
-                TrailPoint(latitude = loc.latitude, longitude = loc.longitude, timestampMillis = now),
+        }
+        runCatching {
+            deps.pendingTrailDao().insert(
+                com.shahaabapps.shield.data.PendingTrailPoint(
+                    childId = childId,
+                    lat = loc.latitude,
+                    lng = loc.longitude,
+                    timestampMillis = now,
+                ),
             )
         }
+        LocationFlushWorker.flushNow(applicationContext)
         return Result.success()
     }
 

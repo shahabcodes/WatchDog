@@ -36,6 +36,11 @@ dependencies {
     // Background backstop: periodic location sync if the foreground service is killed.
     implementation(libs.androidx.work.runtime.ktx)
 
+    // Durable on-device queue for location points (offline-safe buffer).
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    add("ksp", libs.androidx.room.compiler)
+
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)

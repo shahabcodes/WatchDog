@@ -40,6 +40,9 @@ interface DeviceRepository {
     /** Child appends a sampled point to the day's location trail. [date] is yyyy-MM-dd. */
     suspend fun appendTrailPoint(childId: String, date: String, point: TrailPoint): AppResult<Unit>
 
+    /** Child appends several points to one day's trail in a single write (batch flush). */
+    suspend fun appendTrailPoints(childId: String, date: String, points: List<TrailPoint>): AppResult<Unit>
+
     /** Parent observes the continuous location trail for a given day (chronological). */
     fun observeTrail(childId: String, date: String): Flow<List<TrailPoint>>
 

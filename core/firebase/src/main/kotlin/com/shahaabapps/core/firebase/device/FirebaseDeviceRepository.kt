@@ -108,6 +108,17 @@ class FirebaseDeviceRepository @Inject constructor(
                 .await()
         }
 
+    override suspend fun appendTrailPoints(childId: String, date: String, points: List<TrailPoint>): AppResult<Unit> =
+        runCatchingResult {
+            if (points.isEmpty()) return@runCatchingResult Unit
+            val entries = points.map { p ->
+                mapOf("lat" to p.latitude, "lng" to p.longitude, "t" to p.timestampMillis)
+            }.toTypedArray()
+            trail(childId).document(date)
+                .set(mapOf("points" to FieldValue.arrayUnion(*entries)), SetOptions.merge())
+                .await()
+        }
+
     override fun observeTrail(childId: String, date: String): Flow<List<TrailPoint>> = callbackFlow {
         val registration = trail(childId).document(date).addSnapshotListener { snapshot, error ->
             if (error != null) {

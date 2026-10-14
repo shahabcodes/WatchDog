@@ -58,12 +58,20 @@ class LocationSyncWorker(
         val loc = awaitCurrentLocation(fused) ?: return Result.success()
 
         val now = System.currentTimeMillis()
-        // Live position: best-effort direct write. Breadcrumb: buffer durably and
-        // let the flush worker upload it (same queue as the foreground service).
+        val date = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).toLocalDate().toString()
+        // Live + breadcrumb written directly (Firestore queues offline). Also buffer
+        // the breadcrumb to the durable Room queue as a backup (arrayUnion dedupes).
         runCatching {
             deps.deviceRepository().updateLocation(
                 childId,
                 ChildLocation(loc.latitude, loc.longitude, loc.accuracy, now),
+            )
+        }
+        runCatching {
+            deps.deviceRepository().appendTrailPoint(
+                childId,
+                date,
+                TrailPoint(latitude = loc.latitude, longitude = loc.longitude, timestampMillis = now),
             )
         }
         runCatching {

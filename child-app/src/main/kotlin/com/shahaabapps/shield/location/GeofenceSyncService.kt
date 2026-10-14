@@ -300,9 +300,14 @@ class GeofenceSyncService : Service() {
         smoothWindow.clear()
         smoothWindow.addLast(loc)
         publishLive(childId, loc.latitude, loc.longitude, loc.accuracy, now)
-        // Buffer the breadcrumb durably on-device first (always succeeds, even
-        // offline), then let the network-constrained flush worker upload it.
+        val point = TrailPoint(latitude = loc.latitude, longitude = loc.longitude, timestampMillis = now)
         scope.launch {
+            // Primary: write the breadcrumb straight to Firestore. Online it lands
+            // immediately; offline, Firestore's own on-disk queue holds it and syncs
+            // on reconnect. (arrayUnion dedupes, so the Room backup below can't dupe.)
+            runCatching { deviceRepository.appendTrailPoint(childId, today(now), point) }
+            // Backup: also buffer durably on-device and let the flush worker upload
+            // it, in case the direct write is ever lost (app killed mid-sync, etc.).
             runCatching {
                 pendingTrailDao.insert(
                     PendingTrailPoint(childId = childId, lat = loc.latitude, lng = loc.longitude, timestampMillis = now),

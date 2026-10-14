@@ -109,13 +109,21 @@ class FirebaseChildRepository @Inject constructor(
             Unit
         }
 
-    override suspend fun heartbeat(childId: String, model: String, batteryPercent: Int): AppResult<Unit> =
+    override suspend fun heartbeat(
+        childId: String,
+        model: String,
+        batteryPercent: Int,
+        charging: Boolean,
+        drainPerHour: Double,
+    ): AppResult<Unit> =
         runCatchingResult {
             val device = buildMap<String, Any> {
                 put("online", true)
                 put("lastSeenMillis", System.currentTimeMillis())
                 put("model", model)
                 if (batteryPercent in 1..100) put("batteryPercent", batteryPercent)
+                put("charging", charging)
+                if (drainPerHour > 0.0) put("batteryDrainPerHour", drainPerHour)
             }
             childrenCollection.document(childId).set(
                 mapOf(FIELD_DEVICE to device),
@@ -147,6 +155,8 @@ class FirebaseChildRepository @Inject constructor(
                 batteryPercent = (deviceMap["batteryPercent"] as? Long)?.toInt() ?: 0,
                 model = deviceMap["model"] as? String ?: "",
                 lastSeenMillis = deviceMap["lastSeenMillis"] as? Long ?: 0L,
+                charging = deviceMap["charging"] as? Boolean ?: false,
+                batteryDrainPerHour = (deviceMap["batteryDrainPerHour"] as? Number)?.toDouble() ?: 0.0,
             ),
         )
     }

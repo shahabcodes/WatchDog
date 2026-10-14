@@ -27,6 +27,10 @@ data class DeviceInfo(
     val batteryPercent: Int = 0,
     val model: String = "",
     val lastSeenMillis: Long = 0L,
+    /** Whether the device is plugged in / charging. */
+    val charging: Boolean = false,
+    /** Recent battery drain while discharging, in % per hour (0 when unknown). */
+    val batteryDrainPerHour: Double = 0.0,
 )
 
 /**

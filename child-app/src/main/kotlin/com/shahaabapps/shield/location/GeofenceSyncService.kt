@@ -57,6 +57,11 @@ class GeofenceSyncService : Service() {
     private var started = false
     private var lastRingNonce: String? = null
 
+    // Battery sampling for the drain-rate estimate reported to the parent.
+    private var lastBatteryPct = -1
+    private var lastBatteryTime = 0L
+    private var drainPerHour = 0.0
+
     // In-memory "stop" cluster for travel history.
     private var stopAnchor: android.location.Location? = null
     private var stopArrivalMillis = 0L
@@ -111,10 +116,30 @@ class GeofenceSyncService : Service() {
             }
         }
         // Presence heartbeat: keep lastSeen fresh so the parent shows "Online",
-        // and report the current battery level.
+        // and report battery level, charging state and recent drain rate.
         scope.launch {
             while (true) {
-                runCatching { childRepository.heartbeat(childId, android.os.Build.MODEL, batteryPercent()) }
+                val pct = batteryPercent()
+                val charging = isCharging()
+                val now = System.currentTimeMillis()
+                // Estimate drain while discharging, smoothed across heartbeats.
+                if (!charging && pct in 1..100 && lastBatteryPct in 1..100 &&
+                    pct < lastBatteryPct && lastBatteryTime > 0L
+                ) {
+                    val dtHours = (now - lastBatteryTime) / 3_600_000.0
+                    if (dtHours >= 0.015) {
+                        val rate = (lastBatteryPct - pct) / dtHours
+                        drainPerHour = if (drainPerHour <= 0.0) rate else drainPerHour * 0.6 + rate * 0.4
+                    }
+                }
+                if (charging) drainPerHour = 0.0
+                if (pct in 1..100) {
+                    lastBatteryPct = pct
+                    lastBatteryTime = now
+                }
+                runCatching {
+                    childRepository.heartbeat(childId, android.os.Build.MODEL, pct, charging, drainPerHour)
+                }
                 kotlinx.coroutines.delay(HEARTBEAT_MS)
             }
         }
@@ -291,6 +316,12 @@ class GeofenceSyncService : Service() {
         val bm = getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager ?: return 0
         val pct = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
         return if (pct in 1..100) pct else 0
+    }
+
+    /** Whether the device is currently charging / plugged in. */
+    private fun isCharging(): Boolean {
+        val bm = getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager ?: return false
+        return runCatching { bm.isCharging }.getOrDefault(false)
     }
 
     private fun today(millis: Long): String =

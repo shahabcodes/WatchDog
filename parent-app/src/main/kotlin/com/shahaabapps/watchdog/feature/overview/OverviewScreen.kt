@@ -31,7 +31,10 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.BatteryStd
 import androidx.compose.material.icons.filled.Bedtime
+import kotlin.math.roundToInt
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.Lock
@@ -153,6 +156,17 @@ fun OverviewScreen(
                     weekMinutes = weekly.map { it.minutes },
                     apps = state.topApps,
                 )
+            }
+        }
+        item(key = "battery") {
+            Box(Modifier.padding(horizontal = Spacing.lg)) {
+                DashSection("Battery") {
+                    BatteryCard(
+                        percent = state.batteryPercent,
+                        charging = state.charging,
+                        drainPerHour = state.batteryDrainPerHour,
+                    )
+                }
             }
         }
         item(key = "bedtime") { Box(Modifier.padding(horizontal = Spacing.lg)) { BedtimeBanner(focus = focus) } }
@@ -738,6 +752,53 @@ private fun ScreenTimeCard(totalMinutes: Int, yesterdayMinutes: Int?, weekMinute
             } else {
                 Text("No app usage recorded today yet.", style = MaterialTheme.typography.bodyMedium, color = AppTheme.colors.secondaryLabel)
             }
+        }
+    }
+}
+
+/** Child device battery: level, charging/drain, and an honest note on scope. */
+@Composable
+private fun BatteryCard(percent: Int, charging: Boolean, drainPerHour: Double) {
+    val low = percent in 1..15 && !charging
+    val valueColor = if (low) AppTheme.colors.destructive else AppTheme.colors.accent
+    val status = when {
+        charging -> "Charging"
+        drainPerHour > 0.5 -> "Draining about ${drainPerHour.roundToInt()}%/hr"
+        percent > 0 -> "On battery"
+        else -> "No recent reading"
+    }
+    CupertinoCard {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(AppTheme.colors.accent.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        if (charging) Icons.Filled.BatteryChargingFull else Icons.Filled.BatteryStd,
+                        contentDescription = null,
+                        tint = AppTheme.colors.accent,
+                    )
+                }
+                Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
+                    Text(
+                        if (percent > 0) "$percent%" else "—",
+                        fontFamily = com.shahaabapps.core.ui.theme.AppFonts.display,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 30.sp,
+                        color = valueColor,
+                    )
+                    Text(status, style = MaterialTheme.typography.bodyMedium, color = AppTheme.colors.secondaryLabel)
+                }
+            }
+            Text(
+                "This is the whole phone's battery. Android doesn't let apps report their own exact usage, so keep Shield's battery optimisation off to keep tracking reliable.",
+                style = MaterialTheme.typography.bodySmall,
+                color = AppTheme.colors.secondaryLabel,
+            )
         }
     }
 }

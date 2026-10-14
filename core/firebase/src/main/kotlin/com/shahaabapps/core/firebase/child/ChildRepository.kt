@@ -37,7 +37,13 @@ interface ChildRepository {
      * level. The parent derives online/offline from how fresh this is.
      * [batteryPercent] of 0 means "unknown" and is not written.
      */
-    suspend fun heartbeat(childId: String, model: String, batteryPercent: Int = 0): AppResult<Unit>
+    suspend fun heartbeat(
+        childId: String,
+        model: String,
+        batteryPercent: Int = 0,
+        charging: Boolean = false,
+        drainPerHour: Double = 0.0,
+    ): AppResult<Unit>
 
     /** A linked parent removes (unlinks) themselves from a child. */
     suspend fun unlinkChild(childId: String, parentId: String): AppResult<Unit>

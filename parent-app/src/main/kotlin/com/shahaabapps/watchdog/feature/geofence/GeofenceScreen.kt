@@ -107,6 +107,8 @@ import com.shahaabapps.core.ui.components.CupertinoTextField
 import kotlinx.coroutines.launch
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
@@ -119,6 +121,8 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.FitScreen
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
@@ -546,9 +550,13 @@ fun GeofenceScreen(
                     if (trail.isEmpty()) "No path this day"
                     else timeLabel(startMs + (progress.value * rangeMs).toLong())
                 },
+                startMs = startMs,
+                rangeMs = rangeMs,
+                speed = speed,
                 accent = accent,
                 onPlayPause = { playing = !playing },
                 onScrub = { playing = false; scope.launch { progress.snapTo(it) } },
+                onSpeedChange = { speed = it },
                 onFocus = { la, ln -> runCatching { controller.animateTo(la, ln, 17.0) } },
                 onSaveAsPlace = { la, ln ->
                     // Jump to Live and open the add-place sheet prefilled at this stop.
@@ -1170,9 +1178,13 @@ private fun HistorySheet(
     playing: Boolean,
     hasTrail: Boolean,
     timeLabel: () -> String,
+    startMs: Long,
+    rangeMs: Long,
+    speed: Float,
     accent: Color,
     onPlayPause: () -> Unit,
     onScrub: (Float) -> Unit,
+    onSpeedChange: (Float) -> Unit,
     onFocus: (Double, Double) -> Unit,
     onSaveAsPlace: (Double, Double) -> Unit,
     modifier: Modifier = Modifier,
@@ -1187,6 +1199,13 @@ private fun HistorySheet(
             .sortedBy { it.stop.arrivalMillis }
             .mapIndexed { i, item -> item.stop.id to (i + 1) }
             .toMap()
+    }
+    // Where each stop falls along the timeline (for ticks + snap / step).
+    val stopFractions = remember(stops, startMs, rangeMs) {
+        if (rangeMs <= 0L) emptyList()
+        else stops.filter { !it.current }
+            .map { ((it.stop.arrivalMillis - startMs).toFloat() / rangeMs).coerceIn(0f, 1f) }
+            .sorted()
     }
     val chevronRotation by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
@@ -1294,8 +1313,58 @@ private fun HistorySheet(
                             .clip(androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
                             .background(accent),
                     )
+                    // Stop ticks.
+                    if (stopFractions.isNotEmpty()) {
+                        Canvas(modifier = Modifier.fillMaxWidth().height(6.dp)) {
+                            val r = 2.dp.toPx()
+                            stopFractions.forEach { f ->
+                                drawCircle(Color.White, radius = r, center = Offset(f * size.width, size.height / 2f))
+                            }
+                        }
+                    }
                 }
                 Text(timeLabel(), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+            }
+            // Controls: step between stops + playback speed.
+            if (hasTrail) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                ) {
+                    val canStep = stopFractions.isNotEmpty()
+                    StepButton(Icons.Filled.SkipPrevious, "Previous stop", enabled = canStep) {
+                        val cur = progress.value
+                        onScrub(stopFractions.lastOrNull { it < cur - 0.001f } ?: 0f)
+                    }
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                    ) {
+                        listOf(1f, 2f, 4f).forEach { s ->
+                            SpeedChip(label = "${s.toInt()}×", selected = speed == s) { onSpeedChange(s) }
+                        }
+                    }
+                    StepButton(Icons.Filled.SkipNext, "Next stop", enabled = canStep) {
+                        val cur = progress.value
+                        onScrub(stopFractions.firstOrNull { it > cur + 0.001f } ?: 1f)
+                    }
+                }
+                // Nearest place at the current playback moment (scrub tooltip).
+                val tMs = startMs + (progress.value * rangeMs).toLong()
+                val near = stops.firstOrNull {
+                    !it.current && tMs in it.stop.arrivalMillis..it.stop.departureMillis
+                }?.placeName ?: stops.filter { !it.current && it.placeName != null }
+                    .minByOrNull { kotlin.math.abs(it.stop.arrivalMillis - tMs) }
+                    ?.takeIf { kotlin.math.abs(it.stop.arrivalMillis - tMs) < 10 * 60_000L }
+                    ?.placeName
+                if (near != null) {
+                    Text(
+                        "near $near",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AppTheme.colors.secondaryLabel,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
             }
             // Timeline — only when expanded, so the sheet stays compact.
             if (expanded) {
@@ -1476,6 +1545,35 @@ private fun relativeTime(millis: Long): String {
         mins < 60 -> "$mins min ago"
         mins < 1440 -> "${mins / 60} h ago"
         else -> "${mins / 1440} d ago"
+    }
+}
+
+@Composable
+private fun StepButton(icon: ImageVector, contentDescription: String, enabled: Boolean, onClick: () -> Unit) {
+    IconButton(onClick = onClick, enabled = enabled) {
+        Icon(
+            icon,
+            contentDescription = contentDescription,
+            tint = if (enabled) AppTheme.colors.accent else AppTheme.colors.secondaryLabel.copy(alpha = 0.4f),
+        )
+    }
+}
+
+@Composable
+private fun SpeedChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(50))
+            .background(if (selected) AppTheme.colors.accent else AppTheme.colors.separator.copy(alpha = 0.4f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Bold,
+            color = if (selected) Color.White else AppTheme.colors.secondaryLabel,
+        )
     }
 }
 

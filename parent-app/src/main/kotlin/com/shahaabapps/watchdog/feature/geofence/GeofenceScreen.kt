@@ -106,6 +106,7 @@ import com.shahaabapps.core.ui.components.CupertinoTextField
 import kotlinx.coroutines.launch
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -481,6 +482,14 @@ fun GeofenceScreen(
                 onPlayPause = { playing = !playing },
                 onScrub = { playing = false; scope.launch { progress.snapTo(it) } },
                 onFocus = { la, ln -> runCatching { controller.animateTo(la, ln, 17.0) } },
+                onSaveAsPlace = { la, ln ->
+                    // Jump to Live and open the add-place sheet prefilled at this stop.
+                    pending = la to ln
+                    selectedIcon = "home"
+                    mode = DrawMode.PIN
+                    historyMode = false
+                    showCircleSheet = true
+                },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         } else if (mode == DrawMode.AREA && area.isNotEmpty()) {
@@ -1097,11 +1106,13 @@ private fun HistorySheet(
     onPlayPause: () -> Unit,
     onScrub: (Float) -> Unit,
     onFocus: (Double, Double) -> Unit,
+    onSaveAsPlace: (Double, Double) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Collapsed by default so the sheet stays small; tap the header to expand
     // the stop timeline.
     var expanded by rememberSaveable { mutableStateOf(false) }
+    val digest = remember(stops) { dayDigest(stops) }
     val chevronRotation by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
         label = "sheetChevron",
@@ -1147,6 +1158,17 @@ private fun HistorySheet(
                     contentDescription = if (expanded) "Collapse" else "Expand",
                     tint = AppTheme.colors.secondaryLabel,
                     modifier = Modifier.padding(start = 6.dp).rotate(chevronRotation),
+                )
+            }
+            // One-line day digest (first → last place).
+            if (digest != null) {
+                Text(
+                    digest,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.secondaryLabel,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp),
                 )
             }
             // Scrubber: dark circular play + thin progress bar + time.
@@ -1215,9 +1237,25 @@ private fun HistorySheet(
                         contentPadding = PaddingValues(top = Spacing.sm, bottom = Spacing.sm),
                     ) {
                         itemsIndexed(stops, key = { _, it -> it.stop.id }) { i, item ->
-                            TimelineRow(item = item, accent = accent, isLast = i == stops.lastIndex) {
-                                onFocus(item.stop.latitude, item.stop.longitude)
+                            // The row below (older stop) gives the travel leg into this one.
+                            val older = stops.getOrNull(i + 1)
+                            val leg = if (!item.current && older != null && !older.current) {
+                                legLabel(item.stop, older.stop)
+                            } else {
+                                null
                             }
+                            TimelineRow(
+                                item = item,
+                                accent = accent,
+                                isLast = i == stops.lastIndex,
+                                leg = leg,
+                                onSaveAsPlace = if (item.placeName == null && !item.current) {
+                                    { onSaveAsPlace(item.stop.latitude, item.stop.longitude) }
+                                } else {
+                                    null
+                                },
+                                onClick = { onFocus(item.stop.latitude, item.stop.longitude) },
+                            )
                         }
                     }
                 }
@@ -1247,6 +1285,8 @@ private fun TimelineRow(
     item: com.shahaabapps.watchdog.feature.travel.TravelStopItem,
     accent: Color,
     isLast: Boolean,
+    leg: String?,
+    onSaveAsPlace: (() -> Unit)?,
     onClick: () -> Unit,
 ) {
     Row(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
@@ -1283,7 +1323,53 @@ private fun TimelineRow(
                 color = if (item.current) accent else AppTheme.colors.secondaryLabel,
                 fontWeight = if (item.current) FontWeight.SemiBold else FontWeight.Normal,
             )
+            if (onSaveAsPlace != null) {
+                Text(
+                    "+ Save as place",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = accent,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 4.dp).clickable(onClick = onSaveAsPlace),
+                )
+            }
+            // Faint travel leg to the next (older) stop.
+            if (leg != null) {
+                Text(
+                    leg,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = AppTheme.colors.secondaryLabel.copy(alpha = 0.8f),
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
         }
+    }
+}
+
+/** "12 min · 3.1 km" travel between an older stop and the newer one above it. */
+private fun legLabel(
+    newer: com.shahaabapps.core.model.TravelStop,
+    older: com.shahaabapps.core.model.TravelStop,
+): String {
+    val meters = com.shahaabapps.core.model.GeoMath.distanceMeters(
+        older.latitude, older.longitude, newer.latitude, newer.longitude,
+    )
+    val gapMin = ((newer.arrivalMillis - older.departureMillis) / 60_000L).coerceAtLeast(0)
+    val dist = if (meters >= 1000) "%.1f km".format(meters / 1000.0) else "${meters.toInt()} m"
+    return "↕ ${durationShort(gapMin)} · $dist"
+}
+
+/** "Home 7:50 → Office 16:05" endpoints of the day (null when no recorded stops). */
+private fun dayDigest(stops: List<com.shahaabapps.watchdog.feature.travel.TravelStopItem>): String? {
+    val recorded = stops.filter { !it.current }
+    if (recorded.isEmpty()) return null
+    val chrono = recorded.sortedBy { it.stop.arrivalMillis }
+    val first = chrono.first()
+    val last = chrono.last()
+    fun name(it: com.shahaabapps.watchdog.feature.travel.TravelStopItem) = it.placeName ?: "a stop"
+    return if (chrono.size == 1) {
+        "${name(first)} · ${timeLabel(first.stop.arrivalMillis)}"
+    } else {
+        "${name(first)} ${timeLabel(first.stop.arrivalMillis)} → ${name(last)} ${timeLabel(last.stop.arrivalMillis)}"
     }
 }
 

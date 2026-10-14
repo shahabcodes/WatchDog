@@ -108,6 +108,15 @@
             </intent-filter>
         </receiver>
 
+        <!-- Receives silent data pushes (e.g. instant screenshot trigger). -->
+        <service
+            android:name=".messaging.ShieldMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <!-- Keeps geofences registered. -->
         <service
             android:name=".location.GeofenceSyncService"

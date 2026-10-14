@@ -87,6 +87,7 @@ class EnforcementService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        instance = this
         val childId = authRepository.currentUserIdOrNull() ?: return
         serviceScope.launch {
             appRulesRepository.observeAppRules(childId).collectLatest { rules ->
@@ -107,16 +108,13 @@ class EnforcementService : AccessibilityService() {
         // first tap works even if it arrived before this listener attached, while
         // stale requests aren't replayed on restart.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val prefs = getSharedPreferences("screenshot_state", Context.MODE_PRIVATE)
-            lastScreenshotNonce = prefs.getLong("last_nonce", 0L)
+            lastScreenshotNonce = getSharedPreferences("screenshot_state", Context.MODE_PRIVATE)
+                .getLong("last_nonce", 0L)
+            // The instant path is an FCM data message (see ShieldMessagingService);
+            // this Firestore listener is the fallback when a push is delayed/undelivered.
             serviceScope.launch {
                 screenshotRepository.observeCaptureRequests(childId).collectLatest { nonce ->
-                    val recent = System.currentTimeMillis() - nonce < REQUEST_FRESH_MS
-                    if (nonce > lastScreenshotNonce && recent) {
-                        lastScreenshotNonce = nonce
-                        prefs.edit().putLong("last_nonce", nonce).apply()
-                        captureScreenshot(childId)
-                    }
+                    maybeCapture(nonce)
                 }
             }
         }
@@ -213,6 +211,30 @@ class EnforcementService : AccessibilityService() {
         return runCatching {
             packageManager.getApplicationInfo(packageName, 0).loadLabel(packageManager).toString()
         }.getOrDefault(packageName)
+    }
+
+    /**
+     * Triggered by a parent screenshot request — from an FCM data push (instant, even
+     * when dozing) or the Firestore listener (fallback). De-dupes on the request nonce
+     * (persisted) so the two paths never double-capture the same request, and ignores
+     * stale requests. Safe to call from any thread.
+     */
+    @Synchronized
+    fun onRemoteCaptureCommand(nonce: Long) {
+        maybeCapture(nonce)
+    }
+
+    @Synchronized
+    private fun maybeCapture(nonce: Long) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        val childId = authRepository.currentUserIdOrNull() ?: return
+        val recent = System.currentTimeMillis() - nonce < REQUEST_FRESH_MS
+        if (nonce > lastScreenshotNonce && recent) {
+            lastScreenshotNonce = nonce
+            getSharedPreferences("screenshot_state", Context.MODE_PRIVATE)
+                .edit().putLong("last_nonce", nonce).apply()
+            captureScreenshot(childId)
+        }
     }
 
     /**
@@ -330,14 +352,20 @@ class EnforcementService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if (instance === this) instance = null
         runCatching { unregisterReceiver(packageAddedReceiver) }
         runCatching { screenshotExecutor.shutdown() }
         serviceScope.cancel()
     }
 
-    private companion object {
+    companion object {
+        /** The running accessibility service, so the FCM push can trigger a capture. */
+        @Volatile
+        var instance: EnforcementService? = null
+            private set
+
         // Only honour a screenshot request this fresh, so stale requests aren't
         // replayed when the service (re)starts.
-        const val REQUEST_FRESH_MS = 2 * 60_000L
+        private const val REQUEST_FRESH_MS = 2 * 60_000L
     }
 }

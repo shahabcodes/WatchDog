@@ -2,9 +2,11 @@ package com.shahaabapps.shield.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.messaging.FirebaseMessaging
 import com.shahaabapps.core.common.AppResult
 import com.shahaabapps.core.firebase.auth.AuthRepository
 import com.shahaabapps.core.firebase.child.ChildRepository
+import com.shahaabapps.core.firebase.messaging.MessagingTokenRepository
 import com.shahaabapps.core.model.ChildAccount
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -13,11 +15,14 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 
 sealed interface ChildAppState {
@@ -33,12 +38,28 @@ sealed interface ChildAppState {
 class ChildAppViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val childRepository: ChildRepository,
+    private val messagingTokenRepository: MessagingTokenRepository,
 ) : ViewModel() {
 
     private val authError = MutableStateFlow<String?>(null)
 
     init {
         ensureSignedIn()
+        registerFcmToken()
+    }
+
+    /**
+     * Stores this device's FCM token under its own user id so the screenshot Cloud
+     * Function can send it an instant, silent capture push.
+     */
+    private fun registerFcmToken() {
+        viewModelScope.launch {
+            val uid = authRepository.currentUserId.filterNotNull().first()
+            runCatching {
+                val token = FirebaseMessaging.getInstance().token.await()
+                messagingTokenRepository.registerToken(uid, token)
+            }
+        }
     }
 
     private fun ensureSignedIn() {

@@ -1,4 +1,4 @@
-const { onDocumentCreated, onDocumentDeleted } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentDeleted, onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { initializeApp } = require("firebase-admin/app");
@@ -193,6 +193,56 @@ exports.notifyGeofenceEvent = onDocumentCreated(
     });
     await Promise.all(deletions);
   }
+);
+
+/**
+ * When a parent requests a screenshot, send the child device a silent,
+ * high-priority FCM data message so it captures immediately — even when dozing.
+ * No notification is shown on the child; the data message wakes the app's
+ * messaging service, which triggers the accessibility capture. The child's
+ * Firestore listener remains as a fallback if the push is delayed/undelivered.
+ *
+ * Firestore trigger: children/{childId}/commands/screenshot
+ */
+exports.triggerScreenshot = onDocumentWritten(
+  "children/{childId}/commands/screenshot",
+  async (event) => {
+    const after = event.data && event.data.after && event.data.after.data();
+    if (!after) return;
+    const nonce = Number(after.nonce) || 0;
+    if (!nonce) return;
+    // Only act on fresh requests (ignore backfills / replays).
+    if (Date.now() - nonce > 2 * 60 * 1000) return;
+
+    const childId = event.params.childId;
+    // The child registers its token under its own user id (uid === childId).
+    const toks = await db.collection(`users/${childId}/fcmTokens`).get();
+    const tokens = toks.docs.map((d) => d.id);
+    if (tokens.length === 0) return;
+
+    const message = {
+      tokens,
+      // Data-only (no `notification`) → silent; the app handles it.
+      data: { type: "screenshot", nonce: String(nonce) },
+      android: { priority: "high" },
+    };
+    const resp = await getMessaging().sendEachForMulticast(message);
+
+    // Prune tokens that are no longer valid.
+    const deletions = [];
+    resp.responses.forEach((r, i) => {
+      if (!r.success) {
+        const code = r.error && r.error.code;
+        if (
+          code === "messaging/registration-token-not-registered" ||
+          code === "messaging/invalid-argument"
+        ) {
+          deletions.push(db.doc(`users/${childId}/fcmTokens/${tokens[i]}`).delete());
+        }
+      }
+    });
+    await Promise.all(deletions);
+  },
 );
 
 /**

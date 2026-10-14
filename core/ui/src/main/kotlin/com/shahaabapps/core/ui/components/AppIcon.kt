@@ -46,9 +46,10 @@ fun AppIcon(
             }
         }
     }
-    if (image != null) {
+    val bmp = image
+    if (bmp != null) {
         Image(
-            bitmap = image,
+            bitmap = bmp,
             contentDescription = null,
             modifier = modifier.size(size).clip(RoundedCornerShape(10.dp)),
         )

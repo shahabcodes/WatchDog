@@ -293,11 +293,14 @@ fun GeofenceScreen(
         playing = false
         runCatching { progress.snapTo(0f) }
     }
-    // Drive playback: animate progress 0→1 over ~28s at 1x (scaled by speed).
+    // Drive playback. The run tracks the day's ACTUAL elapsed time (~100x real
+    // time at 1x — a 1 h window ≈ 36 s), clamped to a watchable range, so a short
+    // errand plays quickly and a long day takes longer. 2x / 4x skim faster.
     LaunchedEffect(playing, speed) {
         if (playing && rangeMs > 0L) {
             val remaining = (1f - progress.value).coerceAtLeast(0f)
-            val durationMs = (28_000f * remaining / speed).toInt().coerceAtLeast(1)
+            val base1x = (rangeMs / 100f).coerceIn(12_000f, 240_000f)
+            val durationMs = (base1x * remaining / speed).toInt().coerceAtLeast(1)
             runCatching { progress.animateTo(1f, tween(durationMs, easing = LinearEasing)) }
             playing = false
         }
@@ -1462,7 +1465,7 @@ private fun TimelineRow(
         }
         Column(modifier = Modifier.weight(1f).padding(start = Spacing.md, bottom = Spacing.md)) {
             Text(
-                item.placeName ?: if (item.current) "Current location" else "Stop",
+                item.placeName ?: item.address ?: if (item.current) "Current location" else "Stop",
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
             )
@@ -1518,7 +1521,7 @@ private fun dayDigest(stops: List<com.shahaabapps.watchdog.feature.travel.Travel
     val chrono = recorded.sortedBy { it.stop.arrivalMillis }
     val first = chrono.first()
     val last = chrono.last()
-    fun name(it: com.shahaabapps.watchdog.feature.travel.TravelStopItem) = it.placeName ?: "a stop"
+    fun name(it: com.shahaabapps.watchdog.feature.travel.TravelStopItem) = it.placeName ?: it.address ?: "a stop"
     return if (chrono.size == 1) {
         "${name(first)} · ${timeLabel(first.stop.arrivalMillis)}"
     } else {

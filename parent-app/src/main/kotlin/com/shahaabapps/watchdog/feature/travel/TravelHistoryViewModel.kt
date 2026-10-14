@@ -31,6 +31,8 @@ data class TravelStopItem(
     val placeIcon: String? = null,
     /** True for the synthesized "where the child is right now" row. */
     val current: Boolean = false,
+    /** Reverse-geocoded street/area label for stops not in a saved place. */
+    val address: String? = null,
 )
 
 data class TravelHistoryUiState(
@@ -48,6 +50,7 @@ class TravelHistoryViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     deviceRepository: DeviceRepository,
     geofenceRepository: GeofenceRepository,
+    private val addressResolver: AddressResolver,
 ) : ViewModel() {
 
     private val childId: String = checkNotNull(savedStateHandle["childId"])
@@ -61,7 +64,7 @@ class TravelHistoryViewModel @Inject constructor(
 
     private val filters = combine(selectedDate, fromMinute, toMinute) { d, f, t -> Triple(d, f, t) }
 
-    val uiState: StateFlow<TravelHistoryUiState> = combine(
+    private val base: kotlinx.coroutines.flow.Flow<TravelHistoryUiState> = combine(
         trailFlow,
         deviceRepository.observeTravelHistory(childId),
         geofenceRepository.observeGeofences(childId),
@@ -119,6 +122,20 @@ class TravelHistoryViewModel @Inject constructor(
             stops = stopItems,
             trail = trailPts,
         )
+    }
+
+    // Layer reverse-geocoded street/area labels onto stops that aren't in a saved
+    // place, filling in as they resolve (and triggering lookups on demand).
+    val uiState: StateFlow<TravelHistoryUiState> = combine(base, addressResolver.addresses) { state, addrs ->
+        val stops = state.stops.map { item ->
+            if (!item.current && item.placeName == null) {
+                addressResolver.request(item.stop.latitude, item.stop.longitude)
+                item.copy(address = addrs[addressResolver.keyOf(item.stop.latitude, item.stop.longitude)])
+            } else {
+                item
+            }
+        }
+        state.copy(stops = stops)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TravelHistoryUiState())
 
     fun setDate(date: LocalDate) {

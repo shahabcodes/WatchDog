@@ -45,9 +45,8 @@ class AddressResolver @Inject constructor(
         scope.launch {
             val label = runCatching {
                 @Suppress("DEPRECATION")
-                Geocoder(context, Locale.getDefault()).getFromLocation(lat, lng, 1)
-                    ?.firstOrNull()
-                    ?.let(::shortLabel)
+                val results = Geocoder(context, Locale.getDefault()).getFromLocation(lat, lng, 5)
+                results?.let(::bestLabel)
             }.getOrNull()
             if (!label.isNullOrBlank()) {
                 _addresses.update { it + (key to label) }
@@ -56,16 +55,17 @@ class AddressResolver @Inject constructor(
         }
     }
 
-    private fun shortLabel(a: android.location.Address): String? {
-        val street = a.thoroughfare
-        val number = a.subThoroughfare
-        return when {
-            !street.isNullOrBlank() && !number.isNullOrBlank() -> "$number $street"
-            !street.isNullOrBlank() -> street
-            !a.subLocality.isNullOrBlank() -> a.subLocality
-            !a.locality.isNullOrBlank() -> a.locality
-            !a.featureName.isNullOrBlank() -> a.featureName
-            else -> a.getAddressLine(0)
-        }?.let { "Near $it" }
+    /**
+     * Picks the most street-specific label across the geocoder's candidates: a
+     * street (with number when known) first, then neighbourhood, then city.
+     */
+    private fun bestLabel(results: List<android.location.Address>): String? {
+        results.firstOrNull { !it.thoroughfare.isNullOrBlank() }?.let { a ->
+            val number = a.subThoroughfare
+            return if (!number.isNullOrBlank()) "$number ${a.thoroughfare}" else a.thoroughfare
+        }
+        results.firstOrNull { !it.subLocality.isNullOrBlank() }?.let { return it.subLocality }
+        val first = results.firstOrNull() ?: return null
+        return first.locality ?: first.featureName ?: first.getAddressLine(0)
     }
 }

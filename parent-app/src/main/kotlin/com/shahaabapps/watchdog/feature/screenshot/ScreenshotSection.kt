@@ -261,15 +261,22 @@ private fun ScreenshotViewer(
 
     // Single tap toggles the chrome (header), like a photo gallery.
     var chromeVisible by remember { mutableStateOf(true) }
+    // 0 = normal, 1 = at the dismiss threshold; fades the backdrop as you drag down.
+    var dismissProgress by remember { mutableStateOf(0f) }
 
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 1f - dismissProgress * 0.75f))) {
             HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
-                ZoomableImage(shot = shots[page], onTap = { chromeVisible = !chromeVisible })
+                ZoomableImage(
+                    shot = shots[page],
+                    onTap = { chromeVisible = !chromeVisible },
+                    onDismissProgress = { dismissProgress = it },
+                    onDismiss = onClose,
+                )
             }
 
             androidx.compose.animation.AnimatedVisibility(
-                visible = chromeVisible,
+                visible = chromeVisible && dismissProgress == 0f,
                 enter = fadeIn(),
                 exit = fadeOut(),
                 modifier = Modifier.align(Alignment.TopCenter),
@@ -308,29 +315,61 @@ private fun ScreenshotViewer(
 }
 
 @Composable
-private fun ZoomableImage(shot: LocalShot, onTap: () -> Unit) {
+private fun ZoomableImage(
+    shot: LocalShot,
+    onTap: () -> Unit,
+    onDismissProgress: (Float) -> Unit,
+    onDismiss: () -> Unit,
+) {
     var scale by remember(shot.file.path) { mutableStateOf(1f) }
     var offset by remember(shot.file.path) { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    var dragY by remember(shot.file.path) { mutableStateOf(0f) }
     Box(
         modifier = Modifier
             .fillMaxSize()
-            // Pinch to zoom + drag to pan. Only consume gestures while zoomed in
-            // (or during a two-finger pinch); a single-finger swipe at 1x passes
-            // through so the pager can still page between screenshots.
+            // One unified handler so pager, pinch-zoom, pan and swipe-to-dismiss
+            // don't fight each other:
+            //  - zoomed in / two-finger pinch → zoom & pan (consume);
+            //  - at 1x, a vertical drag → swipe-down-to-dismiss (consume);
+            //  - at 1x, a horizontal drag → not consumed, so the pager pages.
             .pointerInput(shot.file.path) {
+                val thresholdPx = 180.dp.toPx()
+                val slop = viewConfiguration.touchSlop
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
+                    var dir = 0 // 0 undecided, 1 horizontal (pager), 2 vertical (dismiss)
                     do {
                         val event = awaitPointerEvent()
                         val multiTouch = event.changes.count { it.pressed } >= 2
-                        if (scale > 1f || multiTouch) {
-                            val zoom = event.calculateZoom()
-                            val pan = event.calculatePan()
-                            scale = (scale * zoom).coerceIn(1f, 5f)
-                            offset = if (scale > 1f) offset + pan else androidx.compose.ui.geometry.Offset.Zero
-                            event.changes.forEach { if (it.pressed) it.consume() }
+                        val pan = event.calculatePan()
+                        when {
+                            scale > 1f || multiTouch -> {
+                                val zoom = event.calculateZoom()
+                                scale = (scale * zoom).coerceIn(1f, 5f)
+                                offset = if (scale > 1f) offset + pan else androidx.compose.ui.geometry.Offset.Zero
+                                event.changes.forEach { if (it.pressed) it.consume() }
+                            }
+                            else -> {
+                                if (dir == 0) {
+                                    if (kotlin.math.abs(pan.y) > slop && kotlin.math.abs(pan.y) > kotlin.math.abs(pan.x)) dir = 2
+                                    else if (kotlin.math.abs(pan.x) > slop) dir = 1
+                                }
+                                if (dir == 2) {
+                                    dragY = (dragY + pan.y).coerceAtLeast(0f)
+                                    onDismissProgress((dragY / thresholdPx).coerceIn(0f, 1f))
+                                    event.changes.forEach { if (it.pressed) it.consume() }
+                                }
+                            }
                         }
                     } while (event.changes.any { it.pressed })
+                    if (dir == 2) {
+                        if (dragY > thresholdPx) {
+                            onDismiss()
+                        } else {
+                            dragY = 0f
+                            onDismissProgress(0f)
+                        }
+                    }
                 }
             }
             // Single tap toggles chrome; double tap zooms in/out.
@@ -349,6 +388,8 @@ private fun ZoomableImage(shot: LocalShot, onTap: () -> Unit) {
             },
         contentAlignment = Alignment.Center,
     ) {
+        // While dismiss-dragging, shrink slightly for the "lift away" feel.
+        val dismissScale = (1f - (dragY / 2000f)).coerceIn(0.85f, 1f)
         AsyncImage(
             model = shot.file,
             contentDescription = "Screenshot",
@@ -356,10 +397,10 @@ private fun ZoomableImage(shot: LocalShot, onTap: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer(
-                    scaleX = scale,
-                    scaleY = scale,
+                    scaleX = scale * dismissScale,
+                    scaleY = scale * dismissScale,
                     translationX = offset.x,
-                    translationY = offset.y,
+                    translationY = offset.y + dragY,
                 ),
         )
     }

@@ -170,6 +170,7 @@ fun OverviewScreen(
                         percent = state.batteryPercent,
                         charging = state.charging,
                         drainPerHour = state.batteryDrainPerHour,
+                        stats = state.batteryStats,
                     )
                 }
             }
@@ -770,9 +771,14 @@ private fun ScreenTimeCard(totalMinutes: Int, yesterdayMinutes: Int?, weekMinute
     }
 }
 
-/** Child device battery: level, charging/drain, and an honest note on scope. */
+/** Child device battery: level, charging/drain, last charge, and hourly history. */
 @Composable
-private fun BatteryCard(percent: Int, charging: Boolean, drainPerHour: Double) {
+private fun BatteryCard(
+    percent: Int,
+    charging: Boolean,
+    drainPerHour: Double,
+    stats: com.shahaabapps.core.model.BatteryStats?,
+) {
     val low = percent in 1..15 && !charging
     val valueColor = if (low) AppTheme.colors.destructive else AppTheme.colors.accent
     val status = when {
@@ -806,6 +812,41 @@ private fun BatteryCard(percent: Int, charging: Boolean, drainPerHour: Double) {
                         color = valueColor,
                     )
                     Text(status, style = MaterialTheme.typography.bodyMedium, color = AppTheme.colors.secondaryLabel)
+                }
+            }
+            // Last charge session.
+            stats?.takeIf { it.lastChargeEndMillis > 0 }?.let { s ->
+                val gained = (s.lastChargeToPercent - s.lastChargeFromPercent).coerceAtLeast(0)
+                Text(
+                    "Last charged ${relativeTime(s.lastChargeEndMillis)} · +$gained% (${s.lastChargeFromPercent}% → ${s.lastChargeToPercent}%)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.secondaryLabel,
+                )
+            }
+            // Hourly history bars.
+            stats?.hourly?.takeIf { it.isNotEmpty() }?.let { hourly ->
+                Text("Last ${hourly.size}h", style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.secondaryLabel)
+                Row(
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    modifier = Modifier.fillMaxWidth().height(44.dp),
+                ) {
+                    hourly.forEach { sample ->
+                        val chargingBar = sample.percent >= 100
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(fraction = (sample.percent / 100f).coerceIn(0.04f, 1f))
+                                .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
+                                .background(
+                                    when {
+                                        sample.percent <= 15 -> AppTheme.colors.destructive
+                                        chargingBar -> AppTheme.colors.success
+                                        else -> AppTheme.colors.accent
+                                    },
+                                ),
+                        )
+                    }
                 }
             }
         }

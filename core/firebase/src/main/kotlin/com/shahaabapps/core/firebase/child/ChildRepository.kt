@@ -48,6 +48,9 @@ interface ChildRepository {
     /** Child reports which special-access permissions it currently has granted. */
     suspend fun updatePermissions(childId: String, permissions: com.shahaabapps.core.model.DevicePermissions): AppResult<Unit>
 
+    /** Child reports detailed battery history (hourly levels + last charge). */
+    suspend fun updateBatteryStats(childId: String, stats: com.shahaabapps.core.model.BatteryStats): AppResult<Unit>
+
     /** A linked parent removes (unlinks) themselves from a child. */
     suspend fun unlinkChild(childId: String, parentId: String): AppResult<Unit>
 }

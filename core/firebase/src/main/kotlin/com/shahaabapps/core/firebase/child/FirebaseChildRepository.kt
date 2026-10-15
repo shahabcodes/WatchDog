@@ -2,6 +2,8 @@ package com.shahaabapps.core.firebase.child
 
 import com.shahaabapps.core.common.AppResult
 import com.shahaabapps.core.common.runCatchingResult
+import com.shahaabapps.core.model.BatterySample
+import com.shahaabapps.core.model.BatteryStats
 import com.shahaabapps.core.model.ChildAccount
 import com.shahaabapps.core.model.DeviceInfo
 import com.shahaabapps.core.model.DevicePermissions
@@ -132,6 +134,21 @@ class FirebaseChildRepository @Inject constructor(
             ).await()
         }
 
+    override suspend fun updateBatteryStats(childId: String, stats: BatteryStats): AppResult<Unit> =
+        runCatchingResult {
+            val map = mapOf(
+                "lastChargeStartMillis" to stats.lastChargeStartMillis,
+                "lastChargeEndMillis" to stats.lastChargeEndMillis,
+                "lastChargeFromPercent" to stats.lastChargeFromPercent,
+                "lastChargeToPercent" to stats.lastChargeToPercent,
+                "hourly" to stats.hourly.map { mapOf("t" to it.atMillis, "p" to it.percent) },
+            )
+            childrenCollection.document(childId).set(
+                mapOf(FIELD_DEVICE to mapOf("batteryStats" to map)),
+                SetOptions.merge(),
+            ).await()
+        }
+
     override suspend fun updatePermissions(childId: String, permissions: DevicePermissions): AppResult<Unit> =
         runCatchingResult {
             val map = mapOf(
@@ -184,6 +201,22 @@ class FirebaseChildRepository @Inject constructor(
                         notifications = p["notifications"] as? Boolean ?: false,
                         batteryUnrestricted = p["batteryUnrestricted"] as? Boolean ?: false,
                         reportedAtMillis = (p["reportedAtMillis"] as? Long) ?: 0L,
+                    )
+                },
+                batteryStats = (deviceMap["batteryStats"] as? Map<*, *>)?.let { b ->
+                    @Suppress("UNCHECKED_CAST")
+                    val raw = b["hourly"] as? List<Map<String, Any?>> ?: emptyList()
+                    BatteryStats(
+                        lastChargeStartMillis = (b["lastChargeStartMillis"] as? Long) ?: 0L,
+                        lastChargeEndMillis = (b["lastChargeEndMillis"] as? Long) ?: 0L,
+                        lastChargeFromPercent = (b["lastChargeFromPercent"] as? Long)?.toInt() ?: 0,
+                        lastChargeToPercent = (b["lastChargeToPercent"] as? Long)?.toInt() ?: 0,
+                        hourly = raw.map {
+                            BatterySample(
+                                atMillis = (it["t"] as? Long) ?: 0L,
+                                percent = (it["p"] as? Long)?.toInt() ?: 0,
+                            )
+                        },
                     )
                 },
             ),

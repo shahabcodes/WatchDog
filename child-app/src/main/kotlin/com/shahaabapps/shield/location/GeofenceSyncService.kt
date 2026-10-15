@@ -73,6 +73,7 @@ class GeofenceSyncService : Service() {
     private var lastBatteryPct = -1
     private var lastBatteryTime = 0L
     private var drainPerHour = 0.0
+    private val batteryTracker by lazy { BatteryStatsTracker(applicationContext) }
 
     // In-memory "stop" cluster for travel history.
     private var stopAnchor: android.location.Location? = null
@@ -158,6 +159,10 @@ class GeofenceSyncService : Service() {
                         childId,
                         com.shahaabapps.shield.enforcement.ChildPermissions.snapshot(this@GeofenceSyncService),
                     )
+                }
+                runCatching {
+                    val stats = batteryTracker.record(pct, charging, now)
+                    childRepository.updateBatteryStats(childId, stats)
                 }
                 kotlinx.coroutines.delay(HEARTBEAT_MS)
             }

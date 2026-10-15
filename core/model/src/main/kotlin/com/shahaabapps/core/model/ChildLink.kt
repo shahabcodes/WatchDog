@@ -33,6 +33,21 @@ data class DeviceInfo(
     val batteryDrainPerHour: Double = 0.0,
     /** The permissions/special-access the child has granted (null if never reported). */
     val permissions: DevicePermissions? = null,
+    /** Detailed battery history (hourly levels + last charge), null if never reported. */
+    val batteryStats: BatteryStats? = null,
+)
+
+/** One battery level reading at a point in time. */
+data class BatterySample(val atMillis: Long = 0L, val percent: Int = 0)
+
+/** Hourly battery history and the most recent charge session. */
+data class BatteryStats(
+    val lastChargeStartMillis: Long = 0L,
+    val lastChargeEndMillis: Long = 0L,
+    val lastChargeFromPercent: Int = 0,
+    val lastChargeToPercent: Int = 0,
+    /** Up to the last ~24 hourly readings, oldest first. */
+    val hourly: List<BatterySample> = emptyList(),
 )
 
 /**

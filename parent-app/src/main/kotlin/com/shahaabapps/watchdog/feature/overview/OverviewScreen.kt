@@ -105,6 +105,7 @@ fun OverviewScreen(
     val childLocation by viewModel.childLocation.collectAsStateWithLifecycle()
     val currentPlace by viewModel.currentPlace.collectAsStateWithLifecycle()
     val weekly by viewModel.weekly.collectAsStateWithLifecycle()
+    val trackingMode by viewModel.trackingMode.collectAsStateWithLifecycle()
     val protectionVm: com.shahaabapps.watchdog.feature.protection.ProtectionViewModel = hiltViewModel()
     val protection by protectionVm.settings.collectAsStateWithLifecycle()
     val pendingVm: com.shahaabapps.watchdog.feature.protection.PendingAppsViewModel = hiltViewModel()
@@ -173,6 +174,13 @@ fun OverviewScreen(
                         drainPerHour = state.batteryDrainPerHour,
                         stats = state.batteryStats,
                     )
+                }
+            }
+        }
+        item(key = "tracking") {
+            Box(Modifier.padding(horizontal = Spacing.lg)) {
+                DashSection("Location tracking") {
+                    TrackingCard(mode = trackingMode, onSelect = { viewModel.setTrackingMode(it) })
                 }
             }
         }
@@ -884,6 +892,64 @@ private fun BatteryCard(
                 }
             }
         }
+    }
+}
+
+/** Parent selects how aggressively the child samples location. */
+@Composable
+private fun TrackingCard(
+    mode: com.shahaabapps.core.model.TrackingMode,
+    onSelect: (com.shahaabapps.core.model.TrackingMode) -> Unit,
+) {
+    val desc = when (mode) {
+        com.shahaabapps.core.model.TrackingMode.SAVER ->
+            "Lowest battery use. The path is less precise, especially while travelling."
+        com.shahaabapps.core.model.TrackingMode.ADAPTIVE ->
+            "Recommended. Precise while moving (follows the road), light on battery when still."
+        com.shahaabapps.core.model.TrackingMode.HIGH ->
+            "Most precise everywhere. Uses the most battery."
+    }
+    CupertinoCard {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(AppTheme.colors.separator.copy(alpha = 0.4f))
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                TrackSeg("Saver", mode == com.shahaabapps.core.model.TrackingMode.SAVER, Modifier.weight(1f)) {
+                    onSelect(com.shahaabapps.core.model.TrackingMode.SAVER)
+                }
+                TrackSeg("Balanced", mode == com.shahaabapps.core.model.TrackingMode.ADAPTIVE, Modifier.weight(1f)) {
+                    onSelect(com.shahaabapps.core.model.TrackingMode.ADAPTIVE)
+                }
+                TrackSeg("High", mode == com.shahaabapps.core.model.TrackingMode.HIGH, Modifier.weight(1f)) {
+                    onSelect(com.shahaabapps.core.model.TrackingMode.HIGH)
+                }
+            }
+            Text(desc, style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
+        }
+    }
+}
+
+@Composable
+private fun TrackSeg(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selected) AppTheme.colors.accent else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = if (selected) Color.White else AppTheme.colors.secondaryLabel,
+        )
     }
 }
 

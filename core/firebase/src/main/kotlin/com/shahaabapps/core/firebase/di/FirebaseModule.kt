@@ -128,4 +128,8 @@ interface FirebaseBindsModule {
     @Binds
     @Singleton
     fun bindScreenshotRepository(impl: FirebaseScreenshotRepository): ScreenshotRepository
+
+    @Binds
+    @Singleton
+    fun bindTrackingRepository(impl: com.shahaabapps.core.firebase.tracking.FirebaseTrackingRepository): com.shahaabapps.core.firebase.tracking.TrackingRepository
 }

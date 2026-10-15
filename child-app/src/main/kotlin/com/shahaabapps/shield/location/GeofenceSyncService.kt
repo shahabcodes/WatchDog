@@ -56,12 +56,21 @@ class GeofenceSyncService : Service() {
     @Inject lateinit var registrar: GeofenceRegistrar
     @Inject lateinit var ringController: RingController
     @Inject lateinit var pendingTrailDao: PendingTrailDao
+    @Inject lateinit var trackingRepository: com.shahaabapps.core.firebase.tracking.TrackingRepository
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val fusedClient by lazy { LocationServices.getFusedLocationProviderClient(this) }
     private var locationCallback: LocationCallback? = null
     private var started = false
     private var lastRingNonce: String? = null
+
+    // Parent-chosen tracking accuracy + adaptive-sampling state.
+    @Volatile
+    private var trackingMode: com.shahaabapps.core.model.TrackingMode = com.shahaabapps.core.model.TrackingMode.DEFAULT
+    @Volatile
+    private var denseActive = false
+    @Volatile
+    private var lastMovementMillis = 0L
 
     // Active geofences + pending-arrival dwell timers, for stream-based
     // enter/exit detection (a reliable backup to Play Services geofencing).
@@ -227,6 +236,13 @@ class GeofenceSyncService : Service() {
                 }
             }
         }
+        // Parent-chosen tracking accuracy — re-tune sampling when it changes.
+        scope.launch {
+            trackingRepository.observe(childId).collectLatest { mode ->
+                trackingMode = mode
+                applyLocationRequest(desiredDense(System.currentTimeMillis()))
+            }
+        }
         startLocationUpdates(childId)
         // Register the periodic backstop so location keeps flowing even if this
         // foreground service is later killed by the OS.
@@ -270,20 +286,53 @@ class GeofenceSyncService : Service() {
                 .addOnSuccessListener { loc -> loc?.let { publishLocation(childId, it) } }
         }
 
-        val request = LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, LOCATION_INTERVAL_MS)
-            .setMinUpdateIntervalMillis(LOCATION_FASTEST_MS)
-            // Only report when the child actually moves — saves battery and
-            // Firestore writes while they're stationary (home, school, etc.).
-            .setMinUpdateDistanceMeters(MOVE_DISTANCE_METERS)
-            .build()
         val callback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 val loc = result.lastLocation ?: return
+                val now = System.currentTimeMillis()
+                // Movement detection drives adaptive accuracy: speed, or a jump
+                // beyond the move gate from the last trusted position.
+                val moving = (loc.hasSpeed() && loc.speed > MOVING_SPEED_MPS) ||
+                    (accepted?.let { it.distanceTo(loc) > MOVE_DISTANCE_METERS } ?: false)
+                if (moving) lastMovementMillis = now
+                val wantDense = desiredDense(now)
+                if (wantDense != denseActive) applyLocationRequest(wantDense)
                 publishLocation(childId, loc)
             }
         }
         locationCallback = callback
-        runCatching { fusedClient.requestLocationUpdates(request, callback, Looper.getMainLooper()) }
+        applyLocationRequest(desiredDense(System.currentTimeMillis()))
+    }
+
+    /** Whether dense/high-accuracy sampling should be active right now. */
+    private fun desiredDense(now: Long): Boolean = when (trackingMode) {
+        com.shahaabapps.core.model.TrackingMode.SAVER -> false
+        com.shahaabapps.core.model.TrackingMode.HIGH -> true
+        // Adaptive: dense while moving (and briefly after), light when settled.
+        com.shahaabapps.core.model.TrackingMode.ADAPTIVE -> (now - lastMovementMillis) < STILL_TIMEOUT_MS
+    }
+
+    private fun buildLocationRequest(dense: Boolean): LocationRequest =
+        if (dense) {
+            // High accuracy, frequent, no move gate → the trail hugs the route.
+            LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, DENSE_INTERVAL_MS)
+                .setMinUpdateIntervalMillis(DENSE_FASTEST_MS)
+                .setMinUpdateDistanceMeters(0f)
+                .build()
+        } else {
+            // Balanced + move-gated → light on battery while stationary.
+            LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, LOCATION_INTERVAL_MS)
+                .setMinUpdateIntervalMillis(LOCATION_FASTEST_MS)
+                .setMinUpdateDistanceMeters(MOVE_DISTANCE_METERS)
+                .build()
+        }
+
+    @SuppressLint("MissingPermission")
+    private fun applyLocationRequest(dense: Boolean) {
+        val cb = locationCallback ?: return
+        denseActive = dense
+        runCatching { fusedClient.removeLocationUpdates(cb) }
+        runCatching { fusedClient.requestLocationUpdates(buildLocationRequest(dense), cb, Looper.getMainLooper()) }
     }
 
     /**
@@ -557,6 +606,10 @@ class GeofenceSyncService : Service() {
         private const val ACCURACY_MAX_MOVING_METERS = 120f // relaxed while travelling
         private const val GEO_ACCURACY_MAX_METERS = 120f // max fix fuzziness for geofence enter/exit
         private const val DRAIN_WINDOW_HOURS = 0.25 // ≥15 min window for a stable drain rate
+        // Adaptive high-accuracy sampling while moving (dense), vs balanced when still.
+        private const val DENSE_INTERVAL_MS = 8_000L
+        private const val DENSE_FASTEST_MS = 4_000L
+        private const val STILL_TIMEOUT_MS = 2 * 60_000L // drop to light after this with no movement
         private const val MOVING_SPEED_MPS = 2.5f     // ~9 km/h: clearly moving
         private const val MOVE_MARGIN_METERS = 15f    // movement must beat the accuracy noise by this
         private const val MAX_SPEED_MPS = 60f         // ~216 km/h teleport ceiling

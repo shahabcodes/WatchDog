@@ -55,6 +55,7 @@ data class OverviewUiState(
 class OverviewViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val deviceRepository: DeviceRepository,
+    private val trackingRepository: com.shahaabapps.core.firebase.tracking.TrackingRepository,
     usageRepository: UsageRepository,
     appRulesRepository: AppRulesRepository,
     geofenceRepository: GeofenceRepository,
@@ -174,6 +175,15 @@ class OverviewViewModel @Inject constructor(
     /** Ask the child to grant a missing permission (pushes a tap-to-fix prompt). */
     fun requestPermission(permission: String) {
         viewModelScope.launch { deviceRepository.requestPermission(childId, permission) }
+    }
+
+    /** The current location-tracking accuracy mode for this child. */
+    val trackingMode: StateFlow<com.shahaabapps.core.model.TrackingMode> =
+        trackingRepository.observe(childId)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), com.shahaabapps.core.model.TrackingMode.DEFAULT)
+
+    fun setTrackingMode(mode: com.shahaabapps.core.model.TrackingMode) {
+        viewModelScope.launch { trackingRepository.setMode(childId, mode) }
     }
 
     private companion object {

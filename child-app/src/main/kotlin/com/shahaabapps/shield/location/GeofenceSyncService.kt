@@ -135,7 +135,7 @@ class GeofenceSyncService : Service() {
         scope.launch {
             while (true) {
                 val pct = batteryPercent()
-                val charging = isCharging()
+                val charging = isPlugged()
                 val now = System.currentTimeMillis()
                 // Estimate discharge rate over a window of at least DRAIN_WINDOW_HOURS.
                 // Measuring over the ~2-min heartbeat makes a single 1% tick look like
@@ -184,18 +184,19 @@ class GeofenceSyncService : Service() {
                         }
                     }
                 }
-                runCatching {
-                    childRepository.heartbeat(childId, android.os.Build.MODEL, pct, charging, drainPerHour)
-                }
-                runCatching {
-                    childRepository.updatePermissions(
-                        childId,
-                        com.shahaabapps.shield.enforcement.ChildPermissions.snapshot(this@GeofenceSyncService),
-                    )
-                }
-                runCatching {
-                    val stats = batteryTracker.record(pct, charging, now)
-                    childRepository.updateBatteryStats(childId, stats)
+                // Record battery stats locally (persisted) every cycle — this must
+                // run even when offline, so charge sessions and hourly samples are
+                // captured and then uploaded on reconnect.
+                val stats = runCatching { batteryTracker.record(pct, charging, now) }.getOrNull()
+                val perms = com.shahaabapps.shield.enforcement.ChildPermissions.snapshot(this@GeofenceSyncService)
+                val drain = drainPerHour
+                // Fire-and-forget the network writes so the sampling loop keeps its
+                // 2-min cadence even offline (the writes queue in Firestore's offline
+                // cache and sync on reconnect) instead of blocking on await().
+                scope.launch {
+                    runCatching { childRepository.heartbeat(childId, android.os.Build.MODEL, pct, charging, drain) }
+                    runCatching { childRepository.updatePermissions(childId, perms) }
+                    if (stats != null) runCatching { childRepository.updateBatteryStats(childId, stats) }
                 }
                 kotlinx.coroutines.delay(HEARTBEAT_MS)
             }
@@ -446,11 +447,16 @@ class GeofenceSyncService : Service() {
         return if (pct in 1..100) pct else 0
     }
 
-    /** Whether the device is currently charging / plugged in. */
-    private fun isCharging(): Boolean {
-        val bm = getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager ?: return false
-        return runCatching { bm.isCharging }.getOrDefault(false)
-    }
+    /**
+     * Whether the device is plugged into power. Uses the sticky battery intent's
+     * EXTRA_PLUGGED, which stays true at 100%/Full (unlike isCharging(), which can
+     * read false when the battery is full while still plugged in — that would
+     * falsely look like an unplug and end the charge session early).
+     */
+    private fun isPlugged(): Boolean = runCatching {
+        val intent = registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        (intent?.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
+    }.getOrDefault(false)
 
     /** Remaining charge in µAh (fine-grained), or -1 when the device doesn't report it. */
     private fun chargeCounterUah(): Int {

@@ -783,6 +783,7 @@ private fun BatteryCard(
     val low = percent in 1..15 && !charging
     val valueColor = if (low) AppTheme.colors.destructive else AppTheme.colors.accent
     val status = when {
+        charging && percent >= 100 -> "Charged"
         charging -> "Charging"
         drainPerHour > 0.5 -> "Draining about ${drainPerHour.roundToInt()}%/hr"
         percent > 0 -> "On battery"

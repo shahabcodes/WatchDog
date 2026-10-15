@@ -55,8 +55,15 @@ class LocationSyncWorker(
         runCatching {
             val bm = applicationContext.getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager
             val pct = bm?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)?.takeIf { it in 1..100 } ?: 0
-            val charging = bm?.isCharging ?: false
-            deps.childRepository().heartbeat(childId, android.os.Build.MODEL, pct, charging, 0.0)
+            val plugged = runCatching {
+                val i = applicationContext.registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+                (i?.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
+            }.getOrDefault(false)
+            deps.childRepository().heartbeat(childId, android.os.Build.MODEL, pct, plugged, 0.0)
+            // Keep battery history + charge-session tracking going even if the
+            // foreground service is dead (shares the same persisted state).
+            val stats = BatteryStatsTracker(applicationContext).record(pct, plugged, System.currentTimeMillis())
+            deps.childRepository().updateBatteryStats(childId, stats)
         }
 
         val fine = ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.ACCESS_FINE_LOCATION)

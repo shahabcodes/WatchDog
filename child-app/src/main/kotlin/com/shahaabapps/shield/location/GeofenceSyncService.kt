@@ -72,6 +72,7 @@ class GeofenceSyncService : Service() {
     // Battery sampling for the drain-rate estimate reported to the parent.
     private var lastBatteryPct = -1
     private var lastBatteryTime = 0L
+    private var lastBatteryCounterUah = -1 // fine-grained charge (µAh), -1 if unavailable
     private var drainPerHour = 0.0
     private val batteryTracker by lazy { BatteryStatsTracker(applicationContext) }
 
@@ -144,21 +145,41 @@ class GeofenceSyncService : Service() {
                         drainPerHour = 0.0
                         lastBatteryPct = -1
                         lastBatteryTime = 0L
+                        lastBatteryCounterUah = -1
                     }
                     pct in 1..100 -> {
+                        val counterNow = chargeCounterUah()
                         if (lastBatteryPct !in 1..100 || lastBatteryTime <= 0L) {
                             lastBatteryPct = pct
                             lastBatteryTime = now
+                            lastBatteryCounterUah = counterNow
                         } else {
                             val dtHours = (now - lastBatteryTime) / 3_600_000.0
                             if (dtHours >= DRAIN_WINDOW_HOURS) {
-                                if (pct < lastBatteryPct) {
-                                    val rate = ((lastBatteryPct - pct) / dtHours).coerceIn(0.0, 99.0)
+                                val rate = when {
+                                    // Precise: fine-grained charge-counter delta (µAh), scaled by
+                                    // the estimated full capacity — avoids 1% quantization.
+                                    lastBatteryCounterUah > 0 && counterNow in 1 until lastBatteryCounterUah -> {
+                                        val fullStart = lastBatteryCounterUah / (lastBatteryPct / 100.0)
+                                        val fullNow = counterNow / (pct / 100.0)
+                                        val fullCap = (fullStart + fullNow) / 2.0
+                                        if (fullCap > 0) {
+                                            (lastBatteryCounterUah - counterNow) / fullCap * 100.0 / dtHours
+                                        } else {
+                                            0.0
+                                        }
+                                    }
+                                    // Fallback: integer %-per-hour over the window.
+                                    pct < lastBatteryPct -> (lastBatteryPct - pct) / dtHours
+                                    else -> 0.0
+                                }.coerceIn(0.0, 99.0)
+                                if (rate > 0.0) {
                                     drainPerHour = if (drainPerHour <= 0.0) rate else drainPerHour * 0.5 + rate * 0.5
                                 }
                                 // Restart the window from the current reading either way.
                                 lastBatteryPct = pct
                                 lastBatteryTime = now
+                                lastBatteryCounterUah = counterNow
                             }
                         }
                     }
@@ -429,6 +450,15 @@ class GeofenceSyncService : Service() {
     private fun isCharging(): Boolean {
         val bm = getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager ?: return false
         return runCatching { bm.isCharging }.getOrDefault(false)
+    }
+
+    /** Remaining charge in µAh (fine-grained), or -1 when the device doesn't report it. */
+    private fun chargeCounterUah(): Int {
+        val bm = getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager ?: return -1
+        val v = runCatching {
+            bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER)
+        }.getOrDefault(Int.MIN_VALUE)
+        return if (v > 0) v else -1 // Integer.MIN_VALUE / 0 means unsupported
     }
 
     private fun today(millis: Long): String =

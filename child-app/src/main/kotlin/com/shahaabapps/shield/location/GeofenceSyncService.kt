@@ -39,7 +39,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -128,9 +127,11 @@ class GeofenceSyncService : Service() {
         // Establish E2EE readiness in this (possibly Activity-less) process so that
         // location/trail writes here are encrypted once every parent is wrapped.
         scope.launch {
+            // Run on each snapshot (not debounced) so a parent that publishes its
+            // key after being linked is wrapped on the next heartbeat; E2eeManager
+            // keeps repeat calls near-free.
             childRepository.observeChild(childId)
                 .map { it?.linkedParents ?: emptyList() }
-                .distinctUntilChanged()
                 .collect { parents -> runCatching { e2eeManager.syncChildKeys(childId, parents) } }
         }
         scope.launch {

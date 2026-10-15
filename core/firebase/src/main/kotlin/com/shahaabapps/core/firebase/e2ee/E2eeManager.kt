@@ -2,6 +2,7 @@ package com.shahaabapps.core.firebase.e2ee
 
 import android.content.Context
 import android.util.Base64
+import com.shahaabapps.core.common.AppResult
 import com.shahaabapps.core.common.crypto.DeviceKeyStore
 import com.shahaabapps.core.common.crypto.E2ee
 import com.shahaabapps.core.common.crypto.PinnedKeyStore
@@ -44,6 +45,10 @@ class E2eeManager @Inject constructor(
     /** Parent-side cache of unwrapped data keys, keyed by childId. */
     private val parentDekCache = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
 
+    /** "childId/parentUid" pairs already wrapped, so repeated syncs are near-free. */
+    private val wrappedParents = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    @Volatile private var childKeyPublished = false
+
     fun myPublicKeyB64(): String = b64(deviceKeyStore.publicKey())
     fun myFingerprint(): String = deviceKeyStore.publicKeyFingerprint()
 
@@ -74,8 +79,15 @@ class E2eeManager @Inject constructor(
      */
     suspend fun syncChildKeys(childId: String, linkedParents: List<String>) =
         withContext(Dispatchers.Default) {
-            // EC key-gen / ECDH / file I/O — keep off the main thread.
-            keys.publishChildPublicKey(childId, myPublicKeyB64())
+            // EC key-gen / ECDH / file I/O — keep off the main thread. Safe to call
+            // often (e.g. on every child snapshot): publishing is done once and
+            // already-wrapped parents short-circuit, so a parent that publishes its
+            // key late is still picked up on a later call without write amplification.
+            if (!childKeyPublished &&
+                keys.publishChildPublicKey(childId, myPublicKeyB64()) is AppResult.Success
+            ) {
+                childKeyPublished = true
+            }
             var allWrapped = linkedParents.isNotEmpty()
             for (parentUid in linkedParents) {
                 if (!ensureWrappedFor(childId, parentUid)) allWrapped = false
@@ -152,10 +164,13 @@ class E2eeManager @Inject constructor(
     }
 
     private suspend fun ensureWrappedFor(childId: String, parentUid: String): Boolean {
-        if (keys.hasWrappedKey(childId, parentUid)) return true
+        val tag = "$childId/$parentUid"
+        if (tag in wrappedParents) return true
+        if (keys.hasWrappedKey(childId, parentUid)) { wrappedParents.add(tag); return true }
         val parentPubB64 = keys.getParentPublicKey(parentUid) ?: return false
         val wrapped = deviceKeyStore.wrapDataKeyFor(unb64(parentPubB64), childDataKey())
         keys.putWrappedKey(childId, parentUid, b64(wrapped), myFingerprint())
+        wrappedParents.add(tag)
         return true
     }
 
@@ -209,6 +224,8 @@ class E2eeManager @Inject constructor(
      */
     fun clearSession() {
         parentDekCache.clear()
+        wrappedParents.clear()
+        childKeyPublished = false
         childEncryptionReady = false
     }
 

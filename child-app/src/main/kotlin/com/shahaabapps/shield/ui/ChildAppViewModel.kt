@@ -16,7 +16,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -54,9 +53,11 @@ class ChildAppViewModel @Inject constructor(
 
     /**
      * Publishes this child's E2EE public key and ensures every linked parent has
-     * a wrapped copy of the data key. Re-runs whenever the set of linked parents
-     * changes (debounced to that list, so routine heartbeat writes don't retrigger
-     * it). A parent whose key isn't published yet is retried on the next change.
+     * a wrapped copy of the data key. Runs on each child snapshot (not debounced to
+     * the parent list) so a parent that publishes its key *after* being linked —
+     * e.g. an existing family upgrading — is picked up on the next heartbeat.
+     * E2eeManager makes repeat calls near-free (publish-once + already-wrapped
+     * short-circuit), so this doesn't amplify writes.
      */
     private fun syncE2eeKeys() {
         viewModelScope.launch {
@@ -64,7 +65,6 @@ class ChildAppViewModel @Inject constructor(
                 .flatMapLatest { uid ->
                     childRepository.observeChild(uid).map { it?.linkedParents ?: emptyList() }
                 }
-                .distinctUntilChanged()
                 .collect { parents ->
                     val uid = authRepository.currentUserIdOrNull() ?: return@collect
                     runCatching { e2eeManager.syncChildKeys(uid, parents) }

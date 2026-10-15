@@ -77,11 +77,19 @@ class TravelHistoryViewModel @Inject constructor(
             val z = Instant.ofEpochMilli(p.timestampMillis).atZone(zone)
             z.toLocalDate() == date && minuteOfDay(z) in from..to
         }
-        val recorded = stops
-            .filter { s ->
-                val z = Instant.ofEpochMilli(s.arrivalMillis).atZone(zone)
-                z.toLocalDate() == date && minuteOfDay(z) in from..to
-            }
+        val recordedRaw = stops.filter { s ->
+            val z = Instant.ofEpochMilli(s.arrivalMillis).atZone(zone)
+            z.toLocalDate() == date && minuteOfDay(z) in from..to
+        }
+        // Derive stops from the trail too — the on-device stop tracker can miss a
+        // stay if the service is killed mid-visit, but the trail is recorded
+        // reliably (incl. the periodic backstop), so dwells can be recovered from
+        // it. Keep a recorded stop over an overlapping derived one.
+        val derivedRaw = deriveStops(trailPts).filter { d ->
+            recordedRaw.none { overlaps(it, d) }
+        }
+        val recorded = (recordedRaw + derivedRaw)
+            .sortedByDescending { it.arrivalMillis }
             .map { s ->
                 val place = placeFor(s.latitude, s.longitude, geofences)
                 TravelStopItem(s, place?.name, place?.icon)
@@ -149,6 +157,45 @@ class TravelHistoryViewModel @Inject constructor(
 
     private fun minuteOfDay(z: ZonedDateTime): Int = z.hour * 60 + z.minute
 
+    /** Two stops overlap in time (so they're the same stay from two sources). */
+    private fun overlaps(a: TravelStop, b: TravelStop): Boolean =
+        a.arrivalMillis <= b.departureMillis && b.arrivalMillis <= a.departureMillis
+
+    /**
+     * Clusters consecutive trail points that stay within [STOP_RADIUS_M] of the
+     * cluster's anchor for at least [MIN_STOP_MS] into a stop (arrival→departure).
+     * Recovers dwells (gym/home/office) from the reliably-recorded trail when the
+     * on-device stop tracker missed them.
+     */
+    private fun deriveStops(trail: List<TrailPoint>): List<TravelStop> {
+        if (trail.size < 2) return emptyList()
+        val out = mutableListOf<TravelStop>()
+        var i = 0
+        while (i < trail.size) {
+            val anchor = trail[i]
+            var j = i
+            while (j + 1 < trail.size &&
+                GeoMath.distanceMeters(anchor.latitude, anchor.longitude, trail[j + 1].latitude, trail[j + 1].longitude) <= STOP_RADIUS_M
+            ) {
+                j++
+            }
+            val span = trail[j].timestampMillis - anchor.timestampMillis
+            if (j > i && span >= MIN_STOP_MS) {
+                val lat = (i..j).sumOf { trail[it].latitude } / (j - i + 1)
+                val lng = (i..j).sumOf { trail[it].longitude } / (j - i + 1)
+                out += TravelStop(
+                    id = "trail-${anchor.timestampMillis}",
+                    latitude = lat,
+                    longitude = lng,
+                    arrivalMillis = anchor.timestampMillis,
+                    departureMillis = trail[j].timestampMillis,
+                )
+            }
+            i = if (j > i) j + 1 else i + 1
+        }
+        return out
+    }
+
     private fun placeFor(lat: Double, lon: Double, geofences: List<Geofence>): Geofence? {
         // A drawn area the stop falls inside wins outright (shape-accurate).
         geofences.firstOrNull { g ->
@@ -168,5 +215,7 @@ class TravelHistoryViewModel @Inject constructor(
     private companion object {
         /** Extra slack beyond a place's radius when labelling a stop (metres). */
         const val MATCH_MARGIN_METERS = 80.0
+        const val STOP_RADIUS_M = 150.0
+        const val MIN_STOP_MS = 5 * 60_000L // a stay of at least 5 min counts as a stop
     }
 }

@@ -54,6 +54,9 @@ const val OPENFREEMAP_STYLE = "https://tiles.openfreemap.org/styles/liberty"
 /** OpenFreeMap "dark" vector style, used at night. */
 const val OPENFREEMAP_DARK_STYLE = "https://tiles.openfreemap.org/styles/dark"
 
+/** Default camera pitch so the map shows a 3D (tilted, building-extruded) view. */
+const val MAP_TILT_DEGREES = 50.0
+
 /** True between 18:00 and 06:00 local time — when the map should go dark. */
 fun isNightNow(): Boolean {
     val h = java.time.LocalTime.now().hour
@@ -276,15 +279,18 @@ fun OpenFreeMap(
             controller.map = map
             map.setStyle(Style.Builder().fromUri(openFreeMapStyle()))
             val (lat, lng, zoom) = controller.initial
+            // Default to a tilted (3D) view — the Liberty style extrudes buildings
+            // when pitched. Recenters via newLatLngZoom keep the tilt.
             map.cameraPosition = CameraPosition.Builder()
                 .target(LatLng(lat, lng))
                 .zoom(zoom)
+                .tilt(MAP_TILT_DEGREES)
                 .build()
             map.uiSettings.apply {
                 setAllGesturesEnabled(gesturesEnabled)
-                isTiltGesturesEnabled = false
-                isRotateGesturesEnabled = false
-                isCompassEnabled = false
+                isTiltGesturesEnabled = true // let the user flatten / change the 3D angle
+                isRotateGesturesEnabled = true
+                isCompassEnabled = true
                 isLogoEnabled = false
                 isAttributionEnabled = false
             }

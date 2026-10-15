@@ -145,6 +145,19 @@ class FirebaseDeviceRepository @Inject constructor(
         Unit
     }
 
+    override suspend fun requestPermission(childId: String, permission: String): AppResult<Unit> = runCatchingResult {
+        firestore.collection(CHILDREN).document(childId)
+            .collection(COMMANDS).document("permissionRequest")
+            .set(
+                mapOf(
+                    "permission" to permission,
+                    "nonce" to System.currentTimeMillis(),
+                    "requestedAtMillis" to System.currentTimeMillis(),
+                ),
+            ).await()
+        Unit
+    }
+
     override fun observeLocationRequests(childId: String): Flow<Long> = callbackFlow {
         val registration = firestore.collection(CHILDREN).document(childId)
             .collection(COMMANDS).document(LOCATION)

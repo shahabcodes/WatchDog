@@ -49,6 +49,9 @@ interface DeviceRepository {
     /** Parent asks the child to publish a fresh location fix now (pull-to-refresh). */
     suspend fun requestLocation(childId: String): AppResult<Unit>
 
+    /** Parent asks the child to grant a missing permission (pushes a tap-to-fix prompt). */
+    suspend fun requestPermission(childId: String, permission: String): AppResult<Unit>
+
     /** Child observes fresh-location requests (emits the latest request nonce). */
     fun observeLocationRequests(childId: String): Flow<Long>
 }

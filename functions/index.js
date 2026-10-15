@@ -246,6 +246,63 @@ exports.triggerScreenshot = onDocumentWritten(
 );
 
 /**
+ * When a parent requests a missing permission, push a tap-to-fix notification to
+ * the child so they can open the right settings screen and grant it.
+ *
+ * Firestore trigger: children/{childId}/commands/permissionRequest
+ */
+exports.triggerPermissionRequest = onDocumentWritten(
+  "children/{childId}/commands/permissionRequest",
+  async (event) => {
+    const after = event.data && event.data.after && event.data.after.data();
+    if (!after) return;
+    const nonce = Number(after.nonce) || 0;
+    if (!nonce || Date.now() - nonce > 10 * 60 * 1000) return;
+    const permission = String(after.permission || "");
+    if (!permission) return;
+
+    const childId = event.params.childId;
+    const toks = await db.collection(`users/${childId}/fcmTokens`).get();
+    const tokens = toks.docs.map((d) => d.id);
+    if (tokens.length === 0) return;
+
+    const labels = {
+      location: "location access",
+      accessibility: "the accessibility service",
+      usageAccess: "usage access",
+      notifications: "notifications",
+      battery: "unrestricted battery",
+    };
+    const label = labels[permission] || "a permission";
+
+    const message = {
+      tokens,
+      notification: {
+        title: "Action needed",
+        body: `Your family asked you to turn on ${label}. Tap to fix it.`,
+      },
+      data: { type: "permission", permission },
+      android: { priority: "high", notification: { channelId: "permission_requests" } },
+    };
+    const resp = await getMessaging().sendEachForMulticast(message);
+
+    const deletions = [];
+    resp.responses.forEach((r, i) => {
+      if (!r.success) {
+        const code = r.error && r.error.code;
+        if (
+          code === "messaging/registration-token-not-registered" ||
+          code === "messaging/invalid-argument"
+        ) {
+          deletions.push(db.doc(`users/${childId}/fcmTokens/${tokens[i]}`).delete());
+        }
+      }
+    });
+    await Promise.all(deletions);
+  },
+);
+
+/**
  * When the child auto-blocks a newly installed app, push a review prompt to the
  * linked parents.
  *

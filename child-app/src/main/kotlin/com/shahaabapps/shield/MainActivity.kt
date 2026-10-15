@@ -1,6 +1,8 @@
 package com.shahaabapps.shield
 
+import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -28,6 +30,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        handlePermissionIntent(intent)
         setContent {
             val themeViewModel: ThemeViewModel = hiltViewModel()
             val themeMode by themeViewModel.themeMode.collectAsStateWithLifecycle()
@@ -44,6 +47,19 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handlePermissionIntent(intent)
+    }
+
+    /** A "fix a permission" push was tapped — open the exact settings screen for it. */
+    private fun handlePermissionIntent(intent: Intent?) {
+        val permission = intent?.getStringExtra(PermissionNavigator.EXTRA_PERMISSION) ?: return
+        runCatching { startActivity(PermissionNavigator.intentFor(this, permission)) }
+        Toast.makeText(this, "Please turn on ${PermissionNavigator.label(permission)}", Toast.LENGTH_LONG).show()
     }
 }
 

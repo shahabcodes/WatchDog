@@ -171,6 +171,11 @@ class OverviewViewModel @Inject constructor(
         viewModelScope.launch { deviceRepository.sendRing(childId, message) }
     }
 
+    /** Ask the child to grant a missing permission (pushes a tap-to-fix prompt). */
+    fun requestPermission(permission: String) {
+        viewModelScope.launch { deviceRepository.requestPermission(childId, permission) }
+    }
+
     private companion object {
         const val ONLINE_THRESHOLD_MS = 5 * 60_000L
     }

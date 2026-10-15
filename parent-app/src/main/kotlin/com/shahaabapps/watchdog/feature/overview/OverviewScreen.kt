@@ -179,7 +179,7 @@ fun OverviewScreen(
             item(key = "permissions") {
                 Box(Modifier.padding(horizontal = Spacing.lg)) {
                     DashSection("Permissions on ${state.childName}'s phone") {
-                        PermissionsCard(perms)
+                        PermissionsCard(perms, onRequest = { viewModel.requestPermission(it) })
                     }
                 }
             }
@@ -855,7 +855,10 @@ private fun BatteryCard(
 
 /** What permissions / special access the child has granted, for the parent. */
 @Composable
-private fun PermissionsCard(perms: com.shahaabapps.core.model.DevicePermissions) {
+private fun PermissionsCard(
+    perms: com.shahaabapps.core.model.DevicePermissions,
+    onRequest: (String) -> Unit,
+) {
     val locationLabel = when {
         perms.locationAlways -> "Allowed all the time"
         perms.location -> "While in use only"
@@ -863,22 +866,43 @@ private fun PermissionsCard(perms: com.shahaabapps.core.model.DevicePermissions)
     }
     CupertinoCard {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            PermRow(Icons.Filled.LocationOn, "Location", perms.locationAlways, locationLabel)
-            PermRow(Icons.Filled.Accessibility, "Accessibility", perms.accessibility, if (perms.accessibility) "On" else "Off — blocking & screenshots won't work")
-            PermRow(Icons.Filled.Schedule, "Usage access", perms.usageAccess, if (perms.usageAccess) "On" else "Off — screen time won't be tracked")
-            PermRow(Icons.Filled.Notifications, "Notifications", perms.notifications, if (perms.notifications) "On" else "Off")
-            PermRow(Icons.Filled.BatteryStd, "Unrestricted battery", perms.batteryUnrestricted, if (perms.batteryUnrestricted) "On" else "Off — may be killed in the background")
+            PermRow(Icons.Filled.LocationOn, "Location", perms.locationAlways, locationLabel, "location", onRequest)
+            PermRow(Icons.Filled.Accessibility, "Accessibility", perms.accessibility, if (perms.accessibility) "On" else "Off — blocking & screenshots won't work", "accessibility", onRequest)
+            PermRow(Icons.Filled.Schedule, "Usage access", perms.usageAccess, if (perms.usageAccess) "On" else "Off — screen time won't be tracked", "usageAccess", onRequest)
+            PermRow(Icons.Filled.Notifications, "Notifications", perms.notifications, if (perms.notifications) "On" else "Off", "notifications", onRequest)
+            PermRow(Icons.Filled.BatteryStd, "Unrestricted battery", perms.batteryUnrestricted, if (perms.batteryUnrestricted) "On" else "Off — may be killed in the background", "battery", onRequest)
         }
     }
 }
 
 @Composable
-private fun PermRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, ok: Boolean, detail: String) {
+private fun PermRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    ok: Boolean,
+    detail: String,
+    permKey: String,
+    onRequest: (String) -> Unit,
+) {
+    var requested by remember(permKey, ok) { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, contentDescription = null, tint = AppTheme.colors.accent, modifier = Modifier.size(20.dp))
         Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
             Text(detail, style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
+        }
+        if (!ok) {
+            Text(
+                if (requested) "Requested" else "Request",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (requested) AppTheme.colors.secondaryLabel else AppTheme.colors.accent,
+                modifier = Modifier
+                    .padding(end = Spacing.sm)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(enabled = !requested) { requested = true; onRequest(permKey) }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
         }
         Icon(
             if (ok) Icons.Filled.CheckCircle else Icons.Filled.Error,

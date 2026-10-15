@@ -63,8 +63,39 @@ fun isNightNow(): Boolean {
     return h < 6 || h >= 18
 }
 
-/** The map style for the current time of day (dark at night, Liberty by day). */
-fun openFreeMapStyle(): String = if (isNightNow()) OPENFREEMAP_DARK_STYLE else OPENFREEMAP_STYLE
+/**
+ * The map styles a parent can pick (Settings → Map style). OpenFreeMap's own
+ * "3D" option is just the Liberty vector style rendered with a camera pitch
+ * (the style extrudes buildings when tilted), so 3D = Liberty + tilt here.
+ * [AUTO] keeps the old behaviour: Liberty by day, Dark at night.
+ */
+enum class MapStyle(
+    val label: String,
+    val description: String,
+    private val styleUrl: String,
+    val tiltDegrees: Double,
+    private val auto: Boolean = false,
+) {
+    THREE_D("3D", "Tilted view with buildings", OPENFREEMAP_STYLE, MAP_TILT_DEGREES),
+    LIBERTY("Standard", "Flat, detailed streets", OPENFREEMAP_STYLE, 0.0),
+    BRIGHT("Bright", "Light, high-contrast", "https://tiles.openfreemap.org/styles/bright", 0.0),
+    POSITRON("Positron", "Minimal, muted", "https://tiles.openfreemap.org/styles/positron", 0.0),
+    DARK("Dark", "Dark everywhere", OPENFREEMAP_DARK_STYLE, 0.0),
+    AUTO("Auto", "Dark at night, light by day", OPENFREEMAP_STYLE, 0.0, auto = true);
+
+    /** The tile style URL to load, accounting for time of day when [auto]. */
+    fun resolvedStyleUrl(): String =
+        if (auto && isNightNow()) OPENFREEMAP_DARK_STYLE else styleUrl
+
+    /** A short cache-key token that varies when the resolved style changes. */
+    fun cacheToken(): String = if (auto) "auto${if (isNightNow()) "d" else "l"}" else name
+
+    companion object {
+        val DEFAULT = THREE_D
+        fun from(name: String?): MapStyle =
+            entries.firstOrNull { it.name == name } ?: DEFAULT
+    }
+}
 
 /**
  * Controls an [OpenFreeMap]: holds the live [MapLibreMap], exposes camera moves,
@@ -162,6 +193,7 @@ fun OpenFreeMapSnapshot(
     zoom: Double,
     modifier: Modifier = Modifier,
     dotColor: Color = Color(0xFF4285F4),
+    style: MapStyle = MapStyle.DEFAULT,
 ) {
     val context = LocalContext.current
     var bitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
@@ -181,9 +213,9 @@ fun OpenFreeMapSnapshot(
         // Defer the GL snapshot so it doesn't contend with the tab-switch transition
         // (the Map tab's live map is tearing down at the same moment). The card shows
         // a light placeholder until the image is ready.
-        LaunchedEffect(lat, lng, zoom, wPx, hPx) {
-            val night = isNightNow()
-            val cacheKey = "%.5f,%.5f,%.2f,%d,%d,%s".format(lat, lng, zoom, wPx, hPx, if (night) "d" else "l")
+        LaunchedEffect(lat, lng, zoom, wPx, hPx, style) {
+            val styleUrl = style.resolvedStyleUrl()
+            val cacheKey = "%.5f,%.5f,%.2f,%d,%d,%s".format(lat, lng, zoom, wPx, hPx, style.cacheToken())
             // Instant reuse on scroll re-entry — no GL render, no placeholder flash.
             snapshotCacheGet(cacheKey)?.let { bitmap = it; return@LaunchedEffect }
             kotlinx.coroutines.delay(400)
@@ -207,7 +239,7 @@ fun OpenFreeMapSnapshot(
                 lng - dLng,
             )
             val options = MapSnapshotter.Options(wPx, renderedH)
-                .withStyle(if (night) OPENFREEMAP_DARK_STYLE else OPENFREEMAP_STYLE)
+                .withStyle(styleUrl)
                 .withRegion(bounds)
                 .withLogo(false)
             val s = MapSnapshotter(context, options)
@@ -251,12 +283,14 @@ fun OpenFreeMap(
     controller: OpenFreeMapController,
     modifier: Modifier = Modifier,
     gesturesEnabled: Boolean = true,
+    style: MapStyle = MapStyle.DEFAULT,
     onMapClick: ((lat: Double, lng: Double) -> Unit)? = null,
     overlay: (DrawScope.() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val clickState = rememberUpdatedState(onMapClick)
+    val styleState = rememberUpdatedState(style)
 
     val mapView = remember {
         MapLibre.getInstance(context)
@@ -277,14 +311,15 @@ fun OpenFreeMap(
         lifecycleOwner.lifecycle.addObserver(observer)
         mapView.getMapAsync { map ->
             controller.map = map
-            map.setStyle(Style.Builder().fromUri(openFreeMapStyle()))
+            val chosen = styleState.value
+            map.setStyle(Style.Builder().fromUri(chosen.resolvedStyleUrl()))
             val (lat, lng, zoom) = controller.initial
-            // Default to a tilted (3D) view — the Liberty style extrudes buildings
-            // when pitched. Recenters via newLatLngZoom keep the tilt.
+            // The 3D style extrudes buildings when the camera is pitched; other
+            // styles start flat. Recenters via newLatLngZoom keep the tilt.
             map.cameraPosition = CameraPosition.Builder()
                 .target(LatLng(lat, lng))
                 .zoom(zoom)
-                .tilt(MAP_TILT_DEGREES)
+                .tilt(chosen.tiltDegrees)
                 .build()
             map.uiSettings.apply {
                 setAllGesturesEnabled(gesturesEnabled)
@@ -312,9 +347,20 @@ fun OpenFreeMap(
     LaunchedEffect(gesturesEnabled) {
         controller.map?.uiSettings?.apply {
             setAllGesturesEnabled(gesturesEnabled)
-            isTiltGesturesEnabled = false
-            isRotateGesturesEnabled = false
+            isTiltGesturesEnabled = gesturesEnabled
+            isRotateGesturesEnabled = gesturesEnabled
         }
+    }
+
+    // Re-style the live map when the parent changes the Map style setting,
+    // reapplying the style's tilt so 3D stays tilted and flat styles flatten.
+    LaunchedEffect(style) {
+        val map = controller.map ?: return@LaunchedEffect
+        map.setStyle(Style.Builder().fromUri(style.resolvedStyleUrl()))
+        val current = map.cameraPosition
+        map.cameraPosition = CameraPosition.Builder(current)
+            .tilt(style.tiltDegrees)
+            .build()
     }
 
     Box(modifier = modifier) {

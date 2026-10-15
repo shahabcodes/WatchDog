@@ -31,6 +31,10 @@ class ThemePreferences @Inject constructor(
     val accentPaletteName: Flow<String> = context.themeDataStore.data
         .map { prefs -> prefs[KEY_ACCENT_PALETTE] ?: DEFAULT_PALETTE }
 
+    /** Chosen map style, e.g. "THREE_D" / "LIBERTY" / "DARK" / "AUTO". */
+    val mapStyleName: Flow<String> = context.themeDataStore.data
+        .map { prefs -> prefs[KEY_MAP_STYLE] ?: DEFAULT_MAP_STYLE }
+
     suspend fun setThemeModeName(name: String) {
         context.themeDataStore.edit { prefs -> prefs[KEY_THEME_MODE] = name }
     }
@@ -39,10 +43,16 @@ class ThemePreferences @Inject constructor(
         context.themeDataStore.edit { prefs -> prefs[KEY_ACCENT_PALETTE] = name }
     }
 
+    suspend fun setMapStyleName(name: String) {
+        context.themeDataStore.edit { prefs -> prefs[KEY_MAP_STYLE] = name }
+    }
+
     private companion object {
         val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
         val KEY_ACCENT_PALETTE = stringPreferencesKey("accent_palette")
+        val KEY_MAP_STYLE = stringPreferencesKey("map_style")
         const val DEFAULT_MODE = "LIGHT"
         const val DEFAULT_PALETTE = "NEW_ZEALAND"
+        const val DEFAULT_MAP_STYLE = "THREE_D"
     }
 }

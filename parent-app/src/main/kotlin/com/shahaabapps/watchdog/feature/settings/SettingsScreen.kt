@@ -8,8 +8,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.LockReset
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -30,8 +32,10 @@ import com.shahaabapps.core.ui.components.CupertinoListRow
 import com.shahaabapps.core.ui.components.GuardianHeader
 import com.shahaabapps.core.ui.components.ThemeSettingsSection
 import androidx.compose.foundation.background
+import com.shahaabapps.core.ui.components.SectionHeader
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
+import com.shahaabapps.watchdog.util.MapStyle
 
 @Composable
 fun SettingsScreen(
@@ -40,6 +44,7 @@ fun SettingsScreen(
 ) {
     val mode by viewModel.themeMode.collectAsStateWithLifecycle()
     val palette by viewModel.accentPalette.collectAsStateWithLifecycle()
+    val mapStyle by viewModel.mapStyle.collectAsStateWithLifecycle()
     val resetMessage by viewModel.resetMessage.collectAsStateWithLifecycle()
     val sendingReset by viewModel.sendingReset.collectAsStateWithLifecycle()
     var confirmReset by remember { mutableStateOf(false) }
@@ -60,6 +65,34 @@ fun SettingsScreen(
             onPaletteChange = viewModel::setAccentPalette,
             modifier = Modifier.padding(horizontal = Spacing.lg),
         )
+
+        Column(modifier = Modifier.padding(horizontal = Spacing.lg)) {
+            SectionHeader(
+                text = "Map style",
+                modifier = Modifier.padding(start = Spacing.md, bottom = Spacing.xs),
+            )
+            CupertinoCard {
+                val styles = MapStyle.entries
+                styles.forEachIndexed { index, style ->
+                    CupertinoListRow(
+                        title = style.label,
+                        subtitle = style.description,
+                        leadingIcon = Icons.Filled.Map,
+                        showDivider = index < styles.lastIndex,
+                        onClick = { viewModel.setMapStyle(style) },
+                        trailing = {
+                            if (style == mapStyle) {
+                                Icon(
+                                    Icons.Filled.Check,
+                                    contentDescription = "Selected",
+                                    tint = AppTheme.colors.accent,
+                                )
+                            }
+                        },
+                    )
+                }
+            }
+        }
 
         CupertinoCard(modifier = Modifier.padding(horizontal = Spacing.lg)) {
             if (viewModel.email != null) {

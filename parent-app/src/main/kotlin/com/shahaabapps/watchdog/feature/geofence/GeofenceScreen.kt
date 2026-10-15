@@ -187,7 +187,9 @@ fun GeofenceScreen(
     onBack: () -> Unit,
     showBack: Boolean = true,
     viewModel: GeofenceViewModel = hiltViewModel(),
+    mapStyleViewModel: com.shahaabapps.watchdog.util.MapStyleViewModel = hiltViewModel(),
 ) {
+    val mapStyle by mapStyleViewModel.style.collectAsStateWithLifecycle()
     val geofences by viewModel.geofences.collectAsStateWithLifecycle()
     val events by viewModel.events.collectAsStateWithLifecycle()
     val childLocation by viewModel.childLocation.collectAsStateWithLifecycle()
@@ -347,6 +349,7 @@ fun GeofenceScreen(
             controller = controller,
             modifier = Modifier.fillMaxSize(),
             gesturesEnabled = true,
+            style = mapStyle,
             onMapClick = { lat, lng ->
                 if (!historyMode) {
                     when (mode) {

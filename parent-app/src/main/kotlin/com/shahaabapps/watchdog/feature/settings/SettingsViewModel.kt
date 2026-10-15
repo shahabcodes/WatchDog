@@ -7,6 +7,7 @@ import com.shahaabapps.core.common.datastore.ThemePreferences
 import com.shahaabapps.core.firebase.auth.AuthRepository
 import com.shahaabapps.core.ui.theme.AccentPalette
 import com.shahaabapps.core.ui.theme.ThemeMode
+import com.shahaabapps.watchdog.util.MapStyle
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -30,6 +31,10 @@ class SettingsViewModel @Inject constructor(
     val accentPalette: StateFlow<AccentPalette> = themePreferences.accentPaletteName
         .map { runCatching { AccentPalette.valueOf(it) }.getOrDefault(AccentPalette.GUARDIAN) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AccentPalette.GUARDIAN)
+
+    val mapStyle: StateFlow<MapStyle> = themePreferences.mapStyleName
+        .map { MapStyle.from(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MapStyle.DEFAULT)
 
     val email: String? = authRepository.currentUserEmail()
 
@@ -61,6 +66,10 @@ class SettingsViewModel @Inject constructor(
 
     fun setAccentPalette(palette: AccentPalette) {
         viewModelScope.launch { themePreferences.setAccentPaletteName(palette.name) }
+    }
+
+    fun setMapStyle(style: MapStyle) {
+        viewModelScope.launch { themePreferences.setMapStyleName(style.name) }
     }
 
     fun signOut() {

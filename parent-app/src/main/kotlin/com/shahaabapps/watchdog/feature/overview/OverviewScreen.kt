@@ -101,7 +101,9 @@ fun OverviewScreen(
     onSignOut: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: OverviewViewModel = hiltViewModel(),
+    mapStyleViewModel: com.shahaabapps.watchdog.util.MapStyleViewModel = hiltViewModel(),
 ) {
+    val mapStyle by mapStyleViewModel.style.collectAsStateWithLifecycle()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val childLocation by viewModel.childLocation.collectAsStateWithLifecycle()
     val currentPlace by viewModel.currentPlace.collectAsStateWithLifecycle()
@@ -141,6 +143,7 @@ fun OverviewScreen(
                 online = state.online,
                 batteryPercent = state.batteryPercent,
                 childName = state.childName.ifBlank { "Child" },
+                mapStyle = mapStyle,
                 onOpenSwitcher = { showChildSheet = true },
                 onOpenAlerts = onOpenAlerts,
                 onOpenMap = onOpenMap,
@@ -319,6 +322,7 @@ private fun HomeHero(
     online: Boolean,
     batteryPercent: Int,
     childName: String,
+    mapStyle: com.shahaabapps.watchdog.util.MapStyle,
     onOpenSwitcher: () -> Unit,
     onOpenAlerts: () -> Unit,
     onOpenMap: () -> Unit,
@@ -336,6 +340,7 @@ private fun HomeHero(
                 lng = location.longitude,
                 zoom = 18.5,
                 dotColor = AppTheme.colors.accent,
+                style = mapStyle,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {

@@ -73,9 +73,13 @@ data class DevicePermissions(
 )
 
 /**
- * Data encoded in the pairing QR code.
+ * Data encoded in the pairing QR code. [childPublicKey] (base64 X.509 SPKI of
+ * the child device's E2EE key) is carried so the parent obtains it directly
+ * from the physical device — an out-of-band channel a compromised backend can't
+ * tamper with. Nullable for codes produced before E2EE existed.
  */
 data class PairingData(
     val childId: String,
     val code: String,
+    val childPublicKey: String? = null,
 )

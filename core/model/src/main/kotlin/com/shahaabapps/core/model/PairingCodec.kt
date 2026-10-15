@@ -4,7 +4,8 @@ import org.json.JSONObject
 
 /**
  * Encodes/decodes the compact JSON carried in the pairing QR code.
- * Shape: {"c":"<childId>","k":"<pairingCode>"}
+ * Shape: {"c":"<childId>","k":"<pairingCode>","p":"<childPublicKey?>"}
+ * The "p" field is optional for backward compatibility with older codes.
  */
 object PairingCodec {
 
@@ -12,6 +13,7 @@ object PairingCodec {
         JSONObject()
             .put("c", data.childId)
             .put("k", data.code)
+            .apply { data.childPublicKey?.let { put("p", it) } }
             .toString()
 
     fun decode(raw: String?): PairingData? {
@@ -20,7 +22,8 @@ object PairingCodec {
             val json = JSONObject(raw)
             val childId = json.optString("c")
             val code = json.optString("k")
-            if (childId.isBlank() || code.isBlank()) null else PairingData(childId, code)
+            val childKey = json.optString("p").ifBlank { null }
+            if (childId.isBlank() || code.isBlank()) null else PairingData(childId, code, childKey)
         } catch (_: Exception) {
             null
         }

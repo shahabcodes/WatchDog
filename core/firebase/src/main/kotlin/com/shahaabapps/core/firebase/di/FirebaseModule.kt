@@ -132,4 +132,8 @@ interface FirebaseBindsModule {
     @Binds
     @Singleton
     fun bindTrackingRepository(impl: com.shahaabapps.core.firebase.tracking.FirebaseTrackingRepository): com.shahaabapps.core.firebase.tracking.TrackingRepository
+
+    @Binds
+    @Singleton
+    fun bindE2eeKeyRepository(impl: com.shahaabapps.core.firebase.e2ee.FirebaseE2eeKeyRepository): com.shahaabapps.core.firebase.e2ee.E2eeKeyRepository
 }

@@ -41,18 +41,29 @@ class LocationSyncWorker(
     interface Deps {
         fun deviceRepository(): DeviceRepository
         fun authRepository(): AuthRepository
+        fun childRepository(): com.shahaabapps.core.firebase.child.ChildRepository
         fun pendingTrailDao(): com.shahaabapps.shield.data.PendingTrailDao
     }
 
     @SuppressLint("MissingPermission")
     override suspend fun doWork(): Result {
+        val deps = EntryPointAccessors.fromApplication(applicationContext, Deps::class.java)
+        val childId = deps.authRepository().currentUserIdOrNull() ?: return Result.success()
+
+        // Heartbeat first, so the parent's "last seen" + battery stay fresh even
+        // when the foreground service is dead and even if the location fix fails.
+        runCatching {
+            val bm = applicationContext.getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager
+            val pct = bm?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)?.takeIf { it in 1..100 } ?: 0
+            val charging = bm?.isCharging ?: false
+            deps.childRepository().heartbeat(childId, android.os.Build.MODEL, pct, charging, 0.0)
+        }
+
         val fine = ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.ACCESS_FINE_LOCATION)
         val coarse = ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.ACCESS_COARSE_LOCATION)
         if (fine != PackageManager.PERMISSION_GRANTED && coarse != PackageManager.PERMISSION_GRANTED) {
             return Result.success()
         }
-        val deps = EntryPointAccessors.fromApplication(applicationContext, Deps::class.java)
-        val childId = deps.authRepository().currentUserIdOrNull() ?: return Result.success()
 
         val fused = LocationServices.getFusedLocationProviderClient(applicationContext)
         val loc = awaitCurrentLocation(fused) ?: return Result.success()

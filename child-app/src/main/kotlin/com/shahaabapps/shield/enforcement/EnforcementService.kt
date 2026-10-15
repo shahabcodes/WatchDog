@@ -88,6 +88,13 @@ class EnforcementService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        // Watchdog: the accessibility service is the component the OS keeps alive
+        // most reliably, so use it to keep location flowing — (re)schedule the
+        // backstop workers and best-effort restart the (OEM-killable) location
+        // foreground service.
+        runCatching { com.shahaabapps.shield.location.LocationSyncWorker.schedule(this) }
+        runCatching { com.shahaabapps.shield.location.LocationFlushWorker.schedulePeriodic(this) }
+        runCatching { com.shahaabapps.shield.location.GeofenceSyncService.start(this) }
         val childId = authRepository.currentUserIdOrNull() ?: return
         serviceScope.launch {
             appRulesRepository.observeAppRules(childId).collectLatest { rules ->

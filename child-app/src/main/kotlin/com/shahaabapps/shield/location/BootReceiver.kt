@@ -15,5 +15,10 @@ class BootReceiver : BroadcastReceiver() {
         if (hasFineLocation) {
             GeofenceSyncService.start(context)
         }
+        // Also (re)schedule the backstop workers: on Android 12+ the foreground
+        // service often can't auto-start from boot, so these keep location +
+        // heartbeat flowing until the app is next opened.
+        runCatching { LocationSyncWorker.schedule(context) }
+        runCatching { LocationFlushWorker.schedulePeriodic(context) }
     }
 }

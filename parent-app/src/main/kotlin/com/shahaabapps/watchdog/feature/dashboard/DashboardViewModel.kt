@@ -32,6 +32,12 @@ sealed interface LinkState {
     data class Error(val message: String) : LinkState
 }
 
+sealed interface VerifyState {
+    data object Idle : VerifyState
+    data object Success : VerifyState
+    data class Error(val message: String) : VerifyState
+}
+
 sealed interface ReconnectState {
     data object Idle : ReconnectState
     data object Working : ReconnectState
@@ -90,7 +96,7 @@ class DashboardViewModel @Inject constructor(
             _linkState.value = LinkState.Error("That QR code isn't a valid pairing code.")
             return
         }
-        linkWith(pairing.childId, pairing.code)
+        linkWith(pairing.childId, pairing.code, pairing.childPublicKey)
     }
 
     fun onManualCode(childId: String, code: String) = linkWith(childId, code.trim())
@@ -99,16 +105,52 @@ class DashboardViewModel @Inject constructor(
         _linkState.value = LinkState.Error("No QR code found in that image.")
     }
 
-    private fun linkWith(childId: String, code: String) {
+    private fun linkWith(childId: String, code: String, childPublicKey: String? = null) {
         val parentId = authRepository.currentUserIdOrNull() ?: return
         _linkState.value = LinkState.Linking
         viewModelScope.launch {
             _linkState.value = when (val result = childRepository.linkChild(childId, code, parentId)) {
-                is AppResult.Success -> LinkState.Success(null)
+                is AppResult.Success -> {
+                    // Pin the child's key captured out-of-band from the QR, so this
+                    // link is verified independently of the backend.
+                    childPublicKey?.let { runCatching { e2eeManager.pinChildKey(childId, it) } }
+                    LinkState.Success(null)
+                }
                 is AppResult.Failure -> LinkState.Error(result.error.message ?: "Couldn't link this device.")
             }
         }
     }
+
+    private val _verifyState = MutableStateFlow<VerifyState>(VerifyState.Idle)
+    val verifyState: StateFlow<VerifyState> = _verifyState.asStateFlow()
+
+    /** Returns whether [childId]'s key has been pinned (verified out-of-band). */
+    fun keyVerified(childId: String): kotlinx.coroutines.flow.Flow<Boolean> =
+        e2eeManager.observeChildKeyVerified(childId).map { it != null }
+
+    /**
+     * Re-scan flow for an already-linked child: pins the key from the QR without
+     * re-linking (the child is no longer in pairing mode). [expectedChildId], when
+     * given, guards against scanning the wrong device's code.
+     */
+    fun verifyKeyFromQr(contents: String?, expectedChildId: String? = null) {
+        val pairing = PairingCodec.decode(contents)
+        val key = pairing?.childPublicKey
+        when {
+            pairing == null -> _verifyState.value = VerifyState.Error("That isn't a valid pairing code.")
+            expectedChildId != null && pairing.childId != expectedChildId ->
+                _verifyState.value = VerifyState.Error("That code is for a different device.")
+            key == null -> _verifyState.value =
+                VerifyState.Error("This device's app is out of date — update Shield, then try again.")
+            else -> viewModelScope.launch {
+                runCatching { e2eeManager.pinChildKey(pairing.childId, key) }
+                    .onSuccess { _verifyState.value = VerifyState.Success }
+                    .onFailure { _verifyState.value = VerifyState.Error("Couldn't verify. Try again.") }
+            }
+        }
+    }
+
+    fun clearVerifyState() { _verifyState.value = VerifyState.Idle }
 
     fun clearLinkState() {
         _linkState.value = LinkState.Idle
@@ -149,7 +191,11 @@ class DashboardViewModel @Inject constructor(
             _reconnectState.value = runCatching {
                 FirebaseFunctions.getInstance().getHttpsCallable("reconnectChild").call(data).await()
             }.fold(
-                onSuccess = { ReconnectState.Success },
+                onSuccess = {
+                    // The reinstalled device has a new identity key; pin it from the QR.
+                    pairing.childPublicKey?.let { runCatching { e2eeManager.pinChildKey(pairing.childId, it) } }
+                    ReconnectState.Success
+                },
                 onFailure = { ReconnectState.Error(it.message ?: "Couldn't reconnect this device.") },
             )
         }

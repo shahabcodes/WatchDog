@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Base64
 import com.shahaabapps.core.common.crypto.DeviceKeyStore
 import com.shahaabapps.core.common.crypto.E2ee
+import com.shahaabapps.core.common.crypto.PinnedKeyStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import javax.inject.Inject
@@ -23,6 +24,7 @@ class E2eeManager @Inject constructor(
     @ApplicationContext context: Context,
     private val deviceKeyStore: DeviceKeyStore,
     private val keys: E2eeKeyRepository,
+    private val pinnedKeys: PinnedKeyStore,
 ) {
     private val appContext = context.applicationContext
     private val dekLock = Any()
@@ -119,6 +121,15 @@ class E2eeManager @Inject constructor(
         keys.publishParentPublicKey(parentUid, myPublicKeyB64())
     }
 
+    /** Pin a child's public key captured out-of-band from its pairing QR. */
+    suspend fun pinChildKey(childId: String, childPublicKeyB64: String) {
+        pinnedKeys.pin(childId, childPublicKeyB64)
+        parentDekCache.remove(childId) // re-derive against the verified key next read
+    }
+
+    /** True once this child's key has been verified out-of-band (via a QR scan). */
+    fun observeChildKeyVerified(childId: String) = pinnedKeys.observePinnedKey(childId)
+
     /**
      * Unwrap this parent's copy of [childId]'s data key, or null if it hasn't
      * been wrapped yet (e.g. the child hasn't come online since pairing).
@@ -132,7 +143,12 @@ class E2eeManager @Inject constructor(
     ): ByteArray? {
         parentDekCache[childId]?.let { return it }
         val wrapped = keys.getWrappedKey(childId, parentUid) ?: return null
-        val childPub = childPublicKeyB64 ?: keys.getChildPublicKey(childId) ?: return null
+        // Prefer the out-of-band pinned key (verified via QR); fall back to the
+        // caller-supplied key, then the backend-published key (trust-on-first-use).
+        val childPub = pinnedKeys.getPinnedKey(childId)
+            ?: childPublicKeyB64
+            ?: keys.getChildPublicKey(childId)
+            ?: return null
         return runCatching {
             deviceKeyStore.unwrapDataKeyFrom(unb64(childPub), unb64(wrapped.wrappedB64))
         }.getOrNull()?.also { parentDekCache[childId] = it }

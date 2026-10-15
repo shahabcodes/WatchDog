@@ -541,11 +541,12 @@ fun GeofenceScreen(
                 }
             }
         } else {
-            // Live mode: a "go to current location" button.
+            // Live mode: a "go to current location" button, bottom-right like
+            // Google Maps, floated above the Places FAB.
             Box(
                 modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = Spacing.md),
+                    .align(Alignment.BottomEnd)
+                    .padding(end = Spacing.lg, bottom = 88.dp),
             ) {
                 MapRoundButton(Icons.Filled.MyLocation, "Go to current location") {
                     childLocation?.let { runCatching { controller.animateTo(it.latitude, it.longitude, 17.5) } }

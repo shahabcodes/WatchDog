@@ -6,6 +6,8 @@ import com.shahaabapps.core.common.crypto.DeviceKeyStore
 import com.shahaabapps.core.common.crypto.E2ee
 import com.shahaabapps.core.common.crypto.PinnedKeyStore
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -70,14 +72,16 @@ class E2eeManager @Inject constructor(
      * copy of the data key. Safe to call repeatedly; a parent whose public key
      * isn't published yet is simply retried on the next call.
      */
-    suspend fun syncChildKeys(childId: String, linkedParents: List<String>) {
-        keys.publishChildPublicKey(childId, myPublicKeyB64())
-        var allWrapped = linkedParents.isNotEmpty()
-        for (parentUid in linkedParents) {
-            if (!ensureWrappedFor(childId, parentUid)) allWrapped = false
+    suspend fun syncChildKeys(childId: String, linkedParents: List<String>) =
+        withContext(Dispatchers.Default) {
+            // EC key-gen / ECDH / file I/O — keep off the main thread.
+            keys.publishChildPublicKey(childId, myPublicKeyB64())
+            var allWrapped = linkedParents.isNotEmpty()
+            for (parentUid in linkedParents) {
+                if (!ensureWrappedFor(childId, parentUid)) allWrapped = false
+            }
+            childEncryptionReady = allWrapped
         }
-        childEncryptionReady = allWrapped
-    }
 
     /**
      * The data key to encrypt with, or null if it isn't safe to encrypt yet.
@@ -125,16 +129,19 @@ class E2eeManager @Inject constructor(
      * the child uses its own (ready-gated) data key; a parent uses its unwrapped
      * copy. Returns null when encryption isn't possible yet (store plaintext).
      */
-    suspend fun sealString(childId: String, writerUid: String?, plaintext: String): String? {
-        val key = if (writerUid == childId) encryptionKeyIfReady()
-        else writerUid?.let { dataKeyForChild(childId, it, null) }
-        return key?.let { b64(E2ee.sealPayload(it, plaintext.toByteArray(Charsets.UTF_8))) }
-    }
+    suspend fun sealString(childId: String, writerUid: String?, plaintext: String): String? =
+        withContext(Dispatchers.Default) {
+            val key = if (writerUid == childId) encryptionKeyIfReady()
+            else writerUid?.let { dataKeyForChild(childId, it, null) }
+            key?.let { b64(E2ee.sealPayload(it, plaintext.toByteArray(Charsets.UTF_8))) }
+        }
 
     /** Ensure the data key for reading [childId] is cached, whichever side this device is. */
     suspend fun warmReaderKey(childId: String, viewerUid: String?): ByteArray? =
-        if (viewerUid != null && viewerUid == childId) childDataKey()
-        else viewerUid?.let { dataKeyForChild(childId, it, null) }
+        withContext(Dispatchers.Default) {
+            if (viewerUid != null && viewerUid == childId) childDataKey()
+            else viewerUid?.let { dataKeyForChild(childId, it, null) }
+        }
 
     /** Decrypt a string sealed for [childId], using the already-cached data key; null if unavailable. */
     fun openStringCached(childId: String, viewerUid: String?, sealedB64: String): String? {
@@ -155,8 +162,9 @@ class E2eeManager @Inject constructor(
     // ---- parent side ----
 
     /** Publish this parent's public key so children can wrap their data key for it. */
-    suspend fun publishParentKey(parentUid: String) {
+    suspend fun publishParentKey(parentUid: String) = withContext(Dispatchers.Default) {
         keys.publishParentPublicKey(parentUid, myPublicKeyB64())
+        Unit
     }
 
     /** Pin a child's public key captured out-of-band from its pairing QR. */
@@ -180,16 +188,18 @@ class E2eeManager @Inject constructor(
         childPublicKeyB64: String?,
     ): ByteArray? {
         parentDekCache[childId]?.let { return it }
-        val wrapped = keys.getWrappedKey(childId, parentUid) ?: return null
-        // Prefer the out-of-band pinned key (verified via QR); fall back to the
-        // caller-supplied key, then the backend-published key (trust-on-first-use).
-        val childPub = pinnedKeys.getPinnedKey(childId)
-            ?: childPublicKeyB64
-            ?: keys.getChildPublicKey(childId)
-            ?: return null
-        return runCatching {
-            deviceKeyStore.unwrapDataKeyFrom(unb64(childPub), unb64(wrapped.wrappedB64))
-        }.getOrNull()?.also { parentDekCache[childId] = it }
+        return withContext(Dispatchers.Default) {
+            val wrapped = keys.getWrappedKey(childId, parentUid) ?: return@withContext null
+            // Prefer the out-of-band pinned key (verified via QR); fall back to the
+            // caller-supplied key, then the backend-published key (trust-on-first-use).
+            val childPub = pinnedKeys.getPinnedKey(childId)
+                ?: childPublicKeyB64
+                ?: keys.getChildPublicKey(childId)
+                ?: return@withContext null
+            runCatching {
+                deviceKeyStore.unwrapDataKeyFrom(unb64(childPub), unb64(wrapped.wrappedB64))
+            }.getOrNull()?.also { parentDekCache[childId] = it }
+        }
     }
 
     /**

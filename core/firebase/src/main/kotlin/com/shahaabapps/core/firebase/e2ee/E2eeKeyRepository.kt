@@ -19,7 +19,7 @@ import javax.inject.Inject
  *  - `publicKeys/{uid}`                          — a device public key (b64), for
  *    both children and parents; a key directory readable by any signed-in user
  *    (public keys aren't secret) and writable only by its owner.
- *  - `children/{childId}/e2eeKeys/{parentUid}`   — { wrapped, childKeyFp, updatedAt }
+ *  - `children/{childId}/e2eeKeys/{parentUid}`   — { wrapped, ringFp, parentKeyFp, updatedAt }
  */
 interface E2eeKeyRepository {
     suspend fun publishChildPublicKey(childId: String, publicKeyB64: String): AppResult<Unit>
@@ -33,7 +33,7 @@ interface E2eeKeyRepository {
         childId: String,
         parentUid: String,
         wrappedB64: String,
-        childKeyFp: String,
+        ringFp: String,
         parentKeyFp: String,
     ): AppResult<Unit>
 
@@ -43,13 +43,14 @@ interface E2eeKeyRepository {
 }
 
 /**
- * A data key encrypted for one parent, with the fingerprints of the child key
- * that sealed it and the parent key it was sealed for. [parentKeyFp] lets the
- * child detect that a parent re-installed with a new device key and re-wrap.
+ * A child's key-ring encrypted (wrapped) for one parent. [ringFp] fingerprints
+ * the ring contents, so the child re-wraps after a key rotation; [parentKeyFp]
+ * fingerprints the parent device key it was sealed for, so the child re-wraps
+ * when a parent reinstalls with a new key.
  */
 data class WrappedKey(
     val wrappedB64: String,
-    val childKeyFp: String,
+    val ringFp: String,
     val parentKeyFp: String = "",
 )
 
@@ -90,13 +91,13 @@ class FirebaseE2eeKeyRepository @Inject constructor(
         childId: String,
         parentUid: String,
         wrappedB64: String,
-        childKeyFp: String,
+        ringFp: String,
         parentKeyFp: String,
     ): AppResult<Unit> = runCatchingResult {
         wrappedDoc(childId, parentUid).set(
             mapOf(
                 "wrapped" to wrappedB64,
-                "childKeyFp" to childKeyFp,
+                "ringFp" to ringFp,
                 "parentKeyFp" to parentKeyFp,
                 "updatedAt" to System.currentTimeMillis(),
             ),
@@ -106,7 +107,7 @@ class FirebaseE2eeKeyRepository @Inject constructor(
     override suspend fun getWrappedKey(childId: String, parentUid: String): WrappedKey? = runCatching {
         val doc = wrappedDoc(childId, parentUid).get().await()
         val wrapped = doc.getString("wrapped") ?: return@runCatching null
-        WrappedKey(wrapped, doc.getString("childKeyFp") ?: "", doc.getString("parentKeyFp") ?: "")
+        WrappedKey(wrapped, doc.getString("ringFp") ?: "", doc.getString("parentKeyFp") ?: "")
     }.getOrNull()
 
     override fun observeWrappedKey(childId: String, parentUid: String): Flow<WrappedKey?> = callbackFlow {
@@ -115,7 +116,7 @@ class FirebaseE2eeKeyRepository @Inject constructor(
             val wrapped = snap.getString("wrapped")
             trySend(
                 if (wrapped == null) null
-                else WrappedKey(wrapped, snap.getString("childKeyFp") ?: "", snap.getString("parentKeyFp") ?: ""),
+                else WrappedKey(wrapped, snap.getString("ringFp") ?: "", snap.getString("parentKeyFp") ?: ""),
             )
         }
         awaitClose { reg.remove() }

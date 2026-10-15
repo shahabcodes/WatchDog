@@ -31,7 +31,10 @@ class E2eeManager @Inject constructor(
 ) {
     private val appContext = context.applicationContext
     private val dekLock = Any()
-    @Volatile private var cachedDek: ByteArray? = null
+    /** This child's key-ring, newest first. ring[0] encrypts; any entry can decrypt. */
+    @Volatile private var cachedRing: List<ByteArray>? = null
+    /** Last linked-parent set seen, to detect a removal and rotate. */
+    @Volatile private var lastLinkedParents: Set<String>? = null
 
     /**
      * True once every currently-linked parent has a wrapped copy of the data key,
@@ -42,8 +45,8 @@ class E2eeManager @Inject constructor(
     @Volatile var childEncryptionReady: Boolean = false
         private set
 
-    /** Parent-side cache of unwrapped data keys, keyed by childId. */
-    private val parentDekCache = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+    /** Parent-side cache of unwrapped key-rings, keyed by childId. */
+    private val parentRingCache = java.util.concurrent.ConcurrentHashMap<String, List<ByteArray>>()
 
     /**
      * "childId/parentUid" -> last time (ms) we confirmed a wrapped key sealed for
@@ -59,23 +62,64 @@ class E2eeManager @Inject constructor(
 
     // ---- child side ----
 
-    /** The child's data key, generated and persisted (sealed) on first use. */
-    fun childDataKey(): ByteArray {
-        cachedDek?.let { return it }
+    private fun dekFile() = File(File(appContext.filesDir, "e2ee"), "dek.key")
+
+    /** The child's key-ring (newest first), generated and persisted (sealed) on first use. */
+    fun childKeyring(): List<ByteArray> {
+        cachedRing?.let { return it }
         synchronized(dekLock) {
-            cachedDek?.let { return it }
-            val file = File(File(appContext.filesDir, "e2ee"), "dek.key")
-            val existing = if (file.exists()) {
-                runCatching { deviceKeyStore.openLocal(file.readBytes()) }.getOrNull()
+            cachedRing?.let { return it }
+            val file = dekFile()
+            val ring = if (file.exists()) {
+                runCatching { decodeRing(deviceKeyStore.openLocal(file.readBytes())) }.getOrNull()
             } else null
-            val dek = existing ?: E2ee.newDataKey().also { fresh ->
-                file.parentFile?.mkdirs()
-                file.writeBytes(deviceKeyStore.sealLocal(fresh))
-            }
-            cachedDek = dek
-            return dek
+            val finalRing = ring?.takeIf { it.isNotEmpty() } ?: listOf(E2ee.newDataKey()).also { persistRing(it) }
+            cachedRing = finalRing
+            return finalRing
         }
     }
+
+    /** The current encryption key (newest in the ring). */
+    fun childDataKey(): ByteArray = childKeyring().first()
+
+    /** Add a fresh key to the front of the ring (used when a parent is removed). */
+    private fun rotateKeyring() {
+        synchronized(dekLock) {
+            val rotated = listOf(E2ee.newDataKey()) + childKeyring()
+            persistRing(rotated)
+            cachedRing = rotated
+        }
+    }
+
+    private fun persistRing(ring: List<ByteArray>) {
+        val file = dekFile()
+        file.parentFile?.mkdirs()
+        file.writeBytes(deviceKeyStore.sealLocal(encodeRing(ring)))
+    }
+
+    private fun encodeRing(ring: List<ByteArray>): ByteArray {
+        val out = ByteArray(1 + ring.size * 32)
+        out[0] = ring.size.toByte()
+        ring.forEachIndexed { i, k -> System.arraycopy(k, 0, out, 1 + i * 32, 32) }
+        return out
+    }
+
+    private fun decodeRing(bytes: ByteArray): List<ByteArray> {
+        // Legacy single-key file (pre-rotation) is a bare 32-byte key.
+        if (bytes.size == 32) return listOf(bytes)
+        val count = bytes[0].toInt() and 0xFF
+        return (0 until count).map { bytes.copyOfRange(1 + it * 32, 1 + (it + 1) * 32) }
+    }
+
+    /** Try every key in [ring] (newest first); return the first that authenticates. */
+    private fun tryOpen(ring: List<ByteArray>?, blob: ByteArray): ByteArray? {
+        ring ?: return null
+        for (key in ring) runCatching { return E2ee.openPayload(key, blob) }
+        return null
+    }
+
+    private fun readerRing(childId: String, viewerUid: String?): List<ByteArray>? =
+        if (viewerUid != null && viewerUid == childId) cachedRing else parentRingCache[childId]
 
     /**
      * Publish the child public key and ensure every linked parent has a wrapped
@@ -93,6 +137,17 @@ class E2eeManager @Inject constructor(
             ) {
                 childKeyPublished = true
             }
+            // If a parent was removed since the last sync, rotate the key-ring so
+            // their cached key can't read future data (forward secrecy), delete
+            // their wrapped key, and force a re-wrap for the remaining parents.
+            val current = linkedParents.toSet()
+            val removed = lastLinkedParents?.minus(current).orEmpty()
+            if (removed.isNotEmpty()) {
+                rotateKeyring()
+                verifiedParents.clear()
+                for (gone in removed) keys.deleteWrappedKey(childId, gone)
+            }
+            lastLinkedParents = current
             var allWrapped = linkedParents.isNotEmpty()
             for (parentUid in linkedParents) {
                 if (!ensureWrappedFor(childId, parentUid)) allWrapped = false
@@ -125,19 +180,29 @@ class E2eeManager @Inject constructor(
         return b64(E2ee.sealPayload(key, packed))
     }
 
-    /** Parent: decrypt a coordinate blob using an already-cached data key; null if unavailable. */
-    fun openCoordsCached(childId: String, sealedB64: String): Pair<Double, Double>? =
-        parentDekCache[childId]?.let { decodeCoords(it, sealedB64) }
+    /** Child: seal raw bytes (e.g. a screenshot) under the current key, or null if not ready. */
+    fun sealBytesIfReady(bytes: ByteArray): ByteArray? =
+        encryptionKeyIfReady()?.let { E2ee.sealPayload(it, bytes) }
 
-    /** Parent: ensure this child's data key is loaded/cached (call before reading encrypted docs). */
-    suspend fun warmDataKey(childId: String, parentUid: String): ByteArray? =
+    /** Parent: decrypt raw bytes, warming + trying the child's key-ring; null if unavailable. */
+    suspend fun openBytes(childId: String, viewerUid: String?, blob: ByteArray): ByteArray? {
+        warmReaderKey(childId, viewerUid)
+        return tryOpen(readerRing(childId, viewerUid), blob)
+    }
+
+    /** Parent: decrypt a coordinate blob using the already-cached key-ring; null if unavailable. */
+    fun openCoordsCached(childId: String, sealedB64: String): Pair<Double, Double>? {
+        val raw = tryOpen(parentRingCache[childId], unb64(sealedB64)) ?: return null
+        return runCatching {
+            val bb = java.nio.ByteBuffer.wrap(raw)
+            bb.double to bb.double
+        }.getOrNull()
+    }
+
+    /** Parent: ensure this child's key-ring is loaded/cached (call before reading encrypted docs). */
+    suspend fun warmDataKey(childId: String, parentUid: String) {
         dataKeyForChild(childId, parentUid, null)
-
-    private fun decodeCoords(key: ByteArray, sealedB64: String): Pair<Double, Double>? = runCatching {
-        val raw = E2ee.openPayload(key, unb64(sealedB64))
-        val bb = java.nio.ByteBuffer.wrap(raw)
-        bb.double to bb.double
-    }.getOrNull()
+    }
 
     // ---- generic reader/writer-aware payloads (for data both sides read, e.g. geofences) ----
 
@@ -153,19 +218,18 @@ class E2eeManager @Inject constructor(
             key?.let { b64(E2ee.sealPayload(it, plaintext.toByteArray(Charsets.UTF_8))) }
         }
 
-    /** Ensure the data key for reading [childId] is cached, whichever side this device is. */
-    suspend fun warmReaderKey(childId: String, viewerUid: String?): ByteArray? =
+    /** Ensure the key-ring for reading [childId] is cached, whichever side this device is. */
+    suspend fun warmReaderKey(childId: String, viewerUid: String?) {
         withContext(Dispatchers.Default) {
-            if (viewerUid != null && viewerUid == childId) childDataKey()
+            if (viewerUid != null && viewerUid == childId) childKeyring()
             else viewerUid?.let { dataKeyForChild(childId, it, null) }
         }
+    }
 
-    /** Decrypt a string sealed for [childId], using the already-cached data key; null if unavailable. */
+    /** Decrypt a string sealed for [childId], using the already-cached key-ring; null if unavailable. */
     fun openStringCached(childId: String, viewerUid: String?, sealedB64: String): String? {
-        val key = if (viewerUid != null && viewerUid == childId) cachedDek else parentDekCache[childId]
-        return key?.let {
-            runCatching { String(E2ee.openPayload(it, unb64(sealedB64)), Charsets.UTF_8) }.getOrNull()
-        }
+        val raw = tryOpen(readerRing(childId, viewerUid), unb64(sealedB64)) ?: return null
+        return runCatching { String(raw, Charsets.UTF_8) }.getOrNull()
     }
 
     private suspend fun ensureWrappedFor(childId: String, parentUid: String): Boolean {
@@ -175,13 +239,14 @@ class E2eeManager @Inject constructor(
         if (lastVerified != null && now - lastVerified < VERIFY_TTL_MS) return true
         val parentPubB64 = keys.getParentPublicKey(parentUid) ?: return false
         val parentFp = E2ee.fingerprint(unb64(parentPubB64))
-        // Re-wrap unless an existing wrap was already sealed for the parent's
-        // CURRENT device key — otherwise a parent that reinstalled (same account,
-        // new key) could never decrypt.
+        val ringBytes = encodeRing(childKeyring())
+        val ringFp = E2ee.fingerprint(ringBytes)
+        // Re-wrap when the existing wrap is missing, was sealed for a different
+        // parent device key (parent reinstalled), or predates a key rotation.
         val existing = keys.getWrappedKey(childId, parentUid)
-        if (existing == null || existing.parentKeyFp != parentFp) {
-            val wrapped = deviceKeyStore.wrapDataKeyFor(unb64(parentPubB64), childDataKey())
-            keys.putWrappedKey(childId, parentUid, b64(wrapped), myFingerprint(), parentFp)
+        if (existing == null || existing.parentKeyFp != parentFp || existing.ringFp != ringFp) {
+            val wrapped = deviceKeyStore.wrapDataKeyFor(unb64(parentPubB64), ringBytes)
+            keys.putWrappedKey(childId, parentUid, b64(wrapped), ringFp, parentFp)
         }
         verifiedParents[tag] = now
         return true
@@ -198,15 +263,15 @@ class E2eeManager @Inject constructor(
     /** Pin a child's public key captured out-of-band from its pairing QR. */
     suspend fun pinChildKey(childId: String, childPublicKeyB64: String) {
         pinnedKeys.pin(childId, childPublicKeyB64)
-        parentDekCache.remove(childId) // re-derive against the verified key next read
+        parentRingCache.remove(childId) // re-derive against the verified key next read
     }
 
     /** True once this child's key has been verified out-of-band (via a QR scan). */
     fun observeChildKeyVerified(childId: String) = pinnedKeys.observePinnedKey(childId)
 
     /**
-     * Unwrap this parent's copy of [childId]'s data key, or null if it hasn't
-     * been wrapped yet (e.g. the child hasn't come online since pairing).
+     * Unwrap this parent's copy of [childId]'s key-ring, or null if it hasn't been
+     * wrapped yet (e.g. the child hasn't come online since pairing).
      * [childPublicKeyB64] should come from the pairing QR when available (most
      * trustworthy), else the published child key.
      */
@@ -214,8 +279,8 @@ class E2eeManager @Inject constructor(
         childId: String,
         parentUid: String,
         childPublicKeyB64: String?,
-    ): ByteArray? {
-        parentDekCache[childId]?.let { return it }
+    ): List<ByteArray>? {
+        parentRingCache[childId]?.let { return it }
         return withContext(Dispatchers.Default) {
             val wrapped = keys.getWrappedKey(childId, parentUid) ?: return@withContext null
             // Prefer the out-of-band pinned key (verified via QR); fall back to the
@@ -225,8 +290,8 @@ class E2eeManager @Inject constructor(
                 ?: keys.getChildPublicKey(childId)
                 ?: return@withContext null
             runCatching {
-                deviceKeyStore.unwrapDataKeyFrom(unb64(childPub), unb64(wrapped.wrappedB64))
-            }.getOrNull()?.also { parentDekCache[childId] = it }
+                decodeRing(deviceKeyStore.unwrapDataKeyFrom(unb64(childPub), unb64(wrapped.wrappedB64)))
+            }.getOrNull()?.also { parentRingCache[childId] = it }
         }
     }
 
@@ -236,8 +301,9 @@ class E2eeManager @Inject constructor(
      * (per-device, not per-account) is intentionally kept.
      */
     fun clearSession() {
-        parentDekCache.clear()
+        parentRingCache.clear()
         verifiedParents.clear()
+        lastLinkedParents = null
         childKeyPublished = false
         childEncryptionReady = false
     }

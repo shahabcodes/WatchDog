@@ -1,7 +1,6 @@
 package com.shahaabapps.core.firebase.screenshot
 
 import com.shahaabapps.core.common.AppResult
-import com.shahaabapps.core.common.crypto.E2ee
 import com.shahaabapps.core.common.runCatchingResult
 import com.shahaabapps.core.firebase.auth.AuthRepository
 import com.shahaabapps.core.firebase.e2ee.E2eeManager
@@ -130,9 +129,9 @@ class FirebaseScreenshotRepository @Inject constructor(
             // complete; until then upload plaintext so the feature keeps working
             // (the parent reads both). The data key is local, so this never needs
             // the network.
-            val dataKey = e2ee.encryptionKeyIfReady()
-            val payload = if (dataKey != null) E2ee.sealPayload(dataKey, imageBytes) else imageBytes
-            val enc = dataKey != null
+            val sealed = e2ee.sealBytesIfReady(imageBytes)
+            val payload = sealed ?: imageBytes
+            val enc = sealed != null
             // Inline threshold is measured on the stored payload so a sealed blob
             // still stays under Firestore's 1 MiB document limit.
             if (payload.size <= INLINE_MAX_BYTES) {
@@ -189,11 +188,10 @@ class FirebaseScreenshotRepository @Inject constructor(
             val bytes = if (shot.enc) {
                 val parentUid = authRepository.currentUserIdOrNull()
                     ?: error("Signed out; can't decrypt this screenshot.")
-                val dataKey = e2ee.dataKeyForChild(childId, parentUid, null)
-                    ?: error("Encryption key not ready yet — try again shortly.")
                 // On failure, propagate (don't delete below) so it can be retried
                 // once this device's wrapped key is available.
-                E2ee.openPayload(dataKey, raw)
+                e2ee.openBytes(childId, parentUid, raw)
+                    ?: error("Encryption key not ready yet — try again shortly.")
             } else {
                 raw
             }

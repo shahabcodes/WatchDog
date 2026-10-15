@@ -213,8 +213,10 @@ class E2eeManager @Inject constructor(
      */
     suspend fun sealString(childId: String, writerUid: String?, plaintext: String): String? =
         withContext(Dispatchers.Default) {
-            val key = if (writerUid == childId) encryptionKeyIfReady()
-            else writerUid?.let { dataKeyForChild(childId, it, null) }
+            // Encrypt with the newest key (ring[0]); the child uses its ready-gated
+            // key, a parent its unwrapped ring's newest entry.
+            val key: ByteArray? = if (writerUid == childId) encryptionKeyIfReady()
+            else writerUid?.let { dataKeyForChild(childId, it, null)?.firstOrNull() }
             key?.let { b64(E2ee.sealPayload(it, plaintext.toByteArray(Charsets.UTF_8))) }
         }
 

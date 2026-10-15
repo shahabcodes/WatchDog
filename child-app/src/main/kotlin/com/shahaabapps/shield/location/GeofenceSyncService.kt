@@ -39,6 +39,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -57,6 +59,7 @@ class GeofenceSyncService : Service() {
     @Inject lateinit var ringController: RingController
     @Inject lateinit var pendingTrailDao: PendingTrailDao
     @Inject lateinit var trackingRepository: com.shahaabapps.core.firebase.tracking.TrackingRepository
+    @Inject lateinit var e2eeManager: com.shahaabapps.core.firebase.e2ee.E2eeManager
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val fusedClient by lazy { LocationServices.getFusedLocationProviderClient(this) }
@@ -122,6 +125,14 @@ class GeofenceSyncService : Service() {
         if (started) return
         started = true
         val childId = authRepository.currentUserIdOrNull() ?: return
+        // Establish E2EE readiness in this (possibly Activity-less) process so that
+        // location/trail writes here are encrypted once every parent is wrapped.
+        scope.launch {
+            childRepository.observeChild(childId)
+                .map { it?.linkedParents ?: emptyList() }
+                .distinctUntilChanged()
+                .collect { parents -> runCatching { e2eeManager.syncChildKeys(childId, parents) } }
+        }
         scope.launch {
             geofenceRepository.observeGeofences(childId).collectLatest { geofences ->
                 activeGeofences = geofences

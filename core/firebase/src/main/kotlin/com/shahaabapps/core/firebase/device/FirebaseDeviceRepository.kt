@@ -7,6 +7,8 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import com.shahaabapps.core.common.AppResult
 import com.shahaabapps.core.common.runCatchingResult
+import com.shahaabapps.core.firebase.auth.AuthRepository
+import com.shahaabapps.core.firebase.e2ee.E2eeManager
 import com.shahaabapps.core.model.ChildLocation
 import com.shahaabapps.core.model.RingCommand
 import com.shahaabapps.core.model.TrailPoint
@@ -20,25 +22,40 @@ import javax.inject.Inject
 
 class FirebaseDeviceRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
+    private val e2ee: E2eeManager,
+    private val authRepository: AuthRepository,
 ) : DeviceRepository {
 
     override suspend fun updateLocation(childId: String, location: ChildLocation): AppResult<Unit> =
         runCatchingResult {
-            val data = mapOf(
-                "latitude" to location.latitude,
-                "longitude" to location.longitude,
-                "accuracyMeters" to location.accuracyMeters.toDouble(),
-                "timestampMillis" to location.timestampMillis,
-            )
+            val sealed = e2ee.sealCoords(location.latitude, location.longitude)
+            val data = if (sealed != null) {
+                mapOf(
+                    "e" to sealed,
+                    "enc" to true,
+                    "accuracyMeters" to location.accuracyMeters.toDouble(),
+                    "timestampMillis" to location.timestampMillis,
+                )
+            } else {
+                mapOf(
+                    "latitude" to location.latitude,
+                    "longitude" to location.longitude,
+                    "accuracyMeters" to location.accuracyMeters.toDouble(),
+                    "timestampMillis" to location.timestampMillis,
+                )
+            }
             live(childId).document(LOCATION).set(data).await()
         }
 
     override fun observeLocation(childId: String): Flow<ChildLocation?> = callbackFlow {
+        // Warm this child's data key so encrypted coordinates decrypt synchronously
+        // in the listener below.
+        authRepository.currentUserIdOrNull()?.let { e2ee.warmDataKey(childId, it) }
         val registration = live(childId).document(LOCATION).addSnapshotListener { snapshot, error ->
             if (error != null) {
                 trySend(null); return@addSnapshotListener
             }
-            trySend(snapshot?.takeIf { it.exists() }?.toLocation())
+            trySend(snapshot?.takeIf { it.exists() }?.toLocation(childId))
         }
         awaitClose { registration.remove() }
     }
@@ -71,18 +88,29 @@ class FirebaseDeviceRepository @Inject constructor(
 
     override suspend fun addTravelStop(childId: String, stop: TravelStop): AppResult<Unit> =
         runCatchingResult {
-            val data = mapOf(
-                "latitude" to stop.latitude,
-                "longitude" to stop.longitude,
-                "arrivalMillis" to stop.arrivalMillis,
-                "departureMillis" to stop.departureMillis,
-            )
+            val sealed = e2ee.sealCoords(stop.latitude, stop.longitude)
+            val data = if (sealed != null) {
+                mapOf(
+                    "e" to sealed,
+                    "enc" to true,
+                    "arrivalMillis" to stop.arrivalMillis,
+                    "departureMillis" to stop.departureMillis,
+                )
+            } else {
+                mapOf(
+                    "latitude" to stop.latitude,
+                    "longitude" to stop.longitude,
+                    "arrivalMillis" to stop.arrivalMillis,
+                    "departureMillis" to stop.departureMillis,
+                )
+            }
             travelHistory(childId).add(data).await()
             Unit
         }
 
     override fun observeTravelHistory(childId: String, limit: Long): Flow<List<TravelStop>> =
         callbackFlow {
+            authRepository.currentUserIdOrNull()?.let { e2ee.warmDataKey(childId, it) }
             val registration = travelHistory(childId)
                 .orderBy("arrivalMillis", Query.Direction.DESCENDING)
                 .limit(limit)
@@ -90,48 +118,61 @@ class FirebaseDeviceRepository @Inject constructor(
                     if (error != null) {
                         trySend(emptyList()); return@addSnapshotListener
                     }
-                    trySend(snapshot?.documents?.map { it.toTravelStop() } ?: emptyList())
+                    trySend(snapshot?.documents?.mapNotNull { it.toTravelStop(childId) } ?: emptyList())
                 }
             awaitClose { registration.remove() }
         }
 
     override suspend fun appendTrailPoint(childId: String, date: String, point: TrailPoint): AppResult<Unit> =
         runCatchingResult {
-            val entry = mapOf(
-                "lat" to point.latitude,
-                "lng" to point.longitude,
-                "t" to point.timestampMillis,
-            )
             // Merge-set with arrayUnion so the day's doc is created on first point.
             trail(childId).document(date)
-                .set(mapOf("points" to FieldValue.arrayUnion(entry)), SetOptions.merge())
+                .set(mapOf("points" to FieldValue.arrayUnion(trailEntry(point))), SetOptions.merge())
                 .await()
         }
 
     override suspend fun appendTrailPoints(childId: String, date: String, points: List<TrailPoint>): AppResult<Unit> =
         runCatchingResult {
             if (points.isEmpty()) return@runCatchingResult Unit
-            val entries = points.map { p ->
-                mapOf("lat" to p.latitude, "lng" to p.longitude, "t" to p.timestampMillis)
-            }.toTypedArray()
+            val entries = points.map { trailEntry(it) }.toTypedArray()
             trail(childId).document(date)
                 .set(mapOf("points" to FieldValue.arrayUnion(*entries)), SetOptions.merge())
                 .await()
         }
 
+    /** A trail array entry: encrypted (`e` + `t`) when possible, else plaintext (`lat`/`lng`/`t`). */
+    private fun trailEntry(point: TrailPoint): Map<String, Any> {
+        val sealed = e2ee.sealCoords(point.latitude, point.longitude)
+        return if (sealed != null) {
+            mapOf("e" to sealed, "t" to point.timestampMillis)
+        } else {
+            mapOf("lat" to point.latitude, "lng" to point.longitude, "t" to point.timestampMillis)
+        }
+    }
+
     override fun observeTrail(childId: String, date: String): Flow<List<TrailPoint>> = callbackFlow {
+        authRepository.currentUserIdOrNull()?.let { e2ee.warmDataKey(childId, it) }
         val registration = trail(childId).document(date).addSnapshotListener { snapshot, error ->
             if (error != null) {
                 trySend(emptyList()); return@addSnapshotListener
             }
             @Suppress("UNCHECKED_CAST")
             val raw = snapshot?.get("points") as? List<Map<String, Any?>> ?: emptyList()
-            val points = raw.map {
-                TrailPoint(
-                    latitude = (it["lat"] as? Number)?.toDouble() ?: 0.0,
-                    longitude = (it["lng"] as? Number)?.toDouble() ?: 0.0,
-                    timestampMillis = (it["t"] as? Number)?.toLong() ?: 0L,
-                )
+            val points = raw.mapNotNull { entry ->
+                val t = (entry["t"] as? Number)?.toLong() ?: 0L
+                val sealed = entry["e"] as? String
+                if (sealed != null) {
+                    // Encrypted point; skip if the key isn't available yet rather
+                    // than plot a bogus (0,0) coordinate.
+                    val coords = e2ee.openCoordsCached(childId, sealed) ?: return@mapNotNull null
+                    TrailPoint(latitude = coords.first, longitude = coords.second, timestampMillis = t)
+                } else {
+                    TrailPoint(
+                        latitude = (entry["lat"] as? Number)?.toDouble() ?: 0.0,
+                        longitude = (entry["lng"] as? Number)?.toDouble() ?: 0.0,
+                        timestampMillis = t,
+                    )
+                }
             }.sortedBy { it.timestampMillis }
             trySend(points)
         }
@@ -179,20 +220,36 @@ class FirebaseDeviceRepository @Inject constructor(
     private fun travelHistory(childId: String) =
         firestore.collection(CHILDREN).document(childId).collection(TRAVEL_HISTORY)
 
-    private fun DocumentSnapshot.toTravelStop() = TravelStop(
-        id = id,
-        latitude = getDouble("latitude") ?: 0.0,
-        longitude = getDouble("longitude") ?: 0.0,
-        arrivalMillis = getLong("arrivalMillis") ?: 0L,
-        departureMillis = getLong("departureMillis") ?: 0L,
-    )
+    private fun DocumentSnapshot.toTravelStop(childId: String): TravelStop? {
+        val sealed = getString("e")
+        val coords = if (sealed != null) {
+            e2ee.openCoordsCached(childId, sealed) ?: return null
+        } else {
+            (getDouble("latitude") ?: 0.0) to (getDouble("longitude") ?: 0.0)
+        }
+        return TravelStop(
+            id = id,
+            latitude = coords.first,
+            longitude = coords.second,
+            arrivalMillis = getLong("arrivalMillis") ?: 0L,
+            departureMillis = getLong("departureMillis") ?: 0L,
+        )
+    }
 
-    private fun DocumentSnapshot.toLocation() = ChildLocation(
-        latitude = getDouble("latitude") ?: 0.0,
-        longitude = getDouble("longitude") ?: 0.0,
-        accuracyMeters = (getDouble("accuracyMeters") ?: 0.0).toFloat(),
-        timestampMillis = getLong("timestampMillis") ?: 0L,
-    )
+    private fun DocumentSnapshot.toLocation(childId: String): ChildLocation? {
+        val sealed = getString("e")
+        val coords = if (sealed != null) {
+            e2ee.openCoordsCached(childId, sealed) ?: return null
+        } else {
+            (getDouble("latitude") ?: 0.0) to (getDouble("longitude") ?: 0.0)
+        }
+        return ChildLocation(
+            latitude = coords.first,
+            longitude = coords.second,
+            accuracyMeters = (getDouble("accuracyMeters") ?: 0.0).toFloat(),
+            timestampMillis = getLong("timestampMillis") ?: 0L,
+        )
+    }
 
     private fun DocumentSnapshot.toRing() = RingCommand(
         active = getBoolean("active") ?: false,

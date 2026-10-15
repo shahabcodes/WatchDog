@@ -80,6 +80,30 @@ class E2eeManager @Inject constructor(
     /** The data key to encrypt with, or null if it isn't safe to encrypt yet. */
     fun encryptionKeyIfReady(): ByteArray? = if (childEncryptionReady) childDataKey() else null
 
+    /**
+     * Child: seal a coordinate pair into a base64 blob, or null if it isn't safe
+     * to encrypt yet (caller then stores plaintext). Coordinates pack to 16 bytes.
+     */
+    fun sealCoords(lat: Double, lng: Double): String? {
+        val key = encryptionKeyIfReady() ?: return null
+        val packed = java.nio.ByteBuffer.allocate(16).putDouble(lat).putDouble(lng).array()
+        return b64(E2ee.sealPayload(key, packed))
+    }
+
+    /** Parent: decrypt a coordinate blob using an already-cached data key; null if unavailable. */
+    fun openCoordsCached(childId: String, sealedB64: String): Pair<Double, Double>? =
+        parentDekCache[childId]?.let { decodeCoords(it, sealedB64) }
+
+    /** Parent: ensure this child's data key is loaded/cached (call before reading encrypted docs). */
+    suspend fun warmDataKey(childId: String, parentUid: String): ByteArray? =
+        dataKeyForChild(childId, parentUid, null)
+
+    private fun decodeCoords(key: ByteArray, sealedB64: String): Pair<Double, Double>? = runCatching {
+        val raw = E2ee.openPayload(key, unb64(sealedB64))
+        val bb = java.nio.ByteBuffer.wrap(raw)
+        bb.double to bb.double
+    }.getOrNull()
+
     private suspend fun ensureWrappedFor(childId: String, parentUid: String): Boolean {
         if (keys.hasWrappedKey(childId, parentUid)) return true
         val parentPubB64 = keys.getParentPublicKey(parentUid) ?: return false

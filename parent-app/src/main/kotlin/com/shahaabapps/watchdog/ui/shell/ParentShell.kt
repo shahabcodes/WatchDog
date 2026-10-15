@@ -504,6 +504,7 @@ private fun VerifyConnectionScreen(
     onBack: () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
     val verifyState by viewModel.verifyState.collectAsStateWithLifecycle()
     var hasCamera by remember {
         mutableStateOf(
@@ -513,6 +514,14 @@ private fun VerifyConnectionScreen(
     }
     val cameraPermLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         hasCamera = granted
+    }
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val contents = withContext(Dispatchers.IO) { QrImageDecoder.decodeFromUri(context, uri) }
+                viewModel.verifyKeyFromQr(contents, expectedChildId = childId)
+            }
+        }
     }
     androidx.compose.runtime.LaunchedEffect(Unit) {
         if (!hasCamera) cameraPermLauncher.launch(android.Manifest.permission.CAMERA)
@@ -586,6 +595,20 @@ private fun VerifyConnectionScreen(
                 onDecoded = { viewModel.verifyKeyFromQr(it, expectedChildId = childId) },
                 modifier = Modifier.padding(top = Spacing.sm),
             )
+            Spacer(Modifier.height(4.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xFFF5B83D))
+                    .clickable {
+                        imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("Scan QR from gallery", color = navy, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }

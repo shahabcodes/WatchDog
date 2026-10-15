@@ -106,6 +106,32 @@ class E2eeManager @Inject constructor(
         bb.double to bb.double
     }.getOrNull()
 
+    // ---- generic reader/writer-aware payloads (for data both sides read, e.g. geofences) ----
+
+    /**
+     * Seal an arbitrary string for [childId]'s data. [writerUid] picks the key:
+     * the child uses its own (ready-gated) data key; a parent uses its unwrapped
+     * copy. Returns null when encryption isn't possible yet (store plaintext).
+     */
+    suspend fun sealString(childId: String, writerUid: String?, plaintext: String): String? {
+        val key = if (writerUid == childId) encryptionKeyIfReady()
+        else writerUid?.let { dataKeyForChild(childId, it, null) }
+        return key?.let { b64(E2ee.sealPayload(it, plaintext.toByteArray(Charsets.UTF_8))) }
+    }
+
+    /** Ensure the data key for reading [childId] is cached, whichever side this device is. */
+    suspend fun warmReaderKey(childId: String, viewerUid: String?): ByteArray? =
+        if (viewerUid != null && viewerUid == childId) childDataKey()
+        else viewerUid?.let { dataKeyForChild(childId, it, null) }
+
+    /** Decrypt a string sealed for [childId], using the already-cached data key; null if unavailable. */
+    fun openStringCached(childId: String, viewerUid: String?, sealedB64: String): String? {
+        val key = if (viewerUid != null && viewerUid == childId) cachedDek else parentDekCache[childId]
+        return key?.let {
+            runCatching { String(E2ee.openPayload(it, unb64(sealedB64)), Charsets.UTF_8) }.getOrNull()
+        }
+    }
+
     private suspend fun ensureWrappedFor(childId: String, parentUid: String): Boolean {
         if (keys.hasWrappedKey(childId, parentUid)) return true
         val parentPubB64 = keys.getParentPublicKey(parentUid) ?: return false

@@ -824,30 +824,62 @@ private fun BatteryCard(
                     color = AppTheme.colors.secondaryLabel,
                 )
             }
-            // Hourly history bars.
+            // Hourly history chart (battery % over time), with axis + time labels.
             stats?.hourly?.takeIf { it.isNotEmpty() }?.let { hourly ->
-                Text("Last ${hourly.size}h", style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.secondaryLabel)
-                Row(
-                    verticalAlignment = Alignment.Bottom,
-                    horizontalArrangement = Arrangement.spacedBy(3.dp),
-                    modifier = Modifier.fillMaxWidth().height(44.dp),
-                ) {
-                    hourly.forEach { sample ->
-                        val chargingBar = sample.percent >= 100
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight(fraction = (sample.percent / 100f).coerceIn(0.04f, 1f))
-                                .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
-                                .background(
-                                    when {
-                                        sample.percent <= 15 -> AppTheme.colors.destructive
-                                        chargingBar -> AppTheme.colors.success
-                                        else -> AppTheme.colors.accent
-                                    },
-                                ),
-                        )
+                val clock = remember { java.text.SimpleDateFormat("h a", java.util.Locale.getDefault()) }
+                Text(
+                    "Battery level over the last ${hourly.size} ${if (hourly.size == 1) "hour" else "hours"}",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = AppTheme.colors.accent,
+                )
+                Row(modifier = Modifier.fillMaxWidth().height(64.dp)) {
+                    // Y-axis labels.
+                    Column(
+                        verticalArrangement = Arrangement.SpaceBetween,
+                        horizontalAlignment = Alignment.End,
+                        modifier = Modifier.fillMaxHeight().padding(end = 6.dp),
+                    ) {
+                        Text("100%", style = MaterialTheme.typography.labelSmall, color = AppTheme.colors.secondaryLabel)
+                        Text("50%", style = MaterialTheme.typography.labelSmall, color = AppTheme.colors.secondaryLabel)
+                        Text("0%", style = MaterialTheme.typography.labelSmall, color = AppTheme.colors.secondaryLabel)
                     }
+                    // Bars.
+                    Row(
+                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    ) {
+                        hourly.forEach { sample ->
+                            val chargingBar = sample.percent >= 100
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight(fraction = (sample.percent / 100f).coerceIn(0.04f, 1f))
+                                    .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
+                                    .background(
+                                        when {
+                                            sample.percent <= 15 -> AppTheme.colors.destructive
+                                            chargingBar -> AppTheme.colors.success
+                                            else -> AppTheme.colors.accent
+                                        },
+                                    ),
+                            )
+                        }
+                    }
+                }
+                // Time axis: first reading → now.
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(
+                        clock.format(java.util.Date(hourly.first().atMillis)),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = AppTheme.colors.secondaryLabel,
+                    )
+                    Text(
+                        "now (${hourly.last().percent}%)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = AppTheme.colors.secondaryLabel,
+                    )
                 }
             }
         }

@@ -6,6 +6,7 @@ import com.google.firebase.messaging.FirebaseMessaging
 import com.shahaabapps.core.common.AppResult
 import com.shahaabapps.core.firebase.auth.AuthRepository
 import com.shahaabapps.core.firebase.child.ChildRepository
+import com.shahaabapps.core.firebase.e2ee.E2eeManager
 import com.shahaabapps.core.firebase.messaging.MessagingTokenRepository
 import com.shahaabapps.core.model.ChildAccount
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -39,6 +41,7 @@ class ChildAppViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val childRepository: ChildRepository,
     private val messagingTokenRepository: MessagingTokenRepository,
+    private val e2eeManager: E2eeManager,
 ) : ViewModel() {
 
     private val authError = MutableStateFlow<String?>(null)
@@ -46,6 +49,27 @@ class ChildAppViewModel @Inject constructor(
     init {
         ensureSignedIn()
         registerFcmToken()
+        syncE2eeKeys()
+    }
+
+    /**
+     * Publishes this child's E2EE public key and ensures every linked parent has
+     * a wrapped copy of the data key. Re-runs whenever the set of linked parents
+     * changes (debounced to that list, so routine heartbeat writes don't retrigger
+     * it). A parent whose key isn't published yet is retried on the next change.
+     */
+    private fun syncE2eeKeys() {
+        viewModelScope.launch {
+            authRepository.currentUserId.filterNotNull()
+                .flatMapLatest { uid ->
+                    childRepository.observeChild(uid).map { it?.linkedParents ?: emptyList() }
+                }
+                .distinctUntilChanged()
+                .collect { parents ->
+                    val uid = authRepository.currentUserIdOrNull() ?: return@collect
+                    runCatching { e2eeManager.syncChildKeys(uid, parents) }
+                }
+        }
     }
 
     /**

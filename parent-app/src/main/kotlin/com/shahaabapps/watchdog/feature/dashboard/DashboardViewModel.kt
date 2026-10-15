@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.shahaabapps.core.common.AppResult
 import com.shahaabapps.core.firebase.auth.AuthRepository
 import com.shahaabapps.core.firebase.child.ChildRepository
+import com.shahaabapps.core.firebase.e2ee.E2eeManager
 import com.shahaabapps.core.model.ChildAccount
 import com.shahaabapps.core.model.PairingCodec
 import com.google.firebase.functions.FirebaseFunctions
@@ -14,6 +15,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -41,7 +44,17 @@ sealed interface ReconnectState {
 class DashboardViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val childRepository: ChildRepository,
+    private val e2eeManager: E2eeManager,
 ) : ViewModel() {
+
+    init {
+        // Publish this parent's E2EE public key so linked children can wrap their
+        // data key for it. Idempotent; safe on every launch.
+        viewModelScope.launch {
+            val uid = authRepository.currentUserId.filterNotNull().first()
+            runCatching { e2eeManager.publishParentKey(uid) }
+        }
+    }
 
     val children: StateFlow<List<ChildAccount>> = authRepository.currentUserId
         .flatMapLatest { uid ->

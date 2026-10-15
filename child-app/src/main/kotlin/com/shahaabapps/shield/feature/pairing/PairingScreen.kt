@@ -16,7 +16,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,10 +46,12 @@ private val MUTED = Color(0xFF5C4A1E)
 fun PairingScreen(
     child: ChildAccount,
     modifier: Modifier = Modifier,
+    keysViewModel: PairingKeysViewModel = hiltViewModel(),
 ) {
-    val qrBitmap = remember(child.childId, child.pairingCode) {
+    val publicKey by keysViewModel.publicKeyB64.collectAsStateWithLifecycle()
+    val qrBitmap = remember(child.childId, child.pairingCode, publicKey) {
         QrCodeGenerator.generate(
-            PairingCodec.encode(PairingData(child.childId, child.pairingCode)),
+            PairingCodec.encode(PairingData(child.childId, child.pairingCode, publicKey)),
         )
     }
 

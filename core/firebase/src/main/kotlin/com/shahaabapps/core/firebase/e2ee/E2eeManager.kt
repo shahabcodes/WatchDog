@@ -79,8 +79,20 @@ class E2eeManager @Inject constructor(
         childEncryptionReady = allWrapped
     }
 
-    /** The data key to encrypt with, or null if it isn't safe to encrypt yet. */
-    fun encryptionKeyIfReady(): ByteArray? = if (childEncryptionReady) childDataKey() else null
+    /**
+     * The data key to encrypt with, or null if it isn't safe to encrypt yet.
+     *
+     * Normally gated on [childEncryptionReady] so a capture is never encrypted
+     * before every linked parent can read it (the parent would otherwise see an
+     * undecryptable blob). Once the fleet has finished key exchange — verified on
+     * real devices — flipping [ENCRYPT_ONLY] to true removes the plaintext-write
+     * fallback entirely (the P6 cutover): writers then always encrypt.
+     *
+     * Read paths intentionally stay dual-read regardless, so plaintext history
+     * written before the cutover remains viewable ("encrypt new data only").
+     */
+    fun encryptionKeyIfReady(): ByteArray? =
+        if (ENCRYPT_ONLY || childEncryptionReady) childDataKey() else null
 
     /**
      * Child: seal a coordinate pair into a base64 blob, or null if it isn't safe
@@ -192,4 +204,14 @@ class E2eeManager @Inject constructor(
 
     private fun b64(bytes: ByteArray): String = Base64.encodeToString(bytes, Base64.NO_WRAP)
     private fun unb64(s: String): ByteArray = Base64.decode(s, Base64.NO_WRAP)
+
+    companion object {
+        /**
+         * P6 encrypt-only cutover. Keep false until every active device has
+         * completed key exchange (verified on real hardware); flipping it true
+         * makes child writers stop emitting plaintext. One-way for new data — do
+         * not flip without that verification.
+         */
+        const val ENCRYPT_ONLY = false
+    }
 }

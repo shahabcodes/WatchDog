@@ -11,6 +11,9 @@ setGlobalOptions({ region: "us-central1", maxInstances: 10 });
 
 const db = getFirestore();
 const STORAGE_BUCKET = "watch-dog-13d09.firebasestorage.app";
+// Events older than this (e.g. recorded offline, synced late) are recorded in
+// history but don't trigger a push — the alert would be stale/misleading.
+const STALE_EVENT_MS = 3 * 60 * 1000;
 
 /**
  * When a screenshot doc is deleted (the parent downloaded it locally), delete the
@@ -120,6 +123,13 @@ exports.notifyGeofenceEvent = onDocumentCreated(
     const transition = data.transition === "EXIT" ? "EXIT" : "ENTER";
     const geofenceId = data.geofenceId || "";
     let placeName = data.geofenceName || "a place";
+
+    // Skip the push for a stale event — e.g. a transition the child recorded
+    // while offline that only synced later. It still lands in the in-app history
+    // (this function doesn't touch the doc) and the trail shows on the map; we
+    // just don't send a late, misleading "arrived/left" notification now.
+    const occurredMs = Number(data.timestampMillis) || 0;
+    if (occurredMs && Date.now() - occurredMs > STALE_EVENT_MS) return;
 
     // Child doc → linked parents + child name.
     const childSnap = await db.doc(`children/${childId}`).get();

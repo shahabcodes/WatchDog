@@ -890,6 +890,34 @@ private fun BatteryCard(
                         color = AppTheme.colors.secondaryLabel,
                     )
                 }
+                // Readable per-hour list (newest first), with the change vs the hour before.
+                HorizontalDivider(color = AppTheme.colors.separator, modifier = Modifier.padding(top = 4.dp))
+                hourly.asReversed().forEachIndexed { i, sample ->
+                    // chronological "previous" is the next item in the reversed list
+                    val prev = hourly.asReversed().getOrNull(i + 1)
+                    val delta = prev?.let { sample.percent - it.percent }
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                        Text(
+                            clock.format(java.util.Date(sample.atMillis)),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (delta != null && delta != 0) {
+                            Text(
+                                if (delta > 0) "+$delta%" else "$delta%",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (delta > 0) AppTheme.colors.success else AppTheme.colors.secondaryLabel,
+                                modifier = Modifier.padding(end = Spacing.sm),
+                            )
+                        }
+                        Text(
+                            "${sample.percent}%",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (sample.percent <= 15) AppTheme.colors.destructive else AppTheme.colors.accent,
+                        )
+                    }
+                }
             }
         }
     }

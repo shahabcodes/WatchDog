@@ -2,6 +2,7 @@ package com.shahaabapps.core.firebase.auth
 
 import com.shahaabapps.core.common.AppResult
 import com.shahaabapps.core.common.runCatchingResult
+import com.shahaabapps.core.firebase.e2ee.E2eeManager
 import com.shahaabapps.core.firebase.messaging.MessagingTokenRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.messaging.FirebaseMessaging
@@ -14,6 +15,7 @@ import javax.inject.Inject
 class FirebaseAuthRepository @Inject constructor(
     private val auth: FirebaseAuth,
     private val messagingTokenRepository: MessagingTokenRepository,
+    private val e2eeManager: E2eeManager,
 ) : AuthRepository {
 
     override val currentUserId: Flow<String?> = callbackFlow {
@@ -61,5 +63,8 @@ class FirebaseAuthRepository @Inject constructor(
             }
         }
         auth.signOut()
+        // Drop in-memory E2EE key material so a different account on this device
+        // starts clean.
+        e2eeManager.clearSession()
     }
 }

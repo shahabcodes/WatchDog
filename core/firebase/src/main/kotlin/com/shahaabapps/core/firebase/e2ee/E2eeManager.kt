@@ -114,6 +114,16 @@ class E2eeManager @Inject constructor(
         }.getOrNull()?.also { parentDekCache[childId] = it }
     }
 
+    /**
+     * Drop in-memory session key material on sign-out, so a different account
+     * signing in on the same device starts clean. The device identity keypair
+     * (per-device, not per-account) is intentionally kept.
+     */
+    fun clearSession() {
+        parentDekCache.clear()
+        childEncryptionReady = false
+    }
+
     private fun b64(bytes: ByteArray): String = Base64.encodeToString(bytes, Base64.NO_WRAP)
     private fun unb64(s: String): ByteArray = Base64.decode(s, Base64.NO_WRAP)
 }

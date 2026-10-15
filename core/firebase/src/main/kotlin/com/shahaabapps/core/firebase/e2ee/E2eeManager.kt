@@ -28,6 +28,18 @@ class E2eeManager @Inject constructor(
     private val dekLock = Any()
     @Volatile private var cachedDek: ByteArray? = null
 
+    /**
+     * True once every currently-linked parent has a wrapped copy of the data key,
+     * i.e. the child may safely encrypt (no parent would be locked out). Starts
+     * false, so the child uploads plaintext until key exchange completes — which
+     * makes the cutover to encryption automatic and non-breaking.
+     */
+    @Volatile var childEncryptionReady: Boolean = false
+        private set
+
+    /** Parent-side cache of unwrapped data keys, keyed by childId. */
+    private val parentDekCache = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+
     fun myPublicKeyB64(): String = b64(deviceKeyStore.publicKey())
     fun myFingerprint(): String = deviceKeyStore.publicKeyFingerprint()
 
@@ -58,8 +70,15 @@ class E2eeManager @Inject constructor(
      */
     suspend fun syncChildKeys(childId: String, linkedParents: List<String>) {
         keys.publishChildPublicKey(childId, myPublicKeyB64())
-        for (parentUid in linkedParents) ensureWrappedFor(childId, parentUid)
+        var allWrapped = linkedParents.isNotEmpty()
+        for (parentUid in linkedParents) {
+            if (!ensureWrappedFor(childId, parentUid)) allWrapped = false
+        }
+        childEncryptionReady = allWrapped
     }
+
+    /** The data key to encrypt with, or null if it isn't safe to encrypt yet. */
+    fun encryptionKeyIfReady(): ByteArray? = if (childEncryptionReady) childDataKey() else null
 
     private suspend fun ensureWrappedFor(childId: String, parentUid: String): Boolean {
         if (keys.hasWrappedKey(childId, parentUid)) return true
@@ -87,11 +106,12 @@ class E2eeManager @Inject constructor(
         parentUid: String,
         childPublicKeyB64: String?,
     ): ByteArray? {
+        parentDekCache[childId]?.let { return it }
         val wrapped = keys.getWrappedKey(childId, parentUid) ?: return null
         val childPub = childPublicKeyB64 ?: keys.getChildPublicKey(childId) ?: return null
         return runCatching {
             deviceKeyStore.unwrapDataKeyFrom(unb64(childPub), unb64(wrapped.wrappedB64))
-        }.getOrNull()
+        }.getOrNull()?.also { parentDekCache[childId] = it }
     }
 
     private fun b64(bytes: ByteArray): String = Base64.encodeToString(bytes, Base64.NO_WRAP)

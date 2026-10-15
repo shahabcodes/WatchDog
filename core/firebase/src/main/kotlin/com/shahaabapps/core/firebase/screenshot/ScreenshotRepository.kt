@@ -1,7 +1,10 @@
 package com.shahaabapps.core.firebase.screenshot
 
 import com.shahaabapps.core.common.AppResult
+import com.shahaabapps.core.common.crypto.E2ee
 import com.shahaabapps.core.common.runCatchingResult
+import com.shahaabapps.core.firebase.auth.AuthRepository
+import com.shahaabapps.core.firebase.e2ee.E2eeManager
 import com.shahaabapps.core.model.Screenshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
@@ -62,6 +65,8 @@ data class ScreenshotStatus(
 class FirebaseScreenshotRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val storage: FirebaseStorage,
+    private val e2ee: E2eeManager,
+    private val authRepository: AuthRepository,
 ) : ScreenshotRepository {
 
     override suspend fun requestCapture(childId: String): AppResult<Unit> = runCatchingResult {
@@ -85,6 +90,7 @@ class FirebaseScreenshotRepository @Inject constructor(
                             capturedAtMillis = doc.getLong("capturedAtMillis") ?: 0L,
                             storagePath = doc.getString("storagePath") ?: "",
                             data = doc.getString("data") ?: "",
+                            enc = doc.getBoolean("enc") ?: false,
                         )
                     },
                 )
@@ -120,28 +126,41 @@ class FirebaseScreenshotRepository @Inject constructor(
     override suspend fun uploadScreenshot(childId: String, imageBytes: ByteArray): AppResult<Unit> =
         runCatchingResult {
             val now = System.currentTimeMillis()
-            // Fast path: carry the (already downscaled) JPEG inline in the Firestore
-            // doc, so the parent's realtime listener delivers the bytes directly —
-            // no Storage upload, no downloadUrl round-trip, no parent download.
-            if (imageBytes.size <= INLINE_MAX_BYTES) {
-                val base64 = android.util.Base64.encodeToString(imageBytes, android.util.Base64.NO_WRAP)
+            // Encrypt end-to-end once key exchange with every linked parent is
+            // complete; until then upload plaintext so the feature keeps working
+            // (the parent reads both). The data key is local, so this never needs
+            // the network.
+            val dataKey = e2ee.encryptionKeyIfReady()
+            val payload = if (dataKey != null) E2ee.sealPayload(dataKey, imageBytes) else imageBytes
+            val enc = dataKey != null
+            // Inline threshold is measured on the stored payload so a sealed blob
+            // still stays under Firestore's 1 MiB document limit.
+            if (payload.size <= INLINE_MAX_BYTES) {
+                // Fast path: carry the bytes inline in the Firestore doc, so the
+                // parent's realtime listener delivers them directly — no Storage
+                // upload, no downloadUrl round-trip, no parent download.
+                val base64 = android.util.Base64.encodeToString(payload, android.util.Base64.NO_WRAP)
                 screenshotsCollection(childId).add(
                     mapOf(
                         "data" to base64,
                         "capturedAtMillis" to now,
+                        "enc" to enc,
                     ),
                 ).await()
             } else {
-                // Fallback for unusually large captures: Cloud Storage.
+                // Fallback for unusually large captures: Cloud Storage. The content
+                // type stays image/jpeg to satisfy the Storage rules even though a
+                // sealed blob is ciphertext.
                 val ref = storage.reference.child("screenshots/$childId/$now.jpg")
                 val metadata = StorageMetadata.Builder().setContentType("image/jpeg").build()
-                ref.putBytes(imageBytes, metadata).await()
+                ref.putBytes(payload, metadata).await()
                 val url = ref.downloadUrl.await().toString()
                 screenshotsCollection(childId).add(
                     mapOf(
                         "url" to url,
                         "storagePath" to ref.path,
                         "capturedAtMillis" to now,
+                        "enc" to enc,
                     ),
                 ).await()
             }
@@ -150,7 +169,7 @@ class FirebaseScreenshotRepository @Inject constructor(
 
     override suspend fun fetchAndClear(childId: String, shot: Screenshot): AppResult<ByteArray> =
         runCatchingResult {
-            val bytes = when {
+            val raw = when {
                 // Fast path: bytes are inline in the doc — no network at all.
                 shot.data.isNotBlank() ->
                     android.util.Base64.decode(shot.data, android.util.Base64.NO_WRAP)
@@ -167,8 +186,20 @@ class FirebaseScreenshotRepository @Inject constructor(
                     ref.getBytes(MAX_SCREENSHOT_BYTES).await()
                 }
             }
-            // Delete the Firestore doc; a Cloud Function removes the Storage object
-            // on that deletion, so nothing is kept server-side.
+            val bytes = if (shot.enc) {
+                val parentUid = authRepository.currentUserIdOrNull()
+                    ?: error("Signed out; can't decrypt this screenshot.")
+                val dataKey = e2ee.dataKeyForChild(childId, parentUid, null)
+                    ?: error("Encryption key not ready yet — try again shortly.")
+                // On failure, propagate (don't delete below) so it can be retried
+                // once this device's wrapped key is available.
+                E2ee.openPayload(dataKey, raw)
+            } else {
+                raw
+            }
+            // Delete the Firestore doc only after a successful decode; a Cloud
+            // Function removes the Storage object on that deletion, so nothing is
+            // kept server-side.
             runCatching { screenshotsCollection(childId).document(shot.id).delete().await() }
             bytes
         }

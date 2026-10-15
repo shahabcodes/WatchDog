@@ -17,4 +17,11 @@ data class Screenshot(
      * back to Cloud Storage ([url]/[storagePath]).
      */
     val data: String = "",
+    /**
+     * True when [data] (or the Storage object) holds an E2EE-encrypted payload
+     * (AES-256-GCM under the child's data key) rather than a raw JPEG. The parent
+     * decrypts with its unwrapped copy of that key. Legacy plaintext captures
+     * have this false, so the parent reads both during rollout.
+     */
+    val enc: Boolean = false,
 )

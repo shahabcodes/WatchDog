@@ -136,20 +136,32 @@ class GeofenceSyncService : Service() {
                 val pct = batteryPercent()
                 val charging = isCharging()
                 val now = System.currentTimeMillis()
-                // Estimate drain while discharging, smoothed across heartbeats.
-                if (!charging && pct in 1..100 && lastBatteryPct in 1..100 &&
-                    pct < lastBatteryPct && lastBatteryTime > 0L
-                ) {
-                    val dtHours = (now - lastBatteryTime) / 3_600_000.0
-                    if (dtHours >= 0.015) {
-                        val rate = (lastBatteryPct - pct) / dtHours
-                        drainPerHour = if (drainPerHour <= 0.0) rate else drainPerHour * 0.6 + rate * 0.4
+                // Estimate discharge rate over a window of at least DRAIN_WINDOW_HOURS.
+                // Measuring over the ~2-min heartbeat makes a single 1% tick look like
+                // ~30%/hr; a ≥15-min reference keeps it realistic.
+                when {
+                    charging -> {
+                        drainPerHour = 0.0
+                        lastBatteryPct = -1
+                        lastBatteryTime = 0L
                     }
-                }
-                if (charging) drainPerHour = 0.0
-                if (pct in 1..100) {
-                    lastBatteryPct = pct
-                    lastBatteryTime = now
+                    pct in 1..100 -> {
+                        if (lastBatteryPct !in 1..100 || lastBatteryTime <= 0L) {
+                            lastBatteryPct = pct
+                            lastBatteryTime = now
+                        } else {
+                            val dtHours = (now - lastBatteryTime) / 3_600_000.0
+                            if (dtHours >= DRAIN_WINDOW_HOURS) {
+                                if (pct < lastBatteryPct) {
+                                    val rate = ((lastBatteryPct - pct) / dtHours).coerceIn(0.0, 99.0)
+                                    drainPerHour = if (drainPerHour <= 0.0) rate else drainPerHour * 0.5 + rate * 0.5
+                                }
+                                // Restart the window from the current reading either way.
+                                lastBatteryPct = pct
+                                lastBatteryTime = now
+                            }
+                        }
+                    }
                 }
                 runCatching {
                     childRepository.heartbeat(childId, android.os.Build.MODEL, pct, charging, drainPerHour)
@@ -508,6 +520,7 @@ class GeofenceSyncService : Service() {
         private const val ACCURACY_MAX_METERS = 50f   // drop fixes worse than this (stationary)
         private const val ACCURACY_MAX_MOVING_METERS = 120f // relaxed while travelling
         private const val GEO_ACCURACY_MAX_METERS = 120f // max fix fuzziness for geofence enter/exit
+        private const val DRAIN_WINDOW_HOURS = 0.25 // ≥15 min window for a stable drain rate
         private const val MOVING_SPEED_MPS = 2.5f     // ~9 km/h: clearly moving
         private const val MOVE_MARGIN_METERS = 15f    // movement must beat the accuracy noise by this
         private const val MAX_SPEED_MPS = 60f         // ~216 km/h teleport ceiling

@@ -51,6 +51,18 @@ import org.maplibre.android.snapshotter.MapSnapshotter
 /** OpenFreeMap "liberty" vector style — free, OpenStreetMap-based, no API key. */
 const val OPENFREEMAP_STYLE = "https://tiles.openfreemap.org/styles/liberty"
 
+/** OpenFreeMap "dark" vector style, used at night. */
+const val OPENFREEMAP_DARK_STYLE = "https://tiles.openfreemap.org/styles/dark"
+
+/** True between 18:00 and 06:00 local time — when the map should go dark. */
+fun isNightNow(): Boolean {
+    val h = java.time.LocalTime.now().hour
+    return h < 6 || h >= 18
+}
+
+/** The map style for the current time of day (dark at night, Liberty by day). */
+fun openFreeMapStyle(): String = if (isNightNow()) OPENFREEMAP_DARK_STYLE else OPENFREEMAP_STYLE
+
 /**
  * Controls an [OpenFreeMap]: holds the live [MapLibreMap], exposes camera moves,
  * and projects geographic coordinates to screen pixels so overlays (markers,
@@ -167,7 +179,8 @@ fun OpenFreeMapSnapshot(
         // (the Map tab's live map is tearing down at the same moment). The card shows
         // a light placeholder until the image is ready.
         LaunchedEffect(lat, lng, zoom, wPx, hPx) {
-            val cacheKey = "%.5f,%.5f,%.2f,%d,%d".format(lat, lng, zoom, wPx, hPx)
+            val night = isNightNow()
+            val cacheKey = "%.5f,%.5f,%.2f,%d,%d,%s".format(lat, lng, zoom, wPx, hPx, if (night) "d" else "l")
             // Instant reuse on scroll re-entry — no GL render, no placeholder flash.
             snapshotCacheGet(cacheKey)?.let { bitmap = it; return@LaunchedEffect }
             kotlinx.coroutines.delay(400)
@@ -191,7 +204,7 @@ fun OpenFreeMapSnapshot(
                 lng - dLng,
             )
             val options = MapSnapshotter.Options(wPx, renderedH)
-                .withStyle(OPENFREEMAP_STYLE)
+                .withStyle(if (night) OPENFREEMAP_DARK_STYLE else OPENFREEMAP_STYLE)
                 .withRegion(bounds)
                 .withLogo(false)
             val s = MapSnapshotter(context, options)
@@ -261,7 +274,7 @@ fun OpenFreeMap(
         lifecycleOwner.lifecycle.addObserver(observer)
         mapView.getMapAsync { map ->
             controller.map = map
-            map.setStyle(Style.Builder().fromUri(OPENFREEMAP_STYLE))
+            map.setStyle(Style.Builder().fromUri(openFreeMapStyle()))
             val (lat, lng, zoom) = controller.initial
             map.cameraPosition = CameraPosition.Builder()
                 .target(LatLng(lat, lng))

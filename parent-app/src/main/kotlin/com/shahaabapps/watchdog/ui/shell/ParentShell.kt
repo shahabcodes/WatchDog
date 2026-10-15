@@ -241,7 +241,17 @@ fun ParentShell(
                     onManage = { navController.navigate("manage") },
                     onSettings = { navController.navigate("settings") },
                     onSignOut = { viewModel.signOut() },
+                    onVerifyConnection = { navController.navigate("verify/$currentChildId") },
                 )
+            }
+            composable("verify/{childId}", childArg) { entry ->
+                com.shahaabapps.core.ui.theme.LighthouseType {
+                    VerifyConnectionScreen(
+                        childId = entry.arguments?.getString("childId").orEmpty(),
+                        viewModel = viewModel,
+                        onBack = { navController.popBackStack() },
+                    )
+                }
             }
             composable("map/{childId}", childArg) { GeofenceScreen(onBack = { }, showBack = false) }
             composable("alerts/{childId}", childArg) {
@@ -478,6 +488,104 @@ private fun AddChildScreen(
             ) {
                 Text("Scan QR from gallery", color = navy, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
+        }
+    }
+}
+
+/**
+ * Guided re-scan to verify an already-linked child's E2EE key out-of-band: scan
+ * the QR shown on the child's phone to pin its key, without re-linking. Pops back
+ * on success.
+ */
+@Composable
+private fun VerifyConnectionScreen(
+    childId: String,
+    viewModel: DashboardViewModel,
+    onBack: () -> Unit,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val verifyState by viewModel.verifyState.collectAsStateWithLifecycle()
+    var hasCamera by remember {
+        mutableStateOf(
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED,
+        )
+    }
+    val cameraPermLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        hasCamera = granted
+    }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        if (!hasCamera) cameraPermLauncher.launch(android.Manifest.permission.CAMERA)
+    }
+    androidx.compose.runtime.LaunchedEffect(verifyState) {
+        if (verifyState is com.shahaabapps.watchdog.feature.dashboard.VerifyState.Success) {
+            viewModel.clearVerifyState()
+            onBack()
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { viewModel.clearVerifyState() } }
+
+    val navy = Color(0xFF00133F)
+    val subtitle = Color(0xFFC7D3F0)
+    Column(modifier = Modifier.fillMaxSize().background(navy)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 22.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .border(BorderStroke(1.5.dp, Color(0xFF3A5AA8)), CircleShape)
+                    .clickable(onClick = onBack),
+                contentAlignment = Alignment.Center,
+            ) {
+                androidx.compose.material3.Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Verify secure connection",
+                    fontFamily = AppFonts.lighthouse,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = (-0.7).sp,
+                    color = Color.White,
+                )
+                Text(
+                    "On the child's phone, open Shield → Settings → \"Show secure code\", then scan it here.",
+                    fontSize = 14.sp,
+                    color = subtitle,
+                )
+            }
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(Color.White)
+                .verticalScroll(rememberScrollState())
+                .padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            (verifyState as? com.shahaabapps.watchdog.feature.dashboard.VerifyState.Error)?.let {
+                Text(it.message, color = Color(0xFFC1362B), textAlign = TextAlign.Center)
+            }
+            QrScanner(
+                hasCamera = hasCamera,
+                onRequestPermission = { cameraPermLauncher.launch(android.Manifest.permission.CAMERA) },
+                onDecoded = { viewModel.verifyKeyFromQr(it, expectedChildId = childId) },
+                modifier = Modifier.padding(top = Spacing.sm),
+            )
         }
     }
 }

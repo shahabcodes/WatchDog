@@ -99,11 +99,13 @@ fun OverviewScreen(
     onManage: () -> Unit = {},
     onSettings: () -> Unit = {},
     onSignOut: () -> Unit = {},
+    onVerifyConnection: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: OverviewViewModel = hiltViewModel(),
     mapStyleViewModel: com.shahaabapps.watchdog.util.MapStyleViewModel = hiltViewModel(),
 ) {
     val mapStyle by mapStyleViewModel.style.collectAsStateWithLifecycle()
+    val keyVerified by viewModel.keyVerified.collectAsStateWithLifecycle()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val childLocation by viewModel.childLocation.collectAsStateWithLifecycle()
     val currentPlace by viewModel.currentPlace.collectAsStateWithLifecycle()
@@ -134,6 +136,14 @@ fun OverviewScreen(
         contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = Spacing.sm),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
+        if (!keyVerified) {
+            item(key = "verify") {
+                VerifyConnectionBanner(
+                    onVerify = onVerifyConnection,
+                    modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm),
+                )
+            }
+        }
         // Full-bleed hero: the live map runs to the top, behind the name pill
         // and the notifications bell.
         item(key = "hero") {
@@ -315,6 +325,47 @@ fun OverviewScreen(
  * bar) with the name pill and notifications bell overlaid on top, and the
  * place/battery status over a bottom scrim.
  */
+/**
+ * One-time prompt to finish securing an existing link: re-scan the child's QR so
+ * the parent pins its key out-of-band. Shown until the child's key is verified.
+ */
+@Composable
+private fun VerifyConnectionBanner(
+    onVerify: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = AppTheme.colors.accent.copy(alpha = 0.12f),
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(Spacing.md),
+        ) {
+            Icon(
+                Icons.Filled.Lock,
+                contentDescription = null,
+                tint = AppTheme.colors.accent,
+            )
+            Column(modifier = Modifier.weight(1f).padding(horizontal = Spacing.md)) {
+                Text(
+                    "Finish securing this connection",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    "Re-scan your child's code so their data is end-to-end encrypted and verified.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.secondaryLabel,
+                )
+            }
+            androidx.compose.material3.Button(onClick = onVerify) { Text("Verify") }
+        }
+    }
+}
+
 @Composable
 private fun HomeHero(
     location: ChildLocation?,

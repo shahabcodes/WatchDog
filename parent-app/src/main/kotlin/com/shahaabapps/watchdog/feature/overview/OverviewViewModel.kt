@@ -60,6 +60,7 @@ class OverviewViewModel @Inject constructor(
     appRulesRepository: AppRulesRepository,
     geofenceRepository: GeofenceRepository,
     childRepository: ChildRepository,
+    e2eeManager: com.shahaabapps.core.firebase.e2ee.E2eeManager,
 ) : ViewModel() {
 
     private val childId: String = checkNotNull(savedStateHandle["childId"])
@@ -68,6 +69,14 @@ class OverviewViewModel @Inject constructor(
 
     val childLocation: StateFlow<ChildLocation?> = deviceRepository.observeLocation(childId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /**
+     * Whether this child's E2EE key has been verified out-of-band (pinned from a
+     * QR scan). False prompts a one-time "verify secure connection" banner.
+     */
+    val keyVerified: StateFlow<Boolean> = e2eeManager.observeChildKeyVerified(childId)
+        .map { it != null }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
     /**
      * Name of the saved place the child is currently inside (nearest one whose

@@ -137,6 +137,15 @@ class FirebaseGeofenceRepository @Inject constructor(
             awaitClose { registration.remove() }
         }
 
+    override suspend fun getEvent(childId: String, eventId: String): GeofenceEvent? {
+        val viewerUid = authRepository.currentUserIdOrNull()
+        e2ee.warmReaderKey(childId, viewerUid)
+        return runCatching {
+            val doc = events(childId).document(eventId).get().await()
+            if (doc.exists()) doc.toEvent(childId, viewerUid) else null
+        }.getOrNull()
+    }
+
     private fun geofences(childId: String) =
         firestore.collection(CHILDREN).document(childId).collection(GEOFENCES)
 

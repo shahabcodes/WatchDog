@@ -122,7 +122,7 @@ exports.notifyGeofenceEvent = onDocumentCreated(
     const childId = event.params.childId;
     const transition = data.transition === "EXIT" ? "EXIT" : "ENTER";
     const geofenceId = data.geofenceId || "";
-    let placeName = data.geofenceName || "a place";
+    const eventId = event.params.eventId;
 
     // Skip the push for a stale event — e.g. a transition the child recorded
     // while offline that only synced later. It still lands in the in-app history
@@ -141,6 +141,9 @@ exports.notifyGeofenceEvent = onDocumentCreated(
       (child.profile && child.profile.name) ? child.profile.name : "Your child";
 
     // Geofence → honour its trigger (ENTER / EXIT / ENTER_EXIT) and active flag.
+    // These stay plaintext; the place name/coordinates are E2E-encrypted, so this
+    // function can't read them — the push is sent DATA-ONLY and the parent app
+    // decrypts the event to build the notification text on-device.
     if (geofenceId) {
       const gfSnap = await db.doc(`children/${childId}/geofences/${geofenceId}`).get();
       if (gfSnap.exists) {
@@ -149,18 +152,8 @@ exports.notifyGeofenceEvent = onDocumentCreated(
         const trig = gf.trigger || "ENTER_EXIT";
         if (trig === "ENTER" && transition !== "ENTER") return;
         if (trig === "EXIT" && transition !== "EXIT") return;
-        if (gf.name) placeName = gf.name;
       }
     }
-
-    const title =
-      transition === "EXIT"
-        ? `${childName} left ${placeName}`
-        : `${childName} arrived at ${placeName}`;
-    const body =
-      transition === "EXIT"
-        ? `${childName} just left ${placeName}.`
-        : `${childName} just arrived at ${placeName}.`;
 
     // Gather FCM tokens across all linked parents.
     const tokenDocs = [];
@@ -172,17 +165,17 @@ exports.notifyGeofenceEvent = onDocumentCreated(
 
     const message = {
       tokens: tokenDocs.map((t) => t.token),
-      notification: { title, body },
+      // Data-only (no `notification`) so the app's handler always runs — including
+      // in the background — and can decrypt the place name before showing it.
       data: {
         type: "geofence",
         childId,
         geofenceId,
+        eventId,
         transition,
+        childName,
       },
-      android: {
-        priority: "high",
-        notification: { channelId: "geofence_alerts" },
-      },
+      android: { priority: "high" },
     };
 
     const resp = await getMessaging().sendEachForMulticast(message);

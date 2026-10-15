@@ -10,6 +10,7 @@ import androidx.core.app.NotificationManagerCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.shahaabapps.core.firebase.auth.AuthRepository
+import com.shahaabapps.core.firebase.geofence.GeofenceRepository
 import com.shahaabapps.core.firebase.messaging.MessagingTokenRepository
 import com.shahaabapps.watchdog.MainActivity
 import com.shahaabapps.watchdog.R
@@ -26,6 +27,7 @@ class WatchdogMessagingService : FirebaseMessagingService() {
 
     @Inject lateinit var tokenRepository: MessagingTokenRepository
     @Inject lateinit var authRepository: AuthRepository
+    @Inject lateinit var geofenceRepository: GeofenceRepository
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -35,11 +37,30 @@ class WatchdogMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
-        // Foreground messages (and data-only messages) land here; post manually.
+        // Geofence alerts arrive data-only and content-free: the place name is
+        // E2E-encrypted, so decrypt the event on-device, then post the notification.
+        if (message.data["type"] == "geofence") {
+            handleGeofencePush(message.data)
+            return
+        }
+        // Foreground messages (and other data-only messages) land here; post manually.
         val notif = message.notification
         val title = notif?.title ?: message.data["title"] ?: "Watch Dog"
         val body = notif?.body ?: message.data["body"] ?: return
         showNotification(this, title, body)
+    }
+
+    private fun handleGeofencePush(data: Map<String, String>) {
+        val childId = data["childId"] ?: return
+        val eventId = data["eventId"] ?: return
+        val childName = data["childName"]?.ifBlank { null } ?: "Your child"
+        val left = data["transition"] == "EXIT"
+        scope.launch {
+            val place = runCatching { geofenceRepository.getEvent(childId, eventId) }
+                .getOrNull()?.geofenceName?.ifBlank { null } ?: "a saved place"
+            val verb = if (left) "left" else "arrived at"
+            showNotification(this@WatchdogMessagingService, "$childName $verb $place", "$childName just $verb $place.")
+        }
     }
 
     companion object {

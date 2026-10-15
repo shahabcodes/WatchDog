@@ -31,9 +31,14 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Accessibility
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.BatteryStd
 import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Schedule
 import kotlin.math.roundToInt
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.LocationOff
@@ -166,6 +171,15 @@ fun OverviewScreen(
                         charging = state.charging,
                         drainPerHour = state.batteryDrainPerHour,
                     )
+                }
+            }
+        }
+        state.permissions?.let { perms ->
+            item(key = "permissions") {
+                Box(Modifier.padding(horizontal = Spacing.lg)) {
+                    DashSection("Permissions on ${state.childName}'s phone") {
+                        PermissionsCard(perms)
+                    }
                 }
             }
         }
@@ -794,12 +808,43 @@ private fun BatteryCard(percent: Int, charging: Boolean, drainPerHour: Double) {
                     Text(status, style = MaterialTheme.typography.bodyMedium, color = AppTheme.colors.secondaryLabel)
                 }
             }
-            Text(
-                "This is the whole phone's battery. Android doesn't let apps report their own exact usage, so keep Shield's battery optimisation off to keep tracking reliable.",
-                style = MaterialTheme.typography.bodySmall,
-                color = AppTheme.colors.secondaryLabel,
-            )
         }
+    }
+}
+
+/** What permissions / special access the child has granted, for the parent. */
+@Composable
+private fun PermissionsCard(perms: com.shahaabapps.core.model.DevicePermissions) {
+    val locationLabel = when {
+        perms.locationAlways -> "Allowed all the time"
+        perms.location -> "While in use only"
+        else -> "Off"
+    }
+    CupertinoCard {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            PermRow(Icons.Filled.LocationOn, "Location", perms.locationAlways, locationLabel)
+            PermRow(Icons.Filled.Accessibility, "Accessibility", perms.accessibility, if (perms.accessibility) "On" else "Off — blocking & screenshots won't work")
+            PermRow(Icons.Filled.Schedule, "Usage access", perms.usageAccess, if (perms.usageAccess) "On" else "Off — screen time won't be tracked")
+            PermRow(Icons.Filled.Notifications, "Notifications", perms.notifications, if (perms.notifications) "On" else "Off")
+            PermRow(Icons.Filled.BatteryStd, "Unrestricted battery", perms.batteryUnrestricted, if (perms.batteryUnrestricted) "On" else "Off — may be killed in the background")
+        }
+    }
+}
+
+@Composable
+private fun PermRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, ok: Boolean, detail: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, contentDescription = null, tint = AppTheme.colors.accent, modifier = Modifier.size(20.dp))
+        Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
+        }
+        Icon(
+            if (ok) Icons.Filled.CheckCircle else Icons.Filled.Error,
+            contentDescription = if (ok) "Granted" else "Not granted",
+            tint = if (ok) AppTheme.colors.success else AppTheme.colors.warn,
+            modifier = Modifier.size(22.dp),
+        )
     }
 }
 

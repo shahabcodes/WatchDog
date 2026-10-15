@@ -4,6 +4,7 @@ import com.shahaabapps.core.common.AppResult
 import com.shahaabapps.core.common.runCatchingResult
 import com.shahaabapps.core.model.ChildAccount
 import com.shahaabapps.core.model.DeviceInfo
+import com.shahaabapps.core.model.DevicePermissions
 import com.shahaabapps.core.model.UserProfile
 import com.shahaabapps.core.model.UserRole
 import com.google.firebase.firestore.DocumentSnapshot
@@ -131,6 +132,23 @@ class FirebaseChildRepository @Inject constructor(
             ).await()
         }
 
+    override suspend fun updatePermissions(childId: String, permissions: DevicePermissions): AppResult<Unit> =
+        runCatchingResult {
+            val map = mapOf(
+                "location" to permissions.location,
+                "locationAlways" to permissions.locationAlways,
+                "accessibility" to permissions.accessibility,
+                "usageAccess" to permissions.usageAccess,
+                "notifications" to permissions.notifications,
+                "batteryUnrestricted" to permissions.batteryUnrestricted,
+                "reportedAtMillis" to permissions.reportedAtMillis,
+            )
+            childrenCollection.document(childId).set(
+                mapOf(FIELD_DEVICE to mapOf("permissions" to map)),
+                SetOptions.merge(),
+            ).await()
+        }
+
     private fun DocumentSnapshot.toChildAccount(): ChildAccount {
         @Suppress("UNCHECKED_CAST")
         val profileMap = get(FIELD_PROFILE) as? Map<String, Any?> ?: emptyMap()
@@ -157,6 +175,17 @@ class FirebaseChildRepository @Inject constructor(
                 lastSeenMillis = deviceMap["lastSeenMillis"] as? Long ?: 0L,
                 charging = deviceMap["charging"] as? Boolean ?: false,
                 batteryDrainPerHour = (deviceMap["batteryDrainPerHour"] as? Number)?.toDouble() ?: 0.0,
+                permissions = (deviceMap["permissions"] as? Map<*, *>)?.let { p ->
+                    DevicePermissions(
+                        location = p["location"] as? Boolean ?: false,
+                        locationAlways = p["locationAlways"] as? Boolean ?: false,
+                        accessibility = p["accessibility"] as? Boolean ?: false,
+                        usageAccess = p["usageAccess"] as? Boolean ?: false,
+                        notifications = p["notifications"] as? Boolean ?: false,
+                        batteryUnrestricted = p["batteryUnrestricted"] as? Boolean ?: false,
+                        reportedAtMillis = (p["reportedAtMillis"] as? Long) ?: 0L,
+                    )
+                },
             ),
         )
     }

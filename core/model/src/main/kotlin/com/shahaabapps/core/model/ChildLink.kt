@@ -31,6 +31,28 @@ data class DeviceInfo(
     val charging: Boolean = false,
     /** Recent battery drain while discharging, in % per hour (0 when unknown). */
     val batteryDrainPerHour: Double = 0.0,
+    /** The permissions/special-access the child has granted (null if never reported). */
+    val permissions: DevicePermissions? = null,
+)
+
+/**
+ * Snapshot of the special-access permissions Shield needs, reported by the child
+ * so the parent can see what's granted and what's blocking features.
+ */
+data class DevicePermissions(
+    /** Fine or coarse location granted at all. */
+    val location: Boolean = false,
+    /** Background ("Allow all the time") location. */
+    val locationAlways: Boolean = false,
+    /** Accessibility service enabled (app detection/blocking + screenshots). */
+    val accessibility: Boolean = false,
+    /** Usage Access (to measure screen time). */
+    val usageAccess: Boolean = false,
+    /** Notifications allowed. */
+    val notifications: Boolean = false,
+    /** Exempt from battery optimization ("Unrestricted"). */
+    val batteryUnrestricted: Boolean = false,
+    val reportedAtMillis: Long = 0L,
 )
 
 /**

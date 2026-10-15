@@ -153,6 +153,12 @@ class GeofenceSyncService : Service() {
                 runCatching {
                     childRepository.heartbeat(childId, android.os.Build.MODEL, pct, charging, drainPerHour)
                 }
+                runCatching {
+                    childRepository.updatePermissions(
+                        childId,
+                        com.shahaabapps.shield.enforcement.ChildPermissions.snapshot(this@GeofenceSyncService),
+                    )
+                }
                 kotlinx.coroutines.delay(HEARTBEAT_MS)
             }
         }

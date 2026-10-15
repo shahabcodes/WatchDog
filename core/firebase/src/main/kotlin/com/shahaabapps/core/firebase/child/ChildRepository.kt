@@ -45,6 +45,9 @@ interface ChildRepository {
         drainPerHour: Double = 0.0,
     ): AppResult<Unit>
 
+    /** Child reports which special-access permissions it currently has granted. */
+    suspend fun updatePermissions(childId: String, permissions: com.shahaabapps.core.model.DevicePermissions): AppResult<Unit>
+
     /** A linked parent removes (unlinks) themselves from a child. */
     suspend fun unlinkChild(childId: String, parentId: String): AppResult<Unit>
 }

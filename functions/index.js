@@ -272,6 +272,7 @@ exports.triggerPermissionRequest = onDocumentWritten(
       usageAccess: "usage access",
       notifications: "notifications",
       battery: "unrestricted battery",
+      fullScreenAlarm: "the full-screen alarm",
     };
     const label = labels[permission] || "a permission";
 

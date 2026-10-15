@@ -32,6 +32,7 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Accessibility
+import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.BatteryStd
 import androidx.compose.material.icons.filled.Bedtime
@@ -871,6 +872,7 @@ private fun PermissionsCard(
             PermRow(Icons.Filled.Schedule, "Usage access", perms.usageAccess, if (perms.usageAccess) "On" else "Off — screen time won't be tracked", "usageAccess", onRequest)
             PermRow(Icons.Filled.Notifications, "Notifications", perms.notifications, if (perms.notifications) "On" else "Off", "notifications", onRequest)
             PermRow(Icons.Filled.BatteryStd, "Unrestricted battery", perms.batteryUnrestricted, if (perms.batteryUnrestricted) "On" else "Off — may be killed in the background", "battery", onRequest)
+            PermRow(Icons.Filled.Alarm, "Full-screen alarm", perms.fullScreenAlarm, if (perms.fullScreenAlarm) "On" else "Off — Ring device won't show full-screen", "fullScreenAlarm", onRequest)
         }
     }
 }

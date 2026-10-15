@@ -30,6 +30,15 @@ object ChildPermissions {
         val notifications = runCatching {
             NotificationManagerCompat.from(context).areNotificationsEnabled()
         }.getOrDefault(false)
+        // Full-screen intent is manifest-granted below Android 14; user-toggleable on 14+.
+        val fullScreenAlarm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            runCatching {
+                (context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager)
+                    .canUseFullScreenIntent()
+            }.getOrDefault(false)
+        } else {
+            true
+        }
 
         return DevicePermissions(
             location = fine || coarse,
@@ -38,6 +47,7 @@ object ChildPermissions {
             usageAccess = EnforcementPermissions.hasUsageAccess(context),
             notifications = notifications,
             batteryUnrestricted = battery,
+            fullScreenAlarm = fullScreenAlarm,
             reportedAtMillis = System.currentTimeMillis(),
         )
     }

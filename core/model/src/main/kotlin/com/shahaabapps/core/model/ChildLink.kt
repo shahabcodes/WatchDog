@@ -67,6 +67,8 @@ data class DevicePermissions(
     val notifications: Boolean = false,
     /** Exempt from battery optimization ("Unrestricted"). */
     val batteryUnrestricted: Boolean = false,
+    /** Allowed to show full-screen alerts (the "ring device" alarm); user-toggleable on Android 14+. */
+    val fullScreenAlarm: Boolean = false,
     val reportedAtMillis: Long = 0L,
 )
 

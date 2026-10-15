@@ -158,6 +158,7 @@ class FirebaseChildRepository @Inject constructor(
                 "usageAccess" to permissions.usageAccess,
                 "notifications" to permissions.notifications,
                 "batteryUnrestricted" to permissions.batteryUnrestricted,
+                "fullScreenAlarm" to permissions.fullScreenAlarm,
                 "reportedAtMillis" to permissions.reportedAtMillis,
             )
             childrenCollection.document(childId).set(
@@ -200,6 +201,7 @@ class FirebaseChildRepository @Inject constructor(
                         usageAccess = p["usageAccess"] as? Boolean ?: false,
                         notifications = p["notifications"] as? Boolean ?: false,
                         batteryUnrestricted = p["batteryUnrestricted"] as? Boolean ?: false,
+                        fullScreenAlarm = p["fullScreenAlarm"] as? Boolean ?: false,
                         reportedAtMillis = (p["reportedAtMillis"] as? Long) ?: 0L,
                     )
                 },

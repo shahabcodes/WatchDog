@@ -34,18 +34,23 @@ interface E2eeKeyRepository {
         parentUid: String,
         wrappedB64: String,
         childKeyFp: String,
+        parentKeyFp: String,
     ): AppResult<Unit>
 
-    suspend fun hasWrappedKey(childId: String, parentUid: String): Boolean
     suspend fun getWrappedKey(childId: String, parentUid: String): WrappedKey?
     fun observeWrappedKey(childId: String, parentUid: String): Flow<WrappedKey?>
     suspend fun deleteWrappedKey(childId: String, parentUid: String): AppResult<Unit>
 }
 
-/** A data key encrypted for one parent, plus the fingerprint of the child key that sealed it. */
+/**
+ * A data key encrypted for one parent, with the fingerprints of the child key
+ * that sealed it and the parent key it was sealed for. [parentKeyFp] lets the
+ * child detect that a parent re-installed with a new device key and re-wrap.
+ */
 data class WrappedKey(
     val wrappedB64: String,
     val childKeyFp: String,
+    val parentKeyFp: String = "",
 )
 
 class FirebaseE2eeKeyRepository @Inject constructor(
@@ -86,31 +91,32 @@ class FirebaseE2eeKeyRepository @Inject constructor(
         parentUid: String,
         wrappedB64: String,
         childKeyFp: String,
+        parentKeyFp: String,
     ): AppResult<Unit> = runCatchingResult {
         wrappedDoc(childId, parentUid).set(
             mapOf(
                 "wrapped" to wrappedB64,
                 "childKeyFp" to childKeyFp,
+                "parentKeyFp" to parentKeyFp,
                 "updatedAt" to System.currentTimeMillis(),
             ),
         ).await()
     }
 
-    override suspend fun hasWrappedKey(childId: String, parentUid: String): Boolean = runCatching {
-        wrappedDoc(childId, parentUid).get().await().exists()
-    }.getOrDefault(false)
-
     override suspend fun getWrappedKey(childId: String, parentUid: String): WrappedKey? = runCatching {
         val doc = wrappedDoc(childId, parentUid).get().await()
-        val wrapped = doc.getString("wrapped") ?: return null
-        WrappedKey(wrapped, doc.getString("childKeyFp") ?: "")
+        val wrapped = doc.getString("wrapped") ?: return@runCatching null
+        WrappedKey(wrapped, doc.getString("childKeyFp") ?: "", doc.getString("parentKeyFp") ?: "")
     }.getOrNull()
 
     override fun observeWrappedKey(childId: String, parentUid: String): Flow<WrappedKey?> = callbackFlow {
         val reg = wrappedDoc(childId, parentUid).addSnapshotListener { snap, err ->
             if (err != null || snap == null) { trySend(null); return@addSnapshotListener }
             val wrapped = snap.getString("wrapped")
-            trySend(if (wrapped == null) null else WrappedKey(wrapped, snap.getString("childKeyFp") ?: ""))
+            trySend(
+                if (wrapped == null) null
+                else WrappedKey(wrapped, snap.getString("childKeyFp") ?: "", snap.getString("parentKeyFp") ?: ""),
+            )
         }
         awaitClose { reg.remove() }
     }

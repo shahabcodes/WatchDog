@@ -45,8 +45,13 @@ class E2eeManager @Inject constructor(
     /** Parent-side cache of unwrapped data keys, keyed by childId. */
     private val parentDekCache = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
 
-    /** "childId/parentUid" pairs already wrapped, so repeated syncs are near-free. */
-    private val wrappedParents = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    /**
+     * "childId/parentUid" -> last time (ms) we confirmed a wrapped key sealed for
+     * the parent's *current* device key. Lets routine syncs short-circuit, while
+     * re-verifying every [VERIFY_TTL_MS] so a parent that reinstalled with a new
+     * device key is re-wrapped within that window even if the child never restarts.
+     */
+    private val verifiedParents = java.util.concurrent.ConcurrentHashMap<String, Long>()
     @Volatile private var childKeyPublished = false
 
     fun myPublicKeyB64(): String = b64(deviceKeyStore.publicKey())
@@ -165,12 +170,20 @@ class E2eeManager @Inject constructor(
 
     private suspend fun ensureWrappedFor(childId: String, parentUid: String): Boolean {
         val tag = "$childId/$parentUid"
-        if (tag in wrappedParents) return true
-        if (keys.hasWrappedKey(childId, parentUid)) { wrappedParents.add(tag); return true }
+        val now = System.currentTimeMillis()
+        val lastVerified = verifiedParents[tag]
+        if (lastVerified != null && now - lastVerified < VERIFY_TTL_MS) return true
         val parentPubB64 = keys.getParentPublicKey(parentUid) ?: return false
-        val wrapped = deviceKeyStore.wrapDataKeyFor(unb64(parentPubB64), childDataKey())
-        keys.putWrappedKey(childId, parentUid, b64(wrapped), myFingerprint())
-        wrappedParents.add(tag)
+        val parentFp = E2ee.fingerprint(unb64(parentPubB64))
+        // Re-wrap unless an existing wrap was already sealed for the parent's
+        // CURRENT device key — otherwise a parent that reinstalled (same account,
+        // new key) could never decrypt.
+        val existing = keys.getWrappedKey(childId, parentUid)
+        if (existing == null || existing.parentKeyFp != parentFp) {
+            val wrapped = deviceKeyStore.wrapDataKeyFor(unb64(parentPubB64), childDataKey())
+            keys.putWrappedKey(childId, parentUid, b64(wrapped), myFingerprint(), parentFp)
+        }
+        verifiedParents[tag] = now
         return true
     }
 
@@ -224,7 +237,7 @@ class E2eeManager @Inject constructor(
      */
     fun clearSession() {
         parentDekCache.clear()
-        wrappedParents.clear()
+        verifiedParents.clear()
         childKeyPublished = false
         childEncryptionReady = false
     }
@@ -240,5 +253,8 @@ class E2eeManager @Inject constructor(
          * not flip without that verification.
          */
         const val ENCRYPT_ONLY = false
+
+        /** How often the child re-confirms each parent's wrapped key is current. */
+        private const val VERIFY_TTL_MS = 30L * 60 * 1000
     }
 }

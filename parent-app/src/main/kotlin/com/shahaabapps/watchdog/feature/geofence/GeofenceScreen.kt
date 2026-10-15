@@ -540,6 +540,17 @@ fun GeofenceScreen(
                     target?.let { runCatching { controller.animateTo(it.first, it.second, 17.0) } }
                 }
             }
+        } else {
+            // Live mode: a "go to current location" button.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = Spacing.md),
+            ) {
+                MapRoundButton(Icons.Filled.MyLocation, "Go to current location") {
+                    childLocation?.let { runCatching { controller.animateTo(it.latitude, it.longitude, 17.5) } }
+                }
+            }
         }
 
         // History playback bar + timeline (bottom)

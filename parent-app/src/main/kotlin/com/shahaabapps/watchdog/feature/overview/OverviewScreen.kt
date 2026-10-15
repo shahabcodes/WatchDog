@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.TrendingDown
 import kotlin.math.roundToInt
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.LocationOff
@@ -145,6 +146,7 @@ fun OverviewScreen(
                 onOpenMap = onOpenMap,
             )
         }
+        // Ring / Locate / Refresh / Focus toggles.
         item(key = "actions") {
             Box(Modifier.padding(horizontal = Spacing.lg)) {
                 QuickActions(
@@ -155,6 +157,7 @@ fun OverviewScreen(
                 )
             }
         }
+        // Screen time today.
         item(key = "screentime") {
             Box(Modifier.padding(horizontal = Spacing.lg)) {
                 ScreenTimeCard(
@@ -165,36 +168,7 @@ fun OverviewScreen(
                 )
             }
         }
-        item(key = "battery") {
-            Box(Modifier.padding(horizontal = Spacing.lg)) {
-                DashSection("Battery") {
-                    BatteryCard(
-                        percent = state.batteryPercent,
-                        charging = state.charging,
-                        drainPerHour = state.batteryDrainPerHour,
-                        stats = state.batteryStats,
-                    )
-                }
-            }
-        }
-        item(key = "tracking") {
-            Box(Modifier.padding(horizontal = Spacing.lg)) {
-                DashSection("Location tracking") {
-                    TrackingCard(mode = trackingMode, onSelect = { viewModel.setTrackingMode(it) })
-                }
-            }
-        }
-        state.permissions?.let { perms ->
-            item(key = "permissions") {
-                Box(Modifier.padding(horizontal = Spacing.lg)) {
-                    DashSection("Permissions on ${state.childName}'s phone") {
-                        PermissionsCard(perms, onRequest = { viewModel.requestPermission(it) })
-                    }
-                }
-            }
-        }
-        item(key = "bedtime") { Box(Modifier.padding(horizontal = Spacing.lg)) { BedtimeBanner(focus = focus) } }
-
+        // New-apps review (conditional alert) — kept near the top so it's seen.
         if (pendingApps.isNotEmpty()) {
             item(key = "pending") {
                 Box(Modifier.padding(horizontal = Spacing.lg)) {
@@ -208,7 +182,7 @@ fun OverviewScreen(
                 }
             }
         }
-
+        // Screen capture.
         item(key = "screen") {
             Box(Modifier.padding(horizontal = Spacing.lg)) {
                 DashSection("Screen") {
@@ -216,6 +190,7 @@ fun OverviewScreen(
                 }
             }
         }
+        // Focus modes.
         item(key = "focus") {
             Box(Modifier.padding(horizontal = Spacing.lg)) {
                 DashSection("Focus modes") {
@@ -223,6 +198,7 @@ fun OverviewScreen(
                 }
             }
         }
+        // Protection.
         item(key = "protection") {
             Box(Modifier.padding(horizontal = Spacing.lg)) {
                 DashSection("Protection") {
@@ -230,6 +206,7 @@ fun OverviewScreen(
                 }
             }
         }
+        // This week.
         if (weekly.any { it.minutes > 0 }) {
             item(key = "week") {
                 Box(Modifier.padding(horizontal = Spacing.lg)) {
@@ -239,6 +216,39 @@ fun OverviewScreen(
                 }
             }
         }
+        // Battery.
+        item(key = "battery") {
+            Box(Modifier.padding(horizontal = Spacing.lg)) {
+                DashSection("Battery") {
+                    BatteryCard(
+                        percent = state.batteryPercent,
+                        charging = state.charging,
+                        drainPerHour = state.batteryDrainPerHour,
+                        stats = state.batteryStats,
+                    )
+                }
+            }
+        }
+        // Location tracking mode.
+        item(key = "tracking") {
+            Box(Modifier.padding(horizontal = Spacing.lg)) {
+                DashSection("Location tracking") {
+                    TrackingCard(mode = trackingMode, onSelect = { viewModel.setTrackingMode(it) })
+                }
+            }
+        }
+        // Permissions on the child's phone.
+        state.permissions?.let { perms ->
+            item(key = "permissions") {
+                Box(Modifier.padding(horizontal = Spacing.lg)) {
+                    DashSection("Permissions on ${state.childName}'s phone") {
+                        PermissionsCard(perms, onRequest = { viewModel.requestPermission(it) })
+                    }
+                }
+            }
+        }
+        // Next scheduled downtime banner.
+        item(key = "bedtime") { Box(Modifier.padding(horizontal = Spacing.lg)) { BedtimeBanner(focus = focus) } }
     }
     }
 
@@ -780,6 +790,48 @@ private fun ScreenTimeCard(totalMinutes: Int, yesterdayMinutes: Int?, weekMinute
     }
 }
 
+private data class BatteryInsight(val charge: Boolean, val text: String)
+
+/** Plain-English battery insights from the hourly series: charge runs + heaviest drain. */
+private fun batteryInsights(
+    hourly: List<com.shahaabapps.core.model.BatterySample>,
+    clock: java.text.SimpleDateFormat,
+): List<BatteryInsight> {
+    if (hourly.size < 2) return emptyList()
+    fun t(ms: Long) = clock.format(java.util.Date(ms))
+    val out = mutableListOf<BatteryInsight>()
+
+    // Charge runs: a non-decreasing stretch with a net rise of at least 10%.
+    var i = 0
+    while (i < hourly.lastIndex) {
+        if (hourly[i + 1].percent > hourly[i].percent) {
+            var j = i
+            while (j < hourly.lastIndex && hourly[j + 1].percent >= hourly[j].percent) j++
+            val from = hourly[i].percent
+            val to = hourly[j].percent
+            if (to - from >= 10) {
+                out += BatteryInsight(true, "On charge ${t(hourly[i].atMillis)}–${t(hourly[j].atMillis)} · $from% → $to%")
+            }
+            i = j
+        } else {
+            i++
+        }
+    }
+
+    // Heaviest discharge between two consecutive readings.
+    var maxDrop = 0
+    var a: com.shahaabapps.core.model.BatterySample? = null
+    var b: com.shahaabapps.core.model.BatterySample? = null
+    for (k in 0 until hourly.lastIndex) {
+        val d = hourly[k].percent - hourly[k + 1].percent
+        if (d > maxDrop) { maxDrop = d; a = hourly[k]; b = hourly[k + 1] }
+    }
+    if (maxDrop >= 8 && a != null && b != null) {
+        out += BatteryInsight(false, "Heaviest use ${t(a.atMillis)}–${t(b.atMillis)} · −$maxDrop%")
+    }
+    return out
+}
+
 /** Child device battery: level, charging/drain, last charge, and hourly history. */
 @Composable
 private fun BatteryCard(
@@ -797,6 +849,8 @@ private fun BatteryCard(
         percent > 0 -> "On battery"
         else -> "No recent reading"
     }
+    val clock = remember { java.text.SimpleDateFormat("h a", java.util.Locale.getDefault()) }
+    val insights = remember(stats?.hourly) { batteryInsights(stats?.hourly.orEmpty(), clock) }
     CupertinoCard {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -833,9 +887,26 @@ private fun BatteryCard(
                     color = AppTheme.colors.secondaryLabel,
                 )
             }
+            // Insights: heaviest-use window + charge sessions, from the hourly data.
+            if (insights.isNotEmpty()) {
+                insights.forEach { ins ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            if (ins.charge) Icons.Filled.BatteryChargingFull else Icons.Filled.TrendingDown,
+                            contentDescription = null,
+                            tint = if (ins.charge) AppTheme.colors.success else AppTheme.colors.warn,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text(
+                            ins.text,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(start = Spacing.sm),
+                        )
+                    }
+                }
+            }
             // Hourly history chart (battery % over time), with axis + time labels.
             stats?.hourly?.takeIf { it.isNotEmpty() }?.let { hourly ->
-                val clock = remember { java.text.SimpleDateFormat("h a", java.util.Locale.getDefault()) }
                 Text(
                     "Battery level over the last ${hourly.size} ${if (hourly.size == 1) "hour" else "hours"}",
                     style = MaterialTheme.typography.labelMedium,

@@ -2,6 +2,8 @@ package com.shahaabapps.watchdog.feature.overview
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -907,9 +909,16 @@ private fun BatteryCard(
     }
     val clock = remember { java.text.SimpleDateFormat("h a", java.util.Locale.getDefault()) }
     val insights = remember(stats?.hourly) { batteryInsights(stats?.hourly.orEmpty(), clock) }
+    val hasDetail = insights.isNotEmpty() ||
+        (stats?.hourly?.isNotEmpty() == true) ||
+        (stats?.lastChargeEndMillis ?: 0L) > 0L
+    var expanded by remember { mutableStateOf(false) }
     CupertinoCard {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = if (hasDetail) Modifier.clickable { expanded = !expanded } else Modifier,
+            ) {
                 Box(
                     modifier = Modifier
                         .size(44.dp)
@@ -933,7 +942,15 @@ private fun BatteryCard(
                     )
                     Text(status, style = MaterialTheme.typography.bodyMedium, color = AppTheme.colors.secondaryLabel)
                 }
+                if (hasDetail) {
+                    Icon(
+                        if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = if (expanded) "Collapse" else "Expand",
+                        tint = AppTheme.colors.secondaryLabel,
+                    )
+                }
             }
+          if (expanded) {
             // Last charge session.
             stats?.takeIf { it.lastChargeEndMillis > 0 }?.let { s ->
                 val gained = (s.lastChargeToPercent - s.lastChargeFromPercent).coerceAtLeast(0)
@@ -1046,6 +1063,7 @@ private fun BatteryCard(
                     }
                 }
             }
+          }
         }
     }
 }

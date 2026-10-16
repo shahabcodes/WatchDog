@@ -384,10 +384,12 @@ class GeofenceSyncService : Service() {
         }
         // 4. Movement candidate — confirm with one more consistent fix before
         //    treating it as real (so a single bad fix can't start a fake trip).
+        //    Hold the live marker at the last confirmed position until then, so an
+        //    unconfirmed Wi-Fi/cell fix can't teleport it to a nearby place.
         val tent = tentativeMove
         if (tent == null) {
             tentativeMove = loc
-            publishLive(childId, loc.latitude, loc.longitude, loc.accuracy, now)
+            publishLive(childId, prev.latitude, prev.longitude, prev.accuracy, now)
             return
         }
         if (tent.distanceTo(loc) <= noise || prev.distanceTo(loc) > noise) {

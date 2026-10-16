@@ -24,6 +24,11 @@ object PermissionNavigator {
             } else {
                 Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, pkg)
             }
+            "storage" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$pkg"))
+            } else {
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pkg"))
+            }
             // location (incl. "Allow all the time") and any fallback → app details,
             // where the user can set Location permission / all-the-time.
             else -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pkg"))
@@ -37,6 +42,7 @@ object PermissionNavigator {
         "notifications" -> "Notifications for Shield"
         "battery" -> "Unrestricted battery for Shield"
         "fullScreenAlarm" -> "Full-screen alarm for Shield"
+        "storage" -> "File access for Shield (to block app installs)"
         else -> "the requested permission"
     }
 }

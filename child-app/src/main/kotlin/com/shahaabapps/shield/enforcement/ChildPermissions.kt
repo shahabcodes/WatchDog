@@ -39,6 +39,12 @@ object ChildPermissions {
         } else {
             true
         }
+        val storage = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            runCatching { android.os.Environment.isExternalStorageManager() }.getOrDefault(false)
+        } else {
+            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) ==
+                PackageManager.PERMISSION_GRANTED
+        }
 
         return DevicePermissions(
             location = fine || coarse,
@@ -48,6 +54,7 @@ object ChildPermissions {
             notifications = notifications,
             batteryUnrestricted = battery,
             fullScreenAlarm = fullScreenAlarm,
+            storageAccess = storage,
             reportedAtMillis = System.currentTimeMillis(),
         )
     }

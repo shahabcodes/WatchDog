@@ -61,9 +61,15 @@ class OverviewViewModel @Inject constructor(
     geofenceRepository: GeofenceRepository,
     childRepository: ChildRepository,
     e2eeManager: com.shahaabapps.core.firebase.e2ee.E2eeManager,
+    installGuardRepository: com.shahaabapps.core.firebase.installguard.InstallGuardRepository,
 ) : ViewModel() {
 
     private val childId: String = checkNotNull(savedStateHandle["childId"])
+
+    /** Whether the parent has enabled the sideload install guard (gates the file-access permission row). */
+    val installGuardEnabled: StateFlow<Boolean> = installGuardRepository.observe(childId)
+        .map { it.enabled }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
     private val todayDate: LocalDate = LocalDate.now()
     private val today: String = todayDate.toString()
 

@@ -109,6 +109,7 @@ fun OverviewScreen(
 ) {
     val mapStyle by mapStyleViewModel.style.collectAsStateWithLifecycle()
     val keyVerified by viewModel.keyVerified.collectAsStateWithLifecycle()
+    val installGuardEnabled by viewModel.installGuardEnabled.collectAsStateWithLifecycle()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val childLocation by viewModel.childLocation.collectAsStateWithLifecycle()
     val currentPlace by viewModel.currentPlace.collectAsStateWithLifecycle()
@@ -272,7 +273,11 @@ fun OverviewScreen(
             item(key = "permissions") {
                 Box(Modifier.padding(horizontal = Spacing.lg)) {
                     DashSection("Permissions on ${state.childName}'s phone") {
-                        PermissionsCard(perms, onRequest = { viewModel.requestPermission(it) })
+                        PermissionsCard(
+                            perms,
+                            showStorage = installGuardEnabled,
+                            onRequest = { viewModel.requestPermission(it) },
+                        )
                     }
                 }
             }
@@ -1145,6 +1150,7 @@ private fun TrackSeg(label: String, selected: Boolean, modifier: Modifier = Modi
 @Composable
 private fun PermissionsCard(
     perms: com.shahaabapps.core.model.DevicePermissions,
+    showStorage: Boolean,
     onRequest: (String) -> Unit,
 ) {
     val locationLabel = when {
@@ -1160,6 +1166,9 @@ private fun PermissionsCard(
             PermRow(Icons.Filled.Notifications, "Notifications", perms.notifications, if (perms.notifications) "On" else "Off", "notifications", onRequest)
             PermRow(Icons.Filled.BatteryStd, "Unrestricted battery", perms.batteryUnrestricted, if (perms.batteryUnrestricted) "On" else "Off — may be killed in the background", "battery", onRequest)
             PermRow(Icons.Filled.Alarm, "Full-screen alarm", perms.fullScreenAlarm, if (perms.fullScreenAlarm) "On" else "Off — Ring device won't show full-screen", "fullScreenAlarm", onRequest)
+            if (showStorage) {
+                PermRow(Icons.Filled.Lock, "Install control (file access)", perms.storageAccess, if (perms.storageAccess) "On" else "Off — app-install blocking won't work", "storage", onRequest)
+            }
         }
     }
 }

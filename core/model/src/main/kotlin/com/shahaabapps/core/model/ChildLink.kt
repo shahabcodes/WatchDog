@@ -69,6 +69,8 @@ data class DevicePermissions(
     val batteryUnrestricted: Boolean = false,
     /** Allowed to show full-screen alerts (the "ring device" alarm); user-toggleable on Android 14+. */
     val fullScreenAlarm: Boolean = false,
+    /** All-files / storage access — needed for the sideload install guard. */
+    val storageAccess: Boolean = false,
     val reportedAtMillis: Long = 0L,
 )
 

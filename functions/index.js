@@ -276,6 +276,7 @@ exports.triggerPermissionRequest = onDocumentWritten(
       notifications: "notifications",
       battery: "unrestricted battery",
       fullScreenAlarm: "the full-screen alarm",
+      storage: "file access (to block app installs)",
     };
     const label = labels[permission] || "a permission";
 

@@ -149,6 +149,7 @@ fun ProtectedScreen(
             BatterySetupCard()
             AlertsSetupCard()
             ProtectionSetupCard()
+            com.shahaabapps.shield.install.InstallGuardSetupCard()
         }
     }
 }

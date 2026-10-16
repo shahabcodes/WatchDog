@@ -102,6 +102,7 @@ fun OverviewScreen(
     onSettings: () -> Unit = {},
     onSignOut: () -> Unit = {},
     onVerifyConnection: () -> Unit = {},
+    onOpenInstallGuard: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: OverviewViewModel = hiltViewModel(),
     mapStyleViewModel: com.shahaabapps.watchdog.util.MapStyleViewModel = hiltViewModel(),
@@ -218,6 +219,20 @@ fun OverviewScreen(
             Box(Modifier.padding(horizontal = Spacing.lg)) {
                 DashSection("Protection") {
                     ProtectionCard(blocked = protection.uninstallBlocked, onClick = { showProtectionSheet = true })
+                }
+            }
+        }
+        item(key = "installs") {
+            Box(Modifier.padding(horizontal = Spacing.lg)) {
+                DashSection("App installs") {
+                    CupertinoCard {
+                        CupertinoListRow(
+                            title = "Control app installs",
+                            subtitle = "Allow or block sideloaded apps by package",
+                            showDivider = false,
+                            onClick = onOpenInstallGuard,
+                        )
+                    }
                 }
             }
         }

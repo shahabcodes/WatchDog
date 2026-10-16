@@ -242,6 +242,12 @@ fun ParentShell(
                     onSettings = { navController.navigate("settings") },
                     onSignOut = { viewModel.signOut() },
                     onVerifyConnection = { navController.navigate("verify/$currentChildId") },
+                    onOpenInstallGuard = { navController.navigate("installguard/$currentChildId") },
+                )
+            }
+            composable("installguard/{childId}", childArg) {
+                com.shahaabapps.watchdog.feature.installguard.InstallGuardScreen(
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable("verify/{childId}", childArg) { entry ->

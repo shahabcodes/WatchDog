@@ -59,6 +59,9 @@ class GeofenceSyncService : Service() {
     @Inject lateinit var pendingTrailDao: PendingTrailDao
     @Inject lateinit var trackingRepository: com.shahaabapps.core.firebase.tracking.TrackingRepository
     @Inject lateinit var e2eeManager: com.shahaabapps.core.firebase.e2ee.E2eeManager
+    @Inject lateinit var installGuardRepository: com.shahaabapps.core.firebase.installguard.InstallGuardRepository
+
+    private var apkInstallGuard: com.shahaabapps.shield.install.ApkInstallGuard? = null
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val fusedClient by lazy { LocationServices.getFusedLocationProviderClient(this) }
@@ -124,6 +127,10 @@ class GeofenceSyncService : Service() {
         if (started) return
         started = true
         val childId = authRepository.currentUserIdOrNull() ?: return
+        // Watch downloaded APKs and quarantine ones the parent's sideload policy blocks.
+        apkInstallGuard = com.shahaabapps.shield.install.ApkInstallGuard(
+            this, scope, installGuardRepository, authRepository,
+        ).also { it.start() }
         // Establish E2EE readiness in this (possibly Activity-less) process so that
         // location/trail writes here are encrypted once every parent is wrapped.
         scope.launch {
@@ -597,6 +604,7 @@ class GeofenceSyncService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         locationCallback?.let { runCatching { fusedClient.removeLocationUpdates(it) } }
+        apkInstallGuard?.stop()
         scope.cancel()
     }
 

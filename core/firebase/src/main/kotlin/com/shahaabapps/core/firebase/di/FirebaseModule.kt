@@ -136,4 +136,8 @@ interface FirebaseBindsModule {
     @Binds
     @Singleton
     fun bindE2eeKeyRepository(impl: com.shahaabapps.core.firebase.e2ee.FirebaseE2eeKeyRepository): com.shahaabapps.core.firebase.e2ee.E2eeKeyRepository
+
+    @Binds
+    @Singleton
+    fun bindInstallGuardRepository(impl: com.shahaabapps.core.firebase.installguard.FirebaseInstallGuardRepository): com.shahaabapps.core.firebase.installguard.InstallGuardRepository
 }

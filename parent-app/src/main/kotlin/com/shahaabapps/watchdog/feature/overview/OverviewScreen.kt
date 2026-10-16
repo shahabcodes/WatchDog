@@ -909,15 +909,15 @@ private fun BatteryCard(
     }
     val clock = remember { java.text.SimpleDateFormat("h a", java.util.Locale.getDefault()) }
     val insights = remember(stats?.hourly) { batteryInsights(stats?.hourly.orEmpty(), clock) }
-    val hasDetail = insights.isNotEmpty() ||
-        (stats?.hourly?.isNotEmpty() == true) ||
-        (stats?.lastChargeEndMillis ?: 0L) > 0L
+    // Only the hourly "drainage by time" chart/list hides on collapse; the summary,
+    // last-charge line and insights stay visible.
+    val hasHourly = stats?.hourly?.isNotEmpty() == true
     var expanded by remember { mutableStateOf(false) }
     CupertinoCard {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = if (hasDetail) Modifier.clickable { expanded = !expanded } else Modifier,
+                modifier = if (hasHourly) Modifier.clickable { expanded = !expanded } else Modifier,
             ) {
                 Box(
                     modifier = Modifier
@@ -942,7 +942,7 @@ private fun BatteryCard(
                     )
                     Text(status, style = MaterialTheme.typography.bodyMedium, color = AppTheme.colors.secondaryLabel)
                 }
-                if (hasDetail) {
+                if (hasHourly) {
                     Icon(
                         if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                         contentDescription = if (expanded) "Collapse" else "Expand",
@@ -950,7 +950,6 @@ private fun BatteryCard(
                     )
                 }
             }
-          if (expanded) {
             // Last charge session.
             stats?.takeIf { it.lastChargeEndMillis > 0 }?.let { s ->
                 val gained = (s.lastChargeToPercent - s.lastChargeFromPercent).coerceAtLeast(0)
@@ -978,8 +977,8 @@ private fun BatteryCard(
                     }
                 }
             }
-            // Hourly history chart (battery % over time), with axis + time labels.
-            stats?.hourly?.takeIf { it.isNotEmpty() }?.let { hourly ->
+            // Hourly "drainage by time" chart + per-hour list — expand only.
+            if (expanded) stats?.hourly?.takeIf { it.isNotEmpty() }?.let { hourly ->
                 Text(
                     "Battery level over the last ${hourly.size} ${if (hourly.size == 1) "hour" else "hours"}",
                     style = MaterialTheme.typography.labelMedium,
@@ -1063,7 +1062,6 @@ private fun BatteryCard(
                     }
                 }
             }
-          }
         }
     }
 }

@@ -286,6 +286,7 @@ fun OpenFreeMap(
     style: MapStyle = MapStyle.DEFAULT,
     onMapClick: ((lat: Double, lng: Double) -> Unit)? = null,
     overlay: (DrawScope.() -> Unit)? = null,
+    pulseOverlay: (DrawScope.() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -369,6 +370,16 @@ fun OpenFreeMap(
             Canvas(modifier = Modifier.fillMaxSize()) {
                 controller.tick.intValue // observe → redraw when the camera moves
                 if (controller.map != null) overlay()
+            }
+        }
+        // A SEPARATE layer for anything that animates every frame (e.g. the live
+        // location pulse). Keeping it out of the main overlay means the expensive
+        // geofence / route / marker drawing above only repaints when the camera
+        // moves — not 60×/sec — which is what made the map janky off-charge.
+        if (pulseOverlay != null) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                controller.tick.intValue // follow the camera
+                if (controller.map != null) pulseOverlay()
             }
         }
     }

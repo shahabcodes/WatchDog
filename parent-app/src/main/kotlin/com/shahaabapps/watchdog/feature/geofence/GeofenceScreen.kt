@@ -233,7 +233,7 @@ fun GeofenceScreen(
     // current location, zoomed in. `remember` (not saveable) resets on re-entry
     // so switching back to the tab always re-centers on the child.
     var didInitialCenter by remember { mutableStateOf(false) }
-    LaunchedEffect(childLocation, geofences, controller.tick.intValue) {
+    LaunchedEffect(childLocation, geofences, controller.hasMap()) {
         if (!didInitialCenter && controller.hasMap()) {
             val target = childLocation?.let { it.latitude to it.longitude }
                 ?: geofences.firstOrNull()?.let { it.latitude to it.longitude }
@@ -257,8 +257,10 @@ fun GeofenceScreen(
     val routeCorePx = with(density) { 4.dp.toPx() }
     val routeCasingPx = with(density) { 6.dp.toPx() }
     val livePulse = liveLocationPulse(animate = !rememberReducedMotion())
-    val iconPainters: Map<String, Painter> =
-        PlaceIcons.options.associate { (key, vector) -> key to rememberVectorPainter(vector) }
+    // Painters are stable (vectors are constant); build the lookup map once rather
+    // than reallocating it on every recomposition of this screen.
+    val painterPairs = PlaceIcons.options.map { (key, vector) -> key to rememberVectorPainter(vector) }
+    val iconPainters: Map<String, Painter> = remember(painterPairs.size) { painterPairs.toMap() }
     fun painterFor(key: String): Painter? = iconPainters[key] ?: iconPainters["place"]
 
     // ---- History / playback (reuses the travel data for this child) ----
@@ -316,7 +318,7 @@ fun GeofenceScreen(
     // the tab always lands zoomed in on the child).
     var historyCentered by remember { mutableStateOf(false) }
     LaunchedEffect(historyMode) { if (!historyMode) historyCentered = false }
-    LaunchedEffect(historyMode, trail.size, childLocation, controller.tick.intValue) {
+    LaunchedEffect(historyMode, trail.size, childLocation, controller.hasMap()) {
         if (historyMode && childLocation == null && !historyCentered && trail.isNotEmpty() && controller.hasMap()) {
             historyCentered = true
             val cLat = trail.sumOf { it.latitude } / trail.size
@@ -440,7 +442,9 @@ fun GeofenceScreen(
                         area.forEach { (la, ln) -> drawVertex(controller, la, ln, accent, vertexPx) }
                     }
 
-                    // Child's live location
+                    // Child's live location — accuracy ring here (static); the
+                    // pulsing dot itself is drawn in the pulseOverlay so this
+                    // (expensive) layer doesn't repaint every animation frame.
                     childLocation?.let { loc ->
                         if (loc.accuracyMeters > 0f) {
                             drawGeoCircle(
@@ -451,7 +455,14 @@ fun GeofenceScreen(
                                 strokeWidthPx = 2f,
                             )
                         }
-                        // Dim + stop pulsing when the fix is stale.
+                    }
+                }
+            },
+            pulseOverlay = {
+                // Only the animated live dot lives here, so the 60fps pulse repaints
+                // just this tiny layer, not the whole map overlay.
+                if (!historyMode) {
+                    childLocation?.let { loc ->
                         drawLiveDot(
                             controller,
                             loc.latitude, loc.longitude,

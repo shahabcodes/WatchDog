@@ -10,9 +10,11 @@ import com.shahaabapps.core.model.GeofenceEvent
 import com.shahaabapps.core.model.GeofenceShape
 import com.shahaabapps.core.model.GeofenceTransition
 import com.shahaabapps.core.model.GeofenceTrigger
+import android.content.Context
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -25,6 +27,7 @@ class FirebaseGeofenceRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val e2ee: E2eeManager,
     private val authRepository: AuthRepository,
+    @ApplicationContext private val context: Context,
 ) : GeofenceRepository {
 
     override fun observeGeofences(childId: String): Flow<List<Geofence>> = callbackFlow {
@@ -154,6 +157,9 @@ class FirebaseGeofenceRepository @Inject constructor(
 
     private fun DocumentSnapshot.toGeofence(childId: String, viewerUid: String?): Geofence? {
         val common = { name: String, lat: Double, lng: Double, points: List<GeoPoint> ->
+            // Cache the decrypted name so the background geofence push can name the
+            // place by id without needing to decrypt in a cold process.
+            GeofenceNameCache.put(context, childId, id, name)
             Geofence(
                 id = id,
                 name = name,

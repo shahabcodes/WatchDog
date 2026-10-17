@@ -10,6 +10,7 @@ import androidx.core.app.NotificationManagerCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.shahaabapps.core.firebase.auth.AuthRepository
+import com.shahaabapps.core.firebase.geofence.GeofenceNameCache
 import com.shahaabapps.core.firebase.geofence.GeofenceRepository
 import com.shahaabapps.core.firebase.messaging.MessagingTokenRepository
 import com.shahaabapps.watchdog.MainActivity
@@ -72,14 +73,19 @@ class WatchdogMessagingService : FirebaseMessagingService() {
         val left = data["transition"] == "EXIT"
         scope.launch {
             val event = runCatching { geofenceRepository.getEvent(childId, eventId) }.getOrNull()
-            // The event itself usually carries no name (the OS-trigger path only
-            // records the geofence id), so resolve the name from the saved places
-            // by id — same as the Alerts list — and fall back to the event name.
-            val place = event?.geofenceName?.ifBlank { null }
-                ?: event?.geofenceId?.ifBlank { null }?.let { gid ->
+            val gid = (event?.geofenceId ?: data["geofenceId"])?.ifBlank { null }
+            // Place names are E2E-encrypted and a cold push process can't always
+            // decrypt them. Resolve the name in order of reliability:
+            //  1) the on-device name cache (written when the app last decrypted it),
+            //  2) the event's own (decrypted) name,
+            //  3) a live lookup of the saved places by id,
+            // then fall back to generic text.
+            val place = gid?.let { GeofenceNameCache.get(this@WatchdogMessagingService, childId, it) }
+                ?: event?.geofenceName?.ifBlank { null }
+                ?: gid?.let { id ->
                     runCatching {
                         geofenceRepository.observeGeofences(childId).first()
-                            .firstOrNull { it.id == gid }?.name?.ifBlank { null }
+                            .firstOrNull { it.id == id }?.name?.ifBlank { null }
                     }.getOrNull()
                 }
                 ?: "a saved place"

@@ -215,7 +215,7 @@ class GeofenceSyncService : Service() {
                 // Record battery stats locally (persisted) every cycle — this must
                 // run even when offline, so charge sessions and hourly samples are
                 // captured and then uploaded on reconnect.
-                val stats = runCatching { batteryTracker.record(pct, charging, now) }.getOrNull()
+                val stats = runCatching { batteryTracker.record(pct, charging, now, batteryTempTenths()) }.getOrNull()
                 val perms = com.shahaabapps.shield.enforcement.ChildPermissions.snapshot(this@GeofenceSyncService)
                 val drain = drainPerHour
                 // Fire-and-forget the network writes so the sampling loop keeps its
@@ -527,6 +527,13 @@ class GeofenceSyncService : Service() {
         val intent = registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         (intent?.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
     }.getOrDefault(false)
+
+    /** Battery temperature in tenths of °C from the sticky battery intent; 0 if unknown. */
+    private fun batteryTempTenths(): Int = runCatching {
+        val intent = registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val t = intent?.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
+        if (t in 1..1000) t else 0 // plausible 0.1–100.0 °C
+    }.getOrDefault(0)
 
     /** Remaining charge in µAh (fine-grained), or -1 when the device doesn't report it. */
     private fun chargeCounterUah(): Int {

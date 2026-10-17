@@ -39,8 +39,13 @@ data class DeviceInfo(
     val batteryStats: BatteryStats? = null,
 )
 
-/** One battery level reading at a point in time. */
-data class BatterySample(val atMillis: Long = 0L, val percent: Int = 0)
+/**
+ * One battery reading at a point in time.
+ *
+ * @param tempTenthsC battery temperature in tenths of a degree Celsius (e.g. 250 =
+ *   25.0 °C), as reported by the OS; 0 when unknown.
+ */
+data class BatterySample(val atMillis: Long = 0L, val percent: Int = 0, val tempTenthsC: Int = 0)
 
 /** Hourly battery history and the most recent charge session. */
 data class BatteryStats(

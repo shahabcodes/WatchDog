@@ -42,7 +42,9 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material.icons.filled.TrendingDown
+import androidx.compose.material.icons.filled.Whatshot
 import kotlin.math.roundToInt
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.LocationOff
@@ -291,6 +293,16 @@ fun OverviewScreen(
                         drainPerHour = state.batteryDrainPerHour,
                         stats = state.batteryStats,
                     )
+                }
+            }
+        }
+        // Device temperature (only once the child has reported temperature readings).
+        if (state.batteryStats?.hourly?.any { it.tempTenthsC > 0 } == true) {
+            item(key = "temperature") {
+                Box(Modifier.padding(horizontal = Spacing.lg)) {
+                    DashSection("Temperature") {
+                        TemperatureCard(stats = state.batteryStats)
+                    }
                 }
             }
         }
@@ -1118,6 +1130,157 @@ private fun BatteryCard(
                                 color = if (sample.percent <= 15) AppTheme.colors.destructive else AppTheme.colors.accent,
                             )
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Battery temperature as tenths of °C → "25.3°C". */
+private fun tempLabel(tenthsC: Int): String =
+    String.format(java.util.Locale.getDefault(), "%.1f°C", tenthsC / 10f)
+
+/** Child device temperature: current reading plus the hourly history, like Battery. */
+@Composable
+private fun TemperatureCard(stats: com.shahaabapps.core.model.BatteryStats?) {
+    val samples = remember(stats?.hourly) { stats?.hourly.orEmpty().filter { it.tempTenthsC > 0 } }
+    if (samples.isEmpty()) return
+    val clock = remember { java.text.SimpleDateFormat("h a", java.util.Locale.getDefault()) }
+    val current = samples.last().tempTenthsC
+    val peak = samples.maxByOrNull { it.tempTenthsC }
+    fun tint(tenths: Int) = when {
+        tenths >= 450 -> AppTheme.colors.destructive
+        tenths >= 400 -> AppTheme.colors.warn
+        else -> AppTheme.colors.accent
+    }
+    val status = when {
+        current >= 450 -> "Running hot"
+        current >= 400 -> "Warm"
+        else -> "Normal"
+    }
+    // Scale the bars across a 10–50 °C window.
+    val floor = 100
+    val ceil = 500
+    fun frac(t: Int) = ((t - floor).toFloat() / (ceil - floor)).coerceIn(0.04f, 1f)
+    var expanded by remember { mutableStateOf(false) }
+
+    CupertinoCard {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable { expanded = !expanded },
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(tint(current).copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Filled.Thermostat, contentDescription = null, tint = tint(current))
+                }
+                Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
+                    Text(
+                        tempLabel(current),
+                        fontFamily = com.shahaabapps.core.ui.theme.AppFonts.display,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 30.sp,
+                        color = tint(current),
+                    )
+                    Text(status, style = MaterialTheme.typography.bodyMedium, color = AppTheme.colors.secondaryLabel)
+                }
+                Icon(
+                    if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = if (expanded) "Collapse" else "Expand",
+                    tint = AppTheme.colors.secondaryLabel,
+                )
+            }
+            peak?.takeIf { it.tempTenthsC > 0 }?.let { p ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Filled.Whatshot,
+                        contentDescription = null,
+                        tint = tint(p.tempTenthsC),
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Text(
+                        "Peak ${tempLabel(p.tempTenthsC)} at ${clock.format(java.util.Date(p.atMillis))}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(start = Spacing.sm),
+                    )
+                }
+            }
+            Text(
+                "Temperature over the last ${samples.size} ${if (samples.size == 1) "hour" else "hours"}",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = AppTheme.colors.accent,
+            )
+            Row(modifier = Modifier.fillMaxWidth().height(64.dp)) {
+                Column(
+                    verticalArrangement = Arrangement.SpaceBetween,
+                    horizontalAlignment = Alignment.End,
+                    modifier = Modifier.fillMaxHeight().padding(end = 6.dp),
+                ) {
+                    Text("50°", style = MaterialTheme.typography.labelSmall, color = AppTheme.colors.secondaryLabel)
+                    Text("30°", style = MaterialTheme.typography.labelSmall, color = AppTheme.colors.secondaryLabel)
+                    Text("10°", style = MaterialTheme.typography.labelSmall, color = AppTheme.colors.secondaryLabel)
+                }
+                Row(
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                ) {
+                    samples.forEach { sample ->
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(fraction = frac(sample.tempTenthsC))
+                                .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
+                                .background(tint(sample.tempTenthsC)),
+                        )
+                    }
+                }
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(
+                    clock.format(java.util.Date(samples.first().atMillis)),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = AppTheme.colors.secondaryLabel,
+                )
+                Text(
+                    "now (${tempLabel(current)})",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = AppTheme.colors.secondaryLabel,
+                )
+            }
+            if (expanded) {
+                HorizontalDivider(color = AppTheme.colors.separator, modifier = Modifier.padding(top = 4.dp))
+                val reversed = samples.asReversed()
+                reversed.forEachIndexed { i, sample ->
+                    val prev = reversed.getOrNull(i + 1)
+                    val delta = prev?.let { sample.tempTenthsC - it.tempTenthsC }
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                        Text(
+                            clock.format(java.util.Date(sample.atMillis)),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (delta != null && delta != 0) {
+                            Text(
+                                String.format(java.util.Locale.getDefault(), "%+.1f°", delta / 10f),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (delta > 0) AppTheme.colors.warn else AppTheme.colors.secondaryLabel,
+                                modifier = Modifier.padding(end = Spacing.sm),
+                            )
+                        }
+                        Text(
+                            tempLabel(sample.tempTenthsC),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = tint(sample.tempTenthsC),
+                        )
                     }
                 }
             }

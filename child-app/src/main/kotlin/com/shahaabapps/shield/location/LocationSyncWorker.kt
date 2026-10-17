@@ -55,14 +55,15 @@ class LocationSyncWorker(
         runCatching {
             val bm = applicationContext.getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager
             val pct = bm?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)?.takeIf { it in 1..100 } ?: 0
-            val plugged = runCatching {
-                val i = applicationContext.registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
-                (i?.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
-            }.getOrDefault(false)
+            val batteryIntent = runCatching {
+                applicationContext.registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+            }.getOrNull()
+            val plugged = (batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
+            val tempTenths = (batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0).takeIf { it in 1..1000 } ?: 0
             deps.childRepository().heartbeat(childId, android.os.Build.MODEL, pct, plugged, 0.0)
             // Keep battery history + charge-session tracking going even if the
             // foreground service is dead (shares the same persisted state).
-            val stats = BatteryStatsTracker(applicationContext).record(pct, plugged, System.currentTimeMillis())
+            val stats = BatteryStatsTracker(applicationContext).record(pct, plugged, System.currentTimeMillis(), tempTenths)
             deps.childRepository().updateBatteryStats(childId, stats)
         }
 

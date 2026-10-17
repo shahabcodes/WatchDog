@@ -154,7 +154,7 @@ class FirebaseChildRepository @Inject constructor(
                 "lastChargeEndMillis" to stats.lastChargeEndMillis,
                 "lastChargeFromPercent" to stats.lastChargeFromPercent,
                 "lastChargeToPercent" to stats.lastChargeToPercent,
-                "hourly" to stats.hourly.map { mapOf("t" to it.atMillis, "p" to it.percent) },
+                "hourly" to stats.hourly.map { mapOf("t" to it.atMillis, "p" to it.percent, "c" to it.tempTenthsC) },
             )
             childrenCollection.document(childId).set(
                 mapOf(FIELD_DEVICE to mapOf("batteryStats" to map)),
@@ -235,6 +235,7 @@ class FirebaseChildRepository @Inject constructor(
                             BatterySample(
                                 atMillis = (it["t"] as? Long) ?: 0L,
                                 percent = (it["p"] as? Long)?.toInt() ?: 0,
+                                tempTenthsC = (it["c"] as? Long)?.toInt() ?: 0,
                             )
                         },
                     )

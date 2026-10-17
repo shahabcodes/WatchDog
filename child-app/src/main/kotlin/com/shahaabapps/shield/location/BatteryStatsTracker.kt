@@ -13,7 +13,7 @@ class BatteryStatsTracker(context: Context) {
 
     private val prefs = context.getSharedPreferences("battery_stats", Context.MODE_PRIVATE)
 
-    fun record(percent: Int, charging: Boolean, now: Long): BatteryStats {
+    fun record(percent: Int, charging: Boolean, now: Long, tempTenthsC: Int = 0): BatteryStats {
         val wasCharging = prefs.getBoolean(KEY_WAS_CHARGING, false)
         var chargeStartMs = prefs.getLong(KEY_CHARGE_START_MS, 0L)
         var chargeStartPct = prefs.getInt(KEY_CHARGE_START_PCT, 0)
@@ -40,7 +40,7 @@ class BatteryStatsTracker(context: Context) {
         var hourly = parse(prefs.getString(KEY_HOURLY, "") ?: "")
         val bucket = now - (now % HOUR_MS)
         if (percent in 1..100 && prefs.getLong(KEY_LAST_BUCKET, -1L) != bucket) {
-            hourly = (hourly + BatterySample(now, percent)).takeLast(MAX_SAMPLES)
+            hourly = (hourly + BatterySample(now, percent, tempTenthsC)).takeLast(MAX_SAMPLES)
             prefs.edit().putLong(KEY_LAST_BUCKET, bucket).apply()
         }
 
@@ -65,14 +65,16 @@ class BatteryStatsTracker(context: Context) {
     }
 
     private fun serialize(samples: List<BatterySample>): String =
-        samples.joinToString(",") { "${it.atMillis}:${it.percent}" }
+        samples.joinToString(",") { "${it.atMillis}:${it.percent}:${it.tempTenthsC}" }
 
     private fun parse(s: String): List<BatterySample> =
         if (s.isBlank()) emptyList() else s.split(",").mapNotNull { part ->
             val bits = part.split(":")
             val t = bits.getOrNull(0)?.toLongOrNull()
             val p = bits.getOrNull(1)?.toIntOrNull()
-            if (t != null && p != null) BatterySample(t, p) else null
+            // Temperature is a later addition — tolerate old 2-field samples.
+            val temp = bits.getOrNull(2)?.toIntOrNull() ?: 0
+            if (t != null && p != null) BatterySample(t, p, temp) else null
         }
 
     private companion object {

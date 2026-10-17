@@ -1149,10 +1149,15 @@ private fun TemperatureCard(stats: com.shahaabapps.core.model.BatteryStats?) {
     val clock = remember { java.text.SimpleDateFormat("h a", java.util.Locale.getDefault()) }
     val current = samples.last().tempTenthsC
     val peak = samples.maxByOrNull { it.tempTenthsC }
+    // Capture composable colours into plain locals so the non-composable tint()
+    // helper can read them.
+    val hotColor = AppTheme.colors.destructive
+    val warmColor = AppTheme.colors.warn
+    val normalColor = AppTheme.colors.accent
     fun tint(tenths: Int) = when {
-        tenths >= 450 -> AppTheme.colors.destructive
-        tenths >= 400 -> AppTheme.colors.warn
-        else -> AppTheme.colors.accent
+        tenths >= 450 -> hotColor
+        tenths >= 400 -> warmColor
+        else -> normalColor
     }
     val status = when {
         current >= 450 -> "Running hot"

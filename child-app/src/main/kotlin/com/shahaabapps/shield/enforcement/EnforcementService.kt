@@ -65,6 +65,8 @@ class EnforcementService : AccessibilityService() {
      * this time (approved bedtime extension / general more-time).
      */
     @Volatile private var appGrantUntil: Map<String, Long> = emptyMap()
+    /** When each app's active grant was approved (its `respondedAtMillis` anchor). */
+    @Volatile private var appGrantSince: Map<String, Long> = emptyMap()
     @Volatile private var focusGrantUntil: Long = 0L
 
     @Volatile private var installGuard: com.shahaabapps.core.model.InstallGuard = com.shahaabapps.core.model.InstallGuard()
@@ -184,6 +186,7 @@ class EnforcementService : AccessibilityService() {
      */
     private fun recomputeGrants(requests: List<TimeRequest>) {
         val apps = HashMap<String, Long>()
+        val since = HashMap<String, Long>()
         var focusUntil = 0L
         for (r in requests) {
             if (r.status != RequestStatus.APPROVED) continue
@@ -196,10 +199,13 @@ class EnforcementService : AccessibilityService() {
                 // whole focus window for everyone.
                 r.kind == RequestKind.EXTEND_BEDTIME || pkg.isBlank() ->
                     focusUntil = maxOf(focusUntil, until)
-                else -> apps[pkg] = maxOf(apps[pkg] ?: 0L, until)
+                // Keep the longest-running grant for the app, remembering when it
+                // was approved so a later rule change can override it.
+                until > (apps[pkg] ?: 0L) -> { apps[pkg] = until; since[pkg] = base }
             }
         }
         appGrantUntil = apps
+        appGrantSince = since
         focusGrantUntil = focusUntil
     }
 
@@ -241,8 +247,12 @@ class EnforcementService : AccessibilityService() {
         if (packageName == this.packageName) return
 
         val now = System.currentTimeMillis()
-        // Parent-approved temporary exceptions.
-        val appAllowed = (appGrantUntil[packageName] ?: 0L) > now
+        // Parent-approved temporary exceptions. A grant only counts while it is at
+        // least as new as the app's last rule change, so re-blocking an app (which
+        // bumps updatedAtMillis) immediately voids a lingering approval.
+        val ruleUpdatedAt = rulesByPackage[packageName]?.updatedAtMillis ?: 0L
+        val appAllowed = (appGrantUntil[packageName] ?: 0L) > now &&
+            (appGrantSince[packageName] ?: 0L) >= ruleUpdatedAt
         val focusSuppressed = focusGrantUntil > now
 
         // Focus windows (Bedtime / School) block everything except essentials

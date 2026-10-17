@@ -8,6 +8,9 @@ package com.shahaabapps.core.model
  * @param dailyLimitMinutes total allowed minutes per day, or null for no total limit.
  * @param schedule allowed time windows; outside these the app is blocked.
  * @param blocked hard block regardless of schedule/limit.
+ * @param updatedAtMillis when the parent last changed this rule; a parent-approved
+ *   temporary unlock is only honoured while it is newer than this, so re-blocking
+ *   an app immediately overrides any lingering approval.
  */
 data class AppRule(
     val packageName: String = "",
@@ -15,6 +18,7 @@ data class AppRule(
     val dailyLimitMinutes: Int? = null,
     val schedule: List<TimeWindow> = emptyList(),
     val blocked: Boolean = false,
+    val updatedAtMillis: Long = 0L,
 )
 
 /**

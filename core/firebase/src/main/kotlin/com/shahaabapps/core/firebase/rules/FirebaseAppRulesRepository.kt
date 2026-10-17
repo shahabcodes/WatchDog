@@ -36,6 +36,7 @@ class FirebaseAppRulesRepository @Inject constructor(
                 "appLabel" to rule.appLabel,
                 "dailyLimitMinutes" to rule.dailyLimitMinutes,
                 "blocked" to rule.blocked,
+                "updatedAtMillis" to System.currentTimeMillis(),
                 "schedule" to rule.schedule.map { window ->
                     mapOf(
                         "startMinuteOfDay" to window.startMinuteOfDay,
@@ -121,6 +122,7 @@ class FirebaseAppRulesRepository @Inject constructor(
             dailyLimitMinutes = (get("dailyLimitMinutes") as? Long)?.toInt(),
             schedule = schedule,
             blocked = getBoolean("blocked") ?: false,
+            updatedAtMillis = (get("updatedAtMillis") as? Long) ?: 0L,
         )
     }
 

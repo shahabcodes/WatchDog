@@ -237,6 +237,27 @@ fun OverviewScreen(
                 }
             }
         }
+        item(key = "viewerAccess") {
+            Box(Modifier.padding(horizontal = Spacing.lg)) {
+                val viewerVm: com.shahaabapps.watchdog.feature.viewer.ViewerAccessViewModel = hiltViewModel()
+                val viewerEnabled by viewerVm.enabled.collectAsStateWithLifecycle()
+                DashSection("Viewer access") {
+                    CupertinoCard {
+                        CupertinoListRow(
+                            title = "Let this child see their own data",
+                            subtitle = "They install Watch Dog and join with the pairing code — read-only, can't change anything.",
+                            showDivider = false,
+                            trailing = {
+                                androidx.compose.material3.Switch(
+                                    checked = viewerEnabled,
+                                    onCheckedChange = { viewerVm.setEnabled(it) },
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+        }
         // This week.
         if (weekly.any { it.minutes > 0 }) {
             item(key = "week") {

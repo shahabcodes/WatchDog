@@ -33,6 +33,8 @@ data class DeviceInfo(
     val charging: Boolean = false,
     /** Recent battery drain while discharging, in % per hour (0 when unknown). */
     val batteryDrainPerHour: Double = 0.0,
+    /** Latest battery temperature in tenths of °C (e.g. 250 = 25.0 °C); 0 when unknown. */
+    val temperatureTenthsC: Int = 0,
     /** The permissions/special-access the child has granted (null if never reported). */
     val permissions: DevicePermissions? = null,
     /** Detailed battery history (hourly levels + last charge), null if never reported. */

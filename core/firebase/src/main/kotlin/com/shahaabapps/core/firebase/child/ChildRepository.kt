@@ -46,6 +46,7 @@ interface ChildRepository {
         batteryPercent: Int = 0,
         charging: Boolean = false,
         drainPerHour: Double = 0.0,
+        temperatureTenthsC: Int = 0,
     ): AppResult<Unit>
 
     /** Child reports which special-access permissions it currently has granted. */

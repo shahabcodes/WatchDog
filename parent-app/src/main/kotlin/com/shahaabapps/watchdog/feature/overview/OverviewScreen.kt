@@ -300,12 +300,13 @@ fun OverviewScreen(
                 }
             }
         }
-        // Device temperature (only once the child has reported temperature readings).
-        if (state.batteryStats?.hourly?.any { it.tempTenthsC > 0 } == true) {
+        // Device temperature — appears as soon as the child reports a live reading;
+        // the hourly graph fills in over time.
+        if (state.temperatureTenthsC > 0 || state.batteryStats?.hourly?.any { it.tempTenthsC > 0 } == true) {
             item(key = "temperature") {
                 Box(Modifier.padding(horizontal = Spacing.lg)) {
                     DashSection("Temperature") {
-                        TemperatureCard(stats = state.batteryStats)
+                        TemperatureCard(currentTenthsC = state.temperatureTenthsC, stats = state.batteryStats)
                     }
                 }
             }
@@ -1148,11 +1149,12 @@ private fun tempLabel(tenthsC: Int): String =
 
 /** Child device temperature: current reading plus the hourly history, like Battery. */
 @Composable
-private fun TemperatureCard(stats: com.shahaabapps.core.model.BatteryStats?) {
+private fun TemperatureCard(currentTenthsC: Int, stats: com.shahaabapps.core.model.BatteryStats?) {
     val samples = remember(stats?.hourly) { stats?.hourly.orEmpty().filter { it.tempTenthsC > 0 } }
-    if (samples.isEmpty()) return
+    // Prefer the live heartbeat reading; fall back to the newest hourly sample.
+    val current = if (currentTenthsC > 0) currentTenthsC else samples.lastOrNull()?.tempTenthsC ?: 0
+    if (current <= 0) return
     val clock = remember { java.text.SimpleDateFormat("h a", java.util.Locale.getDefault()) }
-    val current = samples.last().tempTenthsC
     val peak = samples.maxByOrNull { it.tempTenthsC }
     // Capture composable colours into plain locals so the non-composable tint()
     // helper can read them.
@@ -1177,9 +1179,10 @@ private fun TemperatureCard(stats: com.shahaabapps.core.model.BatteryStats?) {
 
     CupertinoCard {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            val hasHistory = samples.isNotEmpty()
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.clickable { expanded = !expanded },
+                modifier = if (hasHistory) Modifier.clickable { expanded = !expanded } else Modifier,
             ) {
                 Box(
                     modifier = Modifier
@@ -1200,11 +1203,13 @@ private fun TemperatureCard(stats: com.shahaabapps.core.model.BatteryStats?) {
                     )
                     Text(status, style = MaterialTheme.typography.bodyMedium, color = AppTheme.colors.secondaryLabel)
                 }
-                Icon(
-                    if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                    contentDescription = if (expanded) "Collapse" else "Expand",
-                    tint = AppTheme.colors.secondaryLabel,
-                )
+                if (hasHistory) {
+                    Icon(
+                        if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = if (expanded) "Collapse" else "Expand",
+                        tint = AppTheme.colors.secondaryLabel,
+                    )
+                }
             }
             peak?.takeIf { it.tempTenthsC > 0 }?.let { p ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1221,6 +1226,14 @@ private fun TemperatureCard(stats: com.shahaabapps.core.model.BatteryStats?) {
                     )
                 }
             }
+            if (!hasHistory) {
+                Text(
+                    "Collecting hourly history…",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.secondaryLabel,
+                )
+            }
+            if (hasHistory) {
             Text(
                 "Temperature over the last ${samples.size} ${if (samples.size == 1) "hour" else "hours"}",
                 style = MaterialTheme.typography.labelMedium,
@@ -1265,7 +1278,8 @@ private fun TemperatureCard(stats: com.shahaabapps.core.model.BatteryStats?) {
                     color = AppTheme.colors.secondaryLabel,
                 )
             }
-            if (expanded) {
+            }
+            if (expanded && hasHistory) {
                 HorizontalDivider(color = AppTheme.colors.separator, modifier = Modifier.padding(top = 4.dp))
                 val reversed = samples.asReversed()
                 reversed.forEachIndexed { i, sample ->

@@ -60,7 +60,7 @@ class LocationSyncWorker(
             }.getOrNull()
             val plugged = (batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
             val tempTenths = (batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0).takeIf { it in 1..1000 } ?: 0
-            deps.childRepository().heartbeat(childId, android.os.Build.MODEL, pct, plugged, 0.0)
+            deps.childRepository().heartbeat(childId, android.os.Build.MODEL, pct, plugged, 0.0, tempTenths)
             // Keep battery history + charge-session tracking going even if the
             // foreground service is dead (shares the same persisted state).
             val stats = BatteryStatsTracker(applicationContext).record(pct, plugged, System.currentTimeMillis(), tempTenths)

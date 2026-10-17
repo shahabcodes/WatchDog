@@ -62,9 +62,11 @@ fun InstallGuardScreen(
 
     // Live set for the checkmarks (updates instantly on toggle).
     val selectedSet = remember(guard.packages) { guard.packages.toHashSet() }
-    // The "selected" grouping is SNAPSHOTTED (keyed on sort/query, not on packages)
-    // so toggling a row never re-sorts/reorders the list — that reorder was the lag.
-    val orderSelected = remember(sort, query) {
+    // The "selected" grouping is SNAPSHOTTED so toggling a row never re-sorts the
+    // list (that reorder was the lag). It's re-captured on sort/query change and
+    // when the guard first loads (empty -> populated) so the initial "Selected
+    // first" order is correct, but not on individual toggles afterwards.
+    val orderSelected = remember(sort, query, guard.packages.isNotEmpty()) {
         if (sort == AppSort.SELECTED_FIRST) guard.packages.toHashSet() else emptySet()
     }
     val visibleApps = remember(apps, query, sort, orderSelected) {

@@ -131,6 +131,7 @@ class FirebaseChildRepository @Inject constructor(
         batteryPercent: Int,
         charging: Boolean,
         drainPerHour: Double,
+        temperatureTenthsC: Int,
     ): AppResult<Unit> =
         runCatchingResult {
             val device = buildMap<String, Any> {
@@ -140,6 +141,7 @@ class FirebaseChildRepository @Inject constructor(
                 if (batteryPercent in 1..100) put("batteryPercent", batteryPercent)
                 put("charging", charging)
                 if (drainPerHour > 0.0) put("batteryDrainPerHour", drainPerHour)
+                if (temperatureTenthsC > 0) put("temperatureTenthsC", temperatureTenthsC)
             }
             childrenCollection.document(childId).set(
                 mapOf(FIELD_DEVICE to device),
@@ -210,6 +212,7 @@ class FirebaseChildRepository @Inject constructor(
                 lastSeenMillis = deviceMap["lastSeenMillis"] as? Long ?: 0L,
                 charging = deviceMap["charging"] as? Boolean ?: false,
                 batteryDrainPerHour = (deviceMap["batteryDrainPerHour"] as? Number)?.toDouble() ?: 0.0,
+                temperatureTenthsC = (deviceMap["temperatureTenthsC"] as? Long)?.toInt() ?: 0,
                 permissions = (deviceMap["permissions"] as? Map<*, *>)?.let { p ->
                     DevicePermissions(
                         location = p["location"] as? Boolean ?: false,

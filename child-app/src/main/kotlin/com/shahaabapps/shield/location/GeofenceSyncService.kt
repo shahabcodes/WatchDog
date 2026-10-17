@@ -221,8 +221,9 @@ class GeofenceSyncService : Service() {
                 // Fire-and-forget the network writes so the sampling loop keeps its
                 // 2-min cadence even offline (the writes queue in Firestore's offline
                 // cache and sync on reconnect) instead of blocking on await().
+                val tempTenths = batteryTempTenths()
                 scope.launch {
-                    runCatching { childRepository.heartbeat(childId, android.os.Build.MODEL, pct, charging, drain) }
+                    runCatching { childRepository.heartbeat(childId, android.os.Build.MODEL, pct, charging, drain, tempTenths) }
                     runCatching { childRepository.updatePermissions(childId, perms) }
                     if (stats != null) runCatching { childRepository.updateBatteryStats(childId, stats) }
                 }

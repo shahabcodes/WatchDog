@@ -83,12 +83,12 @@ class FirebaseAppRulesRepository @Inject constructor(
             mapOf("e" to sealed, "enc" to true, "updatedAtMillis" to System.currentTimeMillis())
         } else {
             mapOf(
-                "apps" to apps.map {
+                "apps" to apps.map { app ->
                     buildMap<String, Any> {
-                        put("packageName", it.packageName)
-                        put("label", it.label)
-                        if (it.icon != null) put("icon", it.icon)
-                        put("installedAt", it.installedAtMillis)
+                        put("packageName", app.packageName)
+                        put("label", app.label)
+                        app.icon?.let { put("icon", it) }
+                        put("installedAt", app.installedAtMillis)
                     }
                 },
                 "updatedAtMillis" to System.currentTimeMillis(),

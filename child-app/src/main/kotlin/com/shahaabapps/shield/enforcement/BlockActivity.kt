@@ -43,8 +43,10 @@ import androidx.lifecycle.lifecycleScope
 import com.shahaabapps.core.firebase.auth.AuthRepository
 import com.shahaabapps.core.firebase.request.RequestRepository
 import com.shahaabapps.core.model.RequestKind
+import com.shahaabapps.core.model.RequestStatus
 import com.shahaabapps.core.model.TimeRequest
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -73,6 +75,32 @@ class BlockActivity : ComponentActivity() {
                 )
             }
         }
+
+        // If the parent approves while this screen is up, dismiss it and reopen the
+        // app — no need for the child to back out and relaunch.
+        val childId = authRepository.currentUserIdOrNull()
+        if (childId != null) {
+            val shownAt = System.currentTimeMillis()
+            lifecycleScope.launch {
+                requestRepository.observe(childId, 20).collectLatest { reqs ->
+                    val approved = reqs.any { r ->
+                        r.status == RequestStatus.APPROVED && r.respondedAtMillis >= shownAt &&
+                            (r.appPackage == pkg && pkg.isNotBlank() || r.kind == RequestKind.EXTEND_BEDTIME)
+                    }
+                    if (approved) openAppAndFinish(pkg)
+                }
+            }
+        }
+    }
+
+    /** Relaunch the just-approved app (the grant is now active) and close the block. */
+    private fun openAppAndFinish(pkg: String) {
+        val launch = pkg.takeIf { it.isNotBlank() }?.let { packageManager.getLaunchIntentForPackage(it) }
+        if (launch != null) {
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            runCatching { startActivity(launch) }
+        }
+        finishAndRemoveTask()
     }
 
     private fun askParent(variant: BlockVariant, pkg: String, label: String) {

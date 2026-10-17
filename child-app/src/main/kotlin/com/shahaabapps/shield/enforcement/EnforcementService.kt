@@ -19,11 +19,15 @@ import com.shahaabapps.core.firebase.child.ChildRepository
 import com.shahaabapps.core.firebase.focus.FocusRepository
 import com.shahaabapps.core.firebase.protection.PendingAppsRepository
 import com.shahaabapps.core.firebase.protection.ProtectionRepository
+import com.shahaabapps.core.firebase.request.RequestRepository
 import com.shahaabapps.core.firebase.rules.AppRulesRepository
 import com.shahaabapps.core.firebase.screenshot.ScreenshotRepository
 import com.shahaabapps.core.model.AppRule
 import com.shahaabapps.core.model.FocusSettings
 import com.shahaabapps.core.model.PendingApp
+import com.shahaabapps.core.model.RequestKind
+import com.shahaabapps.core.model.RequestStatus
+import com.shahaabapps.core.model.TimeRequest
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -51,7 +55,17 @@ class EnforcementService : AccessibilityService() {
     @Inject lateinit var pendingAppsRepository: PendingAppsRepository
     @Inject lateinit var focusRepository: FocusRepository
     @Inject lateinit var screenshotRepository: ScreenshotRepository
+    @Inject lateinit var requestRepository: RequestRepository
     @Inject lateinit var installGuardRepository: com.shahaabapps.core.firebase.installguard.InstallGuardRepository
+
+    /**
+     * Temporary parent-approved exceptions, recomputed from the requests feed.
+     * [appGrantUntil]: per-package "allow until" (approved unlock / more-time /
+     * use-in-school). [focusGrantUntil]: suspend ALL focus-window blocking until
+     * this time (approved bedtime extension / general more-time).
+     */
+    @Volatile private var appGrantUntil: Map<String, Long> = emptyMap()
+    @Volatile private var focusGrantUntil: Long = 0L
 
     @Volatile private var installGuard: com.shahaabapps.core.model.InstallGuard = com.shahaabapps.core.model.InstallGuard()
     /** Cache of whether a package was sideloaded (not from Play Store). */
@@ -120,6 +134,11 @@ class EnforcementService : AccessibilityService() {
         serviceScope.launch {
             installGuardRepository.observe(childId).collectLatest { installGuard = it }
         }
+        // When the parent approves an ask, grant a time-boxed exception so the
+        // app actually opens (otherwise it stays "off limits" despite approval).
+        serviceScope.launch {
+            requestRepository.observe(childId, 20).collectLatest { recomputeGrants(it) }
+        }
         // Parent screenshot requests — captured silently via the accessibility
         // screenshot API (no MediaProjection, no on-screen indicator). API 30+.
         // Act on any request not yet handled (persisted) that is recent, so the
@@ -157,6 +176,42 @@ class EnforcementService : AccessibilityService() {
         }
     }
 
+    /**
+     * Rebuilds the grant windows from the current requests. Windows are anchored to
+     * each approval's `respondedAtMillis`, so applying is idempotent and naturally
+     * stale-safe (an old approval whose window has passed grants nothing), and it
+     * survives a service restart since the feed simply re-emits.
+     */
+    private fun recomputeGrants(requests: List<TimeRequest>) {
+        val apps = HashMap<String, Long>()
+        var focusUntil = 0L
+        for (r in requests) {
+            if (r.status != RequestStatus.APPROVED) continue
+            val base = if (r.respondedAtMillis > 0) r.respondedAtMillis else r.createdAtMillis
+            if (base <= 0L) continue
+            val until = base + grantDurationMs(r)
+            val pkg = r.appPackage
+            when {
+                // Bedtime extension (and general "more time" with no app) lifts the
+                // whole focus window for everyone.
+                r.kind == RequestKind.EXTEND_BEDTIME || pkg.isBlank() ->
+                    focusUntil = maxOf(focusUntil, until)
+                else -> apps[pkg] = maxOf(apps[pkg] ?: 0L, until)
+            }
+        }
+        appGrantUntil = apps
+        focusGrantUntil = focusUntil
+    }
+
+    /** How long an approved ask stays in effect, from when the parent approved it. */
+    private fun grantDurationMs(r: TimeRequest): Long {
+        val minutes = when (r.kind) {
+            RequestKind.MORE_TIME, RequestKind.EXTEND_BEDTIME -> if (r.minutes > 0) r.minutes else 15
+            RequestKind.UNLOCK_APP, RequestKind.USE_IN_SCHOOL -> if (r.minutes > 0) r.minutes else 60
+        }
+        return minutes * 60_000L
+    }
+
     private fun handleNewApp(pkg: String) {
         val childId = authRepository.currentUserIdOrNull() ?: return
         val pm = packageManager
@@ -185,10 +240,18 @@ class EnforcementService : AccessibilityService() {
         if (!supervised) return // device no longer supervised — no restrictions
         if (packageName == this.packageName) return
 
+        val now = System.currentTimeMillis()
+        // Parent-approved temporary exceptions.
+        val appAllowed = (appGrantUntil[packageName] ?: 0L) > now
+        val focusSuppressed = focusGrantUntil > now
+
         // Focus windows (Bedtime / School) block everything except essentials
-        // and the apps the parent allowlisted for the active window.
+        // and the apps the parent allowlisted for the active window. A parent
+        // approval (this app, or a bedtime extension) lifts it temporarily.
         val focusReason = activeFocusReason()
-        if (focusReason != null && packageName !in focusExempt && packageName !in activeFocusAllowed()) {
+        if (focusReason != null && !focusSuppressed && !appAllowed &&
+            packageName !in focusExempt && packageName !in activeFocusAllowed()
+        ) {
             blockApp(packageName, appLabelFor(packageName), focusReason)
             return
         }
@@ -207,6 +270,9 @@ class EnforcementService : AccessibilityService() {
         }
 
         val rule = rulesByPackage[packageName] ?: return
+        // A parent-approved unlock / more-time lets this app through its rule
+        // (hard block or daily limit) until the grant expires.
+        if (appAllowed) return
         val usedMinutes = usageTracker.todayForegroundMinutes(packageName)
         val decision = RuleEvaluator.evaluate(rule, usedMinutes)
         if (decision.block) {

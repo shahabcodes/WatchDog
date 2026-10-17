@@ -71,6 +71,16 @@ class MainActivity : ComponentActivity() {
         val requestId = intent.getStringExtra(WatchdogMessagingService.EXTRA_REQUEST_ID) ?: return null
         val action = intent.getStringExtra(WatchdogMessagingService.EXTRA_ACTION)
             ?: WatchdogMessagingService.ACTION_VIEW
+        // Acted on — clear the status-bar notification. Action buttons (unlike a
+        // content tap with setAutoCancel) never dismiss it on their own.
+        runCatching {
+            androidx.core.app.NotificationManagerCompat.from(this).cancel(requestId.hashCode())
+        }
+        // Don't re-fire this deep-link if the activity is recreated (rotation,
+        // process restart) — consume the extras from the intent.
+        intent.removeExtra(WatchdogMessagingService.EXTRA_CHILD_ID)
+        intent.removeExtra(WatchdogMessagingService.EXTRA_REQUEST_ID)
+        intent.removeExtra(WatchdogMessagingService.EXTRA_ACTION)
         return RequestDeepLink(childId = childId, requestId = requestId, action = action)
     }
 }

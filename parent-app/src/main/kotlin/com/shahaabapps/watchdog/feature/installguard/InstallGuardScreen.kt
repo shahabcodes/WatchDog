@@ -1,6 +1,11 @@
 package com.shahaabapps.watchdog.feature.installguard
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -9,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -29,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -50,22 +57,30 @@ fun InstallGuardScreen(
     val guard by viewModel.guard.collectAsStateWithLifecycle()
     val apps by viewModel.installedApps.collectAsStateWithLifecycle()
     var query by remember { mutableStateOf("") }
-    var selectedFirst by remember { mutableStateOf(true) }
+    var sort by remember { mutableStateOf(AppSort.SELECTED_FIRST) }
     var newPackage by remember { mutableStateOf("") }
 
     // Live set for the checkmarks (updates instantly on toggle).
     val selectedSet = remember(guard.packages) { guard.packages.toHashSet() }
-    // Ordering is SNAPSHOTTED (keyed on query/selectedFirst, not on packages) so
-    // toggling a row never re-sorts/reorders the list — that reorder was the lag.
-    val orderSelected = remember(selectedFirst, query) { if (selectedFirst) guard.packages.toHashSet() else emptySet() }
-    val visibleApps = remember(apps, query, orderSelected) {
+    // The "selected" grouping is SNAPSHOTTED (keyed on sort/query, not on packages)
+    // so toggling a row never re-sorts/reorders the list — that reorder was the lag.
+    val orderSelected = remember(sort, query) {
+        if (sort == AppSort.SELECTED_FIRST) guard.packages.toHashSet() else emptySet()
+    }
+    val visibleApps = remember(apps, query, sort, orderSelected) {
         val q = query.trim().lowercase()
-        apps
-            .filter { q.isEmpty() || it.label.lowercase().contains(q) || it.packageName.lowercase().contains(q) }
-            .sortedWith(
-                compareByDescending<InstalledApp> { it.packageName in orderSelected }
-                    .thenBy { it.label.ifBlank { it.packageName }.lowercase() },
+        val name = { a: InstalledApp -> a.label.ifBlank { a.packageName }.lowercase() }
+        val filtered = apps.filter {
+            q.isEmpty() || it.label.lowercase().contains(q) || it.packageName.lowercase().contains(q)
+        }
+        when (sort) {
+            AppSort.SELECTED_FIRST -> filtered.sortedWith(
+                compareByDescending<InstalledApp> { it.packageName in orderSelected }.thenBy(name),
             )
+            AppSort.NAME_AZ -> filtered.sortedBy(name)
+            AppSort.NAME_ZA -> filtered.sortedByDescending(name)
+            AppSort.PACKAGE -> filtered.sortedBy { it.packageName.lowercase() }
+        }
     }
     val typedPackages = remember(guard.packages, apps) {
         guard.packages.filter { pkg -> apps.none { it.packageName == pkg } }
@@ -118,13 +133,7 @@ fun InstallGuardScreen(
                             onValueChange = { query = it },
                             modifier = Modifier.fillMaxWidth().padding(bottom = Spacing.sm),
                         )
-                        RowCard(top = true, bottom = query.isBlank() && visibleApps.isEmpty()) {
-                            CupertinoListRow(
-                                title = "Show selected first",
-                                showDivider = false,
-                                trailing = { Switch(checked = selectedFirst, onCheckedChange = { selectedFirst = it }) },
-                            )
-                        }
+                        SortPills(selected = sort, onSelect = { sort = it })
                     }
                 }
 
@@ -140,7 +149,7 @@ fun InstallGuardScreen(
                     }
                 } else {
                     items(visibleApps, key = { it.packageName }) { app ->
-                        RowCard(horizontal = true) {
+                        RowCard(horizontal = true, modifier = Modifier.animateItem()) {
                             AppToggleRow(
                                 icon = app.icon,
                                 label = app.label.ifBlank { app.packageName },
@@ -223,6 +232,7 @@ private fun RowCard(
     top: Boolean = false,
     bottom: Boolean = false,
     horizontal: Boolean = false,
+    modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     val shape = RoundedCornerShape(
@@ -232,12 +242,62 @@ private fun RowCard(
         bottomEnd = if (bottom) 14.dp else 0.dp,
     )
     Column(
-        modifier = Modifier
+        modifier = modifier
             .padding(horizontal = if (horizontal) Spacing.lg else 0.dp)
             .fillMaxWidth()
             .clip(shape)
             .background(AppTheme.colors.card),
     ) { content() }
+}
+
+/** The sort orders offered as pills above the app list. */
+private enum class AppSort(val label: String) {
+    SELECTED_FIRST("Selected first"),
+    NAME_AZ("Name A–Z"),
+    NAME_ZA("Name Z–A"),
+    PACKAGE("Package"),
+}
+
+/** A horizontally scrollable row of single-select sort pills. */
+@Composable
+private fun SortPills(selected: AppSort, onSelect: (AppSort) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        AppSort.entries.forEach { sort ->
+            Pill(text = sort.label, selected = sort == selected, onClick = { onSelect(sort) })
+        }
+    }
+}
+
+/** A rounded, tappable filter chip that fills in when selected. */
+@Composable
+private fun Pill(text: String, selected: Boolean, onClick: () -> Unit) {
+    val bg by animateColorAsState(
+        if (selected) AppTheme.colors.accent else AppTheme.colors.card,
+        label = "pillBg",
+    )
+    val fg by animateColorAsState(
+        if (selected) Color.White else MaterialTheme.colorScheme.onSurface,
+        label = "pillFg",
+    )
+    val border by animateColorAsState(
+        if (selected) AppTheme.colors.accent else AppTheme.colors.separator,
+        label = "pillBorder",
+    )
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        color = fg,
+        maxLines = 1,
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(bg)
+            .border(1.dp, border, RoundedCornerShape(50))
+            .clickable(onClick = onClick)
+            .padding(horizontal = Spacing.md, vertical = Spacing.sm),
+    )
 }
 
 /** A rounded, icon-led search bar with a clear button. */

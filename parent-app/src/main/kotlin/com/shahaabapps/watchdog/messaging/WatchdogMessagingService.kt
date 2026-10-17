@@ -43,11 +43,25 @@ class WatchdogMessagingService : FirebaseMessagingService() {
             handleGeofencePush(message.data)
             return
         }
+        // A child's "ask" (unlock an app, more time…): post an interactive
+        // notification with Approve/Reject buttons that deep-link into the app.
+        if (message.data["type"] == "request") {
+            handleRequestPush(message.data)
+            return
+        }
         // Foreground messages (and other data-only messages) land here; post manually.
         val notif = message.notification
         val title = notif?.title ?: message.data["title"] ?: "Watch Dog"
         val body = notif?.body ?: message.data["body"] ?: return
         showNotification(this, title, body)
+    }
+
+    private fun handleRequestPush(data: Map<String, String>) {
+        val childId = data["childId"]?.ifBlank { null } ?: return
+        val requestId = data["requestId"]?.ifBlank { null } ?: return
+        val title = data["title"]?.ifBlank { null } ?: "A new request"
+        val body = data["body"]?.ifBlank { null } ?: "Tap to approve or deny."
+        showRequestNotification(this, childId, requestId, title, body)
     }
 
     private fun handleGeofencePush(data: Map<String, String>) {
@@ -65,6 +79,15 @@ class WatchdogMessagingService : FirebaseMessagingService() {
 
     companion object {
         const val CHANNEL_ID = "geofence_alerts"
+        const val REQUEST_CHANNEL_ID = "child_requests"
+
+        // Intent extras read by MainActivity to deep-link into the right request.
+        const val EXTRA_CHILD_ID = "deeplink_child_id"
+        const val EXTRA_REQUEST_ID = "deeplink_request_id"
+        const val EXTRA_ACTION = "deeplink_action"
+        const val ACTION_VIEW = "VIEW"
+        const val ACTION_APPROVE = "APPROVE"
+        const val ACTION_REJECT = "REJECT"
 
         fun ensureChannel(context: Context) {
             val manager = context.getSystemService(NotificationManager::class.java) ?: return
@@ -76,6 +99,65 @@ class WatchdogMessagingService : FirebaseMessagingService() {
                         NotificationManager.IMPORTANCE_HIGH,
                     ).apply { description = "Alerts when your child enters or leaves a saved place." },
                 )
+            }
+        }
+
+        private fun ensureRequestChannel(context: Context) {
+            val manager = context.getSystemService(NotificationManager::class.java) ?: return
+            if (manager.getNotificationChannel(REQUEST_CHANNEL_ID) == null) {
+                manager.createNotificationChannel(
+                    NotificationChannel(
+                        REQUEST_CHANNEL_ID,
+                        "Child requests",
+                        NotificationManager.IMPORTANCE_HIGH,
+                    ).apply { description = "When your child asks to unlock an app or for more time." },
+                )
+            }
+        }
+
+        /** PendingIntent that opens the app on the request, pre-selecting [action]. */
+        private fun requestIntent(
+            context: Context,
+            childId: String,
+            requestId: String,
+            action: String,
+        ): PendingIntent {
+            val intent = Intent(context, MainActivity::class.java)
+                .setAction("$action:$requestId") // distinct action → distinct PendingIntent
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra(EXTRA_CHILD_ID, childId)
+                .putExtra(EXTRA_REQUEST_ID, requestId)
+                .putExtra(EXTRA_ACTION, action)
+            return PendingIntent.getActivity(
+                context,
+                (action + requestId).hashCode(),
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        }
+
+        /** Interactive "child request" notification: tap to view, or Approve / Reject. */
+        fun showRequestNotification(
+            context: Context,
+            childId: String,
+            requestId: String,
+            title: String,
+            body: String,
+        ) {
+            ensureRequestChannel(context)
+            val notification = NotificationCompat.Builder(context, REQUEST_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_launcher_monochrome)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setContentIntent(requestIntent(context, childId, requestId, ACTION_VIEW))
+                .addAction(0, "Approve", requestIntent(context, childId, requestId, ACTION_APPROVE))
+                .addAction(0, "Reject", requestIntent(context, childId, requestId, ACTION_REJECT))
+                .build()
+            runCatching {
+                NotificationManagerCompat.from(context).notify(requestId.hashCode(), notification)
             }
         }
 

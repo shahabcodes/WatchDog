@@ -1,5 +1,6 @@
 package com.shahaabapps.watchdog
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -11,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -18,17 +20,24 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.watchdog.feature.auth.AuthFlow
 import com.shahaabapps.watchdog.feature.profile.ProfileSetupScreen
+import com.shahaabapps.watchdog.messaging.WatchdogMessagingService
 import com.shahaabapps.watchdog.ui.ParentAppState
 import com.shahaabapps.watchdog.ui.ParentAppViewModel
+import com.shahaabapps.watchdog.ui.RequestDeepLink
 import com.shahaabapps.watchdog.ui.ThemeViewModel
 import com.shahaabapps.watchdog.ui.shell.ParentShell
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    // A pending request deep-link parsed from a notification tap / action button.
+    // Read inside setContent (snapshot state) and cleared once handled.
+    private val pendingDeepLink = mutableStateOf<RequestDeepLink?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        pendingDeepLink.value = parseDeepLink(intent)
         setContent {
             val themeViewModel: ThemeViewModel = hiltViewModel()
             val themeMode by themeViewModel.themeMode.collectAsStateWithLifecycle()
@@ -40,16 +49,36 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background,
                 ) {
                     com.shahaabapps.core.ui.components.CelebrationHost {
-                        ParentAppRoot()
+                        ParentAppRoot(
+                            deepLink = pendingDeepLink.value,
+                            onDeepLinkHandled = { pendingDeepLink.value = null },
+                        )
                     }
                 }
             }
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        parseDeepLink(intent)?.let { pendingDeepLink.value = it }
+    }
+
+    private fun parseDeepLink(intent: Intent?): RequestDeepLink? {
+        intent ?: return null
+        val childId = intent.getStringExtra(WatchdogMessagingService.EXTRA_CHILD_ID) ?: return null
+        val requestId = intent.getStringExtra(WatchdogMessagingService.EXTRA_REQUEST_ID) ?: return null
+        val action = intent.getStringExtra(WatchdogMessagingService.EXTRA_ACTION)
+            ?: WatchdogMessagingService.ACTION_VIEW
+        return RequestDeepLink(childId = childId, requestId = requestId, action = action)
+    }
 }
 
 @Composable
 private fun ParentAppRoot(
+    deepLink: RequestDeepLink?,
+    onDeepLinkHandled: () -> Unit,
     viewModel: ParentAppViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -71,12 +100,18 @@ private fun ParentAppRoot(
                 role = com.shahaabapps.core.model.UserRole.PARENT,
             ),
             viewer = true,
+            deepLink = deepLink,
+            onDeepLinkHandled = onDeepLinkHandled,
         )
         is ParentAppState.Ready -> {
             androidx.compose.runtime.LaunchedEffect(current.profile.id) {
                 viewModel.registerFcmToken(current.profile.id)
             }
-            ParentShell(profile = current.profile)
+            ParentShell(
+                profile = current.profile,
+                deepLink = deepLink,
+                onDeepLinkHandled = onDeepLinkHandled,
+            )
         }
     }
 }

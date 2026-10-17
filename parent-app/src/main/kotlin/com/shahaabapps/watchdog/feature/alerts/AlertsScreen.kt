@@ -29,6 +29,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,6 +56,40 @@ fun AlertsScreen(
 ) {
     val items by viewModel.items.collectAsStateWithLifecycle()
     val requests by viewModel.pendingRequests.collectAsStateWithLifecycle()
+
+    // The ask currently awaiting a confirm/deny decision (via an in-app tap or a
+    // notification Approve/Reject button), plus whether we're approving it.
+    var confirm by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<ConfirmTarget?>(null)
+    }
+    // Open the confirmation dialog straight away when arriving from a notification
+    // Approve/Reject button — but only once, and only while the ask is still pending.
+    var deepLinkHandled by androidx.compose.runtime.saveable.rememberSaveable {
+        androidx.compose.runtime.mutableStateOf(false)
+    }
+    androidx.compose.runtime.LaunchedEffect(requests) {
+        if (deepLinkHandled) return@LaunchedEffect
+        val id = viewModel.initialRequestId ?: return@LaunchedEffect
+        val approve = when (viewModel.initialAction) {
+            "APPROVE" -> true
+            "REJECT" -> false
+            else -> { deepLinkHandled = true; return@LaunchedEffect }
+        }
+        val target = requests.firstOrNull { it.id == id } ?: return@LaunchedEffect
+        confirm = ConfirmTarget(target, approve)
+        deepLinkHandled = true
+    }
+
+    confirm?.let { target ->
+        com.shahaabapps.core.ui.components.ConfirmDialog(
+            title = if (target.approve) "Approve request?" else "Decline request?",
+            message = "Your child is asking ${target.request.summary}.",
+            confirmText = if (target.approve) "Approve" else "Decline",
+            destructive = !target.approve,
+            onConfirm = { viewModel.respond(target.request.id, target.approve); confirm = null },
+            onDismiss = { confirm = null },
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -122,8 +157,8 @@ fun AlertsScreen(
                     items(requests, key = { it.id }) { req ->
                         RequestCard(
                             request = req,
-                            onApprove = { viewModel.respond(req.id, true) },
-                            onDeny = { viewModel.respond(req.id, false) },
+                            onApprove = { confirm = ConfirmTarget(req, true) },
+                            onDeny = { confirm = ConfirmTarget(req, false) },
                         )
                     }
                 }
@@ -139,6 +174,12 @@ fun AlertsScreen(
         }
     }
 }
+
+/** The pending ask awaiting the parent's confirm/deny decision. */
+private data class ConfirmTarget(
+    val request: com.shahaabapps.core.model.TimeRequest,
+    val approve: Boolean,
+)
 
 @Composable
 private fun RequestCard(

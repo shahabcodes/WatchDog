@@ -114,6 +114,8 @@ private enum class Tab(val route: String, val label: String, val icon: ImageVect
 fun ParentShell(
     profile: UserProfile,
     viewer: Boolean = false,
+    deepLink: com.shahaabapps.watchdog.ui.RequestDeepLink? = null,
+    onDeepLinkHandled: () -> Unit = {},
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val children by viewModel.children.collectAsStateWithLifecycle()
@@ -196,6 +198,22 @@ fun ParentShell(
         }
     }
 
+    // A request notification (tap or Approve/Reject) deep-links into that child's
+    // Alerts, carrying the request id + chosen action so the confirmation dialog
+    // opens on the right ask. Consumed once so it doesn't re-fire on recomposition.
+    androidx.compose.runtime.LaunchedEffect(deepLink, children) {
+        val link = deepLink ?: return@LaunchedEffect
+        if (children.isEmpty()) return@LaunchedEffect
+        if (children.none { it.childId == link.childId }) {
+            onDeepLinkHandled()
+            return@LaunchedEffect
+        }
+        navController.navigate(
+            "alerts/${link.childId}?requestId=${link.requestId}&action=${link.action}",
+        ) { launchSingleTop = true }
+        onDeepLinkHandled()
+    }
+
     // One consistent way to move between tab destinations, so the saved/restored
     // back stack stays coherent however the Map was opened (bottom bar or a card).
     val switchTab: (String) -> Unit = remember(navController) {
@@ -267,7 +285,14 @@ fun ParentShell(
                 }
             }
             composable("map/{childId}", childArg) { GeofenceScreen(onBack = { }, showBack = false, readOnly = viewer) }
-            composable("alerts/{childId}", childArg) {
+            composable(
+                "alerts/{childId}?requestId={requestId}&action={action}",
+                listOf(
+                    navArgument("childId") { type = NavType.StringType },
+                    navArgument("requestId") { type = NavType.StringType; defaultValue = "" },
+                    navArgument("action") { type = NavType.StringType; defaultValue = "VIEW" },
+                ),
+            ) {
                 AlertsScreen(onBack = { navController.popBackStack() })
             }
             composable("screentime/{childId}", childArg) { UsageScreen(onBack = { }, embedded = true) }

@@ -437,11 +437,24 @@ exports.notifyChildRequest = onDocumentCreated(
     }
     if (tokenDocs.length === 0) return;
 
+    // Data-only so the parent app always builds the notification itself (with
+    // Approve/Reject action buttons). A top-level `notification` payload would
+    // make the system tray show it silently while backgrounded, skipping our
+    // onMessageReceived and dropping the action buttons.
     const message = {
       tokens: tokenDocs.map((t) => t.token),
-      notification: { title, body },
-      data: { type: "request", childId, requestId: event.params.requestId },
-      android: { priority: "high", notification: { channelId: "geofence_alerts" } },
+      data: {
+        type: "request",
+        childId,
+        requestId: event.params.requestId,
+        title,
+        body,
+        childName,
+        kind: data.kind || "MORE_TIME",
+        appLabel,
+        minutes: String(minutes),
+      },
+      android: { priority: "high" },
     };
     const resp = await getMessaging().sendEachForMulticast(message);
 

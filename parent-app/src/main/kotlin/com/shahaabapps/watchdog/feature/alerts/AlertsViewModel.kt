@@ -37,6 +37,10 @@ class AlertsViewModel @Inject constructor(
 
     private val childId: String = checkNotNull(savedStateHandle["childId"])
 
+    /** Deep-link target from a notification: which request, and a pre-chosen action. */
+    val initialRequestId: String? = savedStateHandle.get<String>("requestId")?.ifBlank { null }
+    val initialAction: String = savedStateHandle.get<String>("action") ?: "VIEW"
+
     /** The child's pending "asks" awaiting a parent decision. */
     val pendingRequests: StateFlow<List<TimeRequest>> =
         requestRepository.observe(childId, 30)

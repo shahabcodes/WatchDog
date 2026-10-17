@@ -47,8 +47,8 @@ class AlertsViewModel @Inject constructor(
             .map { list -> list.filter { it.status == RequestStatus.PENDING } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    fun respond(requestId: String, approved: Boolean) {
-        viewModelScope.launch { requestRepository.respond(childId, requestId, approved) }
+    fun respond(requestId: String, approved: Boolean, grantUntilMillis: Long = 0L) {
+        viewModelScope.launch { requestRepository.respond(childId, requestId, approved, grantUntilMillis) }
     }
 
     // Join events with the current geofences so each alert shows the saved

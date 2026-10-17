@@ -192,7 +192,9 @@ class EnforcementService : AccessibilityService() {
             if (r.status != RequestStatus.APPROVED) continue
             val base = if (r.respondedAtMillis > 0) r.respondedAtMillis else r.createdAtMillis
             if (base <= 0L) continue
-            val until = base + grantDurationMs(r)
+            // The parent can set an explicit end when approving; otherwise use the
+            // default window for this kind.
+            val until = if (r.grantUntilMillis > 0L) r.grantUntilMillis else base + grantDurationMs(r)
             val pkg = r.appPackage
             when {
                 // Bedtime extension (and general "more time" with no app) lifts the

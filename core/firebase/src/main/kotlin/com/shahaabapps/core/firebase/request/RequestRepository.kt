@@ -25,8 +25,17 @@ interface RequestRepository {
     /** Newest-first stream of the child's requests (both apps observe this). */
     fun observe(childId: String, limit: Long = 30): Flow<List<TimeRequest>>
 
-    /** Parent approves or denies a pending ask. */
-    suspend fun respond(childId: String, requestId: String, approved: Boolean): AppResult<Unit>
+    /**
+     * Parent approves or denies a pending ask. When approving, [grantUntilMillis]
+     * (absolute wall-clock millis) sets how long the app stays available; 0 uses
+     * the child's default window for the request kind.
+     */
+    suspend fun respond(
+        childId: String,
+        requestId: String,
+        approved: Boolean,
+        grantUntilMillis: Long = 0L,
+    ): AppResult<Unit>
 
     /** Child withdraws a pending ask. */
     suspend fun cancel(childId: String, requestId: String): AppResult<Unit>
@@ -64,12 +73,18 @@ class FirebaseRequestRepository @Inject constructor(
         awaitClose { registration.remove() }
     }
 
-    override suspend fun respond(childId: String, requestId: String, approved: Boolean): AppResult<Unit> =
+    override suspend fun respond(
+        childId: String,
+        requestId: String,
+        approved: Boolean,
+        grantUntilMillis: Long,
+    ): AppResult<Unit> =
         runCatchingResult {
             requests(childId).document(requestId).update(
                 mapOf(
                     "status" to (if (approved) RequestStatus.APPROVED else RequestStatus.DENIED).name,
                     "respondedAtMillis" to System.currentTimeMillis(),
+                    "grantUntilMillis" to grantUntilMillis,
                 ),
             ).await()
             Unit
@@ -90,5 +105,6 @@ class FirebaseRequestRepository @Inject constructor(
         status = getString("status")?.let { runCatching { RequestStatus.valueOf(it) }.getOrNull() } ?: RequestStatus.PENDING,
         createdAtMillis = getLong("createdAtMillis") ?: 0L,
         respondedAtMillis = getLong("respondedAtMillis") ?: 0L,
+        grantUntilMillis = getLong("grantUntilMillis") ?: 0L,
     )
 }

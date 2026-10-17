@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -23,19 +25,28 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.shahaabapps.core.model.TimeRequest
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shahaabapps.core.model.GeofenceEvent
@@ -57,12 +68,15 @@ fun AlertsScreen(
     val items by viewModel.items.collectAsStateWithLifecycle()
     val requests by viewModel.pendingRequests.collectAsStateWithLifecycle()
 
-    // The ask currently awaiting a confirm/deny decision (via an in-app tap or a
-    // notification Approve/Reject button), plus whether we're approving it.
-    var confirm by androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf<ConfirmTarget?>(null)
+    // The ask awaiting a decision (via an in-app tap or a notification button).
+    // Approving opens a duration picker; declining is a simple confirm.
+    var approveReq by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<TimeRequest?>(null)
     }
-    // Open the confirmation dialog straight away when arriving from a notification
+    var denyReq by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<TimeRequest?>(null)
+    }
+    // Open the right dialog straight away when arriving from a notification
     // Approve/Reject button — but only once, and only while the ask is still pending.
     var deepLinkHandled by androidx.compose.runtime.saveable.rememberSaveable {
         androidx.compose.runtime.mutableStateOf(false)
@@ -76,18 +90,25 @@ fun AlertsScreen(
             else -> { deepLinkHandled = true; return@LaunchedEffect }
         }
         val target = requests.firstOrNull { it.id == id } ?: return@LaunchedEffect
-        confirm = ConfirmTarget(target, approve)
+        if (approve) approveReq = target else denyReq = target
         deepLinkHandled = true
     }
 
-    confirm?.let { target ->
+    approveReq?.let { req ->
+        ApproveRequestDialog(
+            request = req,
+            onApprove = { grantUntil -> viewModel.respond(req.id, true, grantUntil); approveReq = null },
+            onDismiss = { approveReq = null },
+        )
+    }
+    denyReq?.let { req ->
         com.shahaabapps.core.ui.components.ConfirmDialog(
-            title = if (target.approve) "Approve request?" else "Decline request?",
-            message = "Your child is asking ${target.request.summary}.",
-            confirmText = if (target.approve) "Approve" else "Decline",
-            destructive = !target.approve,
-            onConfirm = { viewModel.respond(target.request.id, target.approve); confirm = null },
-            onDismiss = { confirm = null },
+            title = "Decline request?",
+            message = "Your child is asking ${req.summary}.",
+            confirmText = "Decline",
+            destructive = true,
+            onConfirm = { viewModel.respond(req.id, false); denyReq = null },
+            onDismiss = { denyReq = null },
         )
     }
 
@@ -157,8 +178,8 @@ fun AlertsScreen(
                     items(requests, key = { it.id }) { req ->
                         RequestCard(
                             request = req,
-                            onApprove = { confirm = ConfirmTarget(req, true) },
-                            onDeny = { confirm = ConfirmTarget(req, false) },
+                            onApprove = { approveReq = req },
+                            onDeny = { denyReq = req },
                         )
                     }
                 }
@@ -175,11 +196,143 @@ fun AlertsScreen(
     }
 }
 
-/** The pending ask awaiting the parent's confirm/deny decision. */
-private data class ConfirmTarget(
-    val request: com.shahaabapps.core.model.TimeRequest,
-    val approve: Boolean,
-)
+/**
+ * Approve dialog that lets the parent choose how long the app stays available:
+ * a fixed duration from now ("For a while"), or until a specific clock time today
+ * ("Until a time"). Produces an absolute wall-clock end the child enforces.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun ApproveRequestDialog(
+    request: TimeRequest,
+    onApprove: (grantUntilMillis: Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var untilMode by remember { mutableStateOf(false) }
+    var durationMin by remember { mutableStateOf(60) }
+    var untilMinute by remember { mutableStateOf<Int?>(null) }
+    var pickTime by remember { mutableStateOf(false) }
+
+    val grantUntil: Long? = if (!untilMode) {
+        System.currentTimeMillis() + durationMin * 60_000L
+    } else {
+        untilMinute?.let { minuteOfDayToFutureMillis(it) }
+    }
+
+    com.shahaabapps.core.ui.components.AppDialog(
+        onDismiss = onDismiss,
+        title = "Approve request?",
+        icon = Icons.Filled.CheckCircle,
+        confirmText = "Approve",
+        confirmEnabled = grantUntil != null,
+        onConfirm = { grantUntil?.let(onApprove) },
+    ) {
+        Text(
+            "Your child is asking ${request.summary}. How long should it stay available?",
+            style = MaterialTheme.typography.bodyMedium,
+            color = AppTheme.colors.secondaryLabel,
+        )
+        Spacer(Modifier.height(Spacing.md))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(AppTheme.colors.separator.copy(alpha = 0.4f))
+                .padding(3.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            ModeSeg("For a while", !untilMode, Modifier.weight(1f)) { untilMode = false }
+            ModeSeg("Until a time", untilMode, Modifier.weight(1f)) { untilMode = true }
+        }
+        Spacer(Modifier.height(Spacing.md))
+        if (!untilMode) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                listOf(15, 30, 60, 120, 240).forEach { m ->
+                    FilterChip(
+                        selected = durationMin == m,
+                        onClick = { durationMin = m },
+                        label = { Text(durationLabel(m)) },
+                    )
+                }
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(AppTheme.colors.separator.copy(alpha = 0.3f))
+                    .clickable { pickTime = true }
+                    .padding(14.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    untilMinute?.let { "Until ${clockLabel(it)}" } ?: "Pick a time",
+                    color = AppTheme.colors.accent,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+    }
+
+    if (pickTime) {
+        val initial = untilMinute ?: run {
+            val c = java.util.Calendar.getInstance()
+            c.add(java.util.Calendar.HOUR_OF_DAY, 1)
+            c.get(java.util.Calendar.HOUR_OF_DAY) * 60 + c.get(java.util.Calendar.MINUTE)
+        }
+        val state = rememberTimePickerState(initialHour = initial / 60, initialMinute = initial % 60, is24Hour = false)
+        com.shahaabapps.core.ui.components.AppDialog(
+            onDismiss = { pickTime = false },
+            title = "Available until",
+            confirmText = "Set",
+            onConfirm = { untilMinute = state.hour * 60 + state.minute; pickTime = false },
+        ) {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                TimePicker(state = state)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModeSeg(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selected) AppTheme.colors.accent else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            color = if (selected) Color.White else AppTheme.colors.secondaryLabel,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+private fun durationLabel(minutes: Int): String = when {
+    minutes < 60 -> "$minutes min"
+    minutes == 60 -> "1 hour"
+    else -> "${minutes / 60} hours"
+}
+
+private val clockFmt = DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault())
+private fun clockLabel(minuteOfDay: Int): String =
+    java.time.LocalTime.of(minuteOfDay / 60, minuteOfDay % 60).format(clockFmt)
+
+/** The next time today/tomorrow matching [minuteOfDay], as wall-clock millis. */
+private fun minuteOfDayToFutureMillis(minuteOfDay: Int): Long {
+    val c = java.util.Calendar.getInstance()
+    c.set(java.util.Calendar.HOUR_OF_DAY, minuteOfDay / 60)
+    c.set(java.util.Calendar.MINUTE, minuteOfDay % 60)
+    c.set(java.util.Calendar.SECOND, 0)
+    c.set(java.util.Calendar.MILLISECOND, 0)
+    if (c.timeInMillis <= System.currentTimeMillis()) c.add(java.util.Calendar.DAY_OF_YEAR, 1)
+    return c.timeInMillis
+}
 
 @Composable
 private fun RequestCard(

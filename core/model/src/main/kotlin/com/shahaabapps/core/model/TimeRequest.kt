@@ -23,6 +23,12 @@ data class TimeRequest(
     val status: RequestStatus = RequestStatus.PENDING,
     val createdAtMillis: Long = 0L,
     val respondedAtMillis: Long = 0L,
+    /**
+     * When the parent's approval expires (absolute wall-clock millis). Set by the
+     * parent when approving to control how long the app stays available; 0 means
+     * "use the default window for this kind".
+     */
+    val grantUntilMillis: Long = 0L,
 ) {
     /** A short child-facing summary of the ask. */
     val summary: String

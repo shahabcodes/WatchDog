@@ -374,13 +374,12 @@ private fun RuleEditor(
         CupertinoPrimaryButton(
             text = "Save",
             onClick = {
-                val schedule = if (blocked) {
-                    emptyList()
-                } else {
-                    windows.filter { it.first != it.second }
-                        .map { TimeWindow(it.first, it.second, setOf(1, 2, 3, 4, 5, 6, 7)) }
-                }
-                onSave(if (blocked) null else limit, blocked, schedule)
+                // Keep the limit + allowed-hours even when "Block completely" is on,
+                // so toggling the block off later restores them (enforcement ignores
+                // them while blocked — RuleEvaluator short-circuits on `blocked`).
+                val schedule = windows.filter { it.first != it.second }
+                    .map { TimeWindow(it.first, it.second, setOf(1, 2, 3, 4, 5, 6, 7)) }
+                onSave(limit, blocked, schedule)
             },
         )
         if (rule != null) {

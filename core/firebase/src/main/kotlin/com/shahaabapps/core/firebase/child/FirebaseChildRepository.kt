@@ -168,6 +168,12 @@ class FirebaseChildRepository @Inject constructor(
                 if (sealed != null) {
                     put("hb", sealed)
                     put("hbEnc", true)
+                    // Remove any legacy plaintext fields left by pre-encryption writes.
+                    put("model", FieldValue.delete())
+                    put("batteryPercent", FieldValue.delete())
+                    put("charging", FieldValue.delete())
+                    put("batteryDrainPerHour", FieldValue.delete())
+                    put("temperatureTenthsC", FieldValue.delete())
                 } else {
                     put("model", model)
                     if (batteryPercent in 1..100) put("batteryPercent", batteryPercent)
@@ -198,7 +204,7 @@ class FirebaseChildRepository @Inject constructor(
                 .toString()
             val sealed = e2ee.sealString(childId, childId, json)
             val deviceMap: Map<String, Any> = if (sealed != null) {
-                mapOf("statsE" to sealed, "statsEnc" to true)
+                mapOf("statsE" to sealed, "statsEnc" to true, "batteryStats" to FieldValue.delete())
             } else {
                 mapOf(
                     "batteryStats" to mapOf(
@@ -232,7 +238,7 @@ class FirebaseChildRepository @Inject constructor(
                 .toString()
             val sealed = e2ee.sealString(childId, childId, json)
             val deviceMap: Map<String, Any> = if (sealed != null) {
-                mapOf("permsE" to sealed, "permsEnc" to true)
+                mapOf("permsE" to sealed, "permsEnc" to true, "permissions" to FieldValue.delete())
             } else {
                 mapOf(
                     "permissions" to mapOf(

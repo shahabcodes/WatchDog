@@ -95,6 +95,9 @@ class ApkInstallGuard(
         if (!file.exists()) return
         val info = runCatching { pm.getPackageArchiveInfo(file.absolutePath, 0) }.getOrNull() ?: return
         val pkg = info.packageName ?: return
+        // Never block Shield's own APK — the parent must always be able to
+        // install/update the protection app itself.
+        if (pkg == appContext.packageName) return
         if (!policy.blocks(pkg)) return
         val label = runCatching {
             info.applicationInfo?.let { ai ->

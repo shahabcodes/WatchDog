@@ -18,6 +18,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -70,8 +71,18 @@ class WatchdogMessagingService : FirebaseMessagingService() {
         val childName = data["childName"]?.ifBlank { null } ?: "Your child"
         val left = data["transition"] == "EXIT"
         scope.launch {
-            val place = runCatching { geofenceRepository.getEvent(childId, eventId) }
-                .getOrNull()?.geofenceName?.ifBlank { null } ?: "a saved place"
+            val event = runCatching { geofenceRepository.getEvent(childId, eventId) }.getOrNull()
+            // The event itself usually carries no name (the OS-trigger path only
+            // records the geofence id), so resolve the name from the saved places
+            // by id — same as the Alerts list — and fall back to the event name.
+            val place = event?.geofenceName?.ifBlank { null }
+                ?: event?.geofenceId?.ifBlank { null }?.let { gid ->
+                    runCatching {
+                        geofenceRepository.observeGeofences(childId).first()
+                            .firstOrNull { it.id == gid }?.name?.ifBlank { null }
+                    }.getOrNull()
+                }
+                ?: "a saved place"
             val verb = if (left) "left" else "arrived at"
             showNotification(this@WatchdogMessagingService, "$childName $verb $place", "$childName just $verb $place.")
         }

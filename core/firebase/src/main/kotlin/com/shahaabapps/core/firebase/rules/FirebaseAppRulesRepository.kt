@@ -79,12 +79,12 @@ class FirebaseAppRulesRepository @Inject constructor(
             }
         }.toString()
         val sealed = e2ee.sealString(childId, uid, json)
-        val data = if (sealed != null) {
+        val data: Map<String, Any> = if (sealed != null) {
             mapOf("e" to sealed, "enc" to true, "updatedAtMillis" to System.currentTimeMillis())
         } else {
             mapOf(
                 "apps" to apps.map {
-                    buildMap {
+                    buildMap<String, Any> {
                         put("packageName", it.packageName)
                         put("label", it.label)
                         if (it.icon != null) put("icon", it.icon)

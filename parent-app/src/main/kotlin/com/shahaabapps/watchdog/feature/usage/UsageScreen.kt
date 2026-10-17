@@ -417,16 +417,17 @@ private fun RuleEditor(
 @Composable
 private fun TimePickerSheet(initialMinutes: Int, onDismiss: () -> Unit, onConfirm: (minutes: Int) -> Unit) {
     val state = rememberTimePickerState(initialHour = initialMinutes / 60, initialMinute = initialMinutes % 60, is24Hour = false)
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = { onConfirm(state.hour * 60 + state.minute) }) { Text("OK") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        text = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                TimePicker(state = state)
-            }
-        },
-    )
+    com.shahaabapps.core.ui.components.AppDialog(
+        onDismiss = onDismiss,
+        title = "Pick a time",
+        confirmText = "OK",
+        onConfirm = { onConfirm(state.hour * 60 + state.minute) },
+        dismissText = "Cancel",
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+            TimePicker(state = state)
+        }
+    }
 }
 
 private fun formatMinutes(min: Int): String {

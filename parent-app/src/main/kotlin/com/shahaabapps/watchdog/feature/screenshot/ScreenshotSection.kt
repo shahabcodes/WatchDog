@@ -166,20 +166,16 @@ fun ScreenshotSection(
     }
 
     if (confirmDeleteAll) {
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { confirmDeleteAll = false },
-            title = { Text("Delete all screenshots?") },
-            text = { Text("This removes all ${shots.size} screenshot${if (shots.size == 1) "" else "s"} from this device. This can't be undone.") },
-            confirmButton = {
-                androidx.compose.material3.TextButton(onClick = {
-                    viewModel.deleteAll()
-                    confirmDeleteAll = false
-                    viewerIndex = null
-                }) { Text("Delete all", color = AppTheme.colors.destructive) }
+        com.shahaabapps.core.ui.components.ConfirmDialog(
+            title = "Delete all screenshots?",
+            message = "This removes all ${shots.size} screenshot${if (shots.size == 1) "" else "s"} from this device. This can't be undone.",
+            confirmText = "Delete all",
+            onConfirm = {
+                viewModel.deleteAll()
+                confirmDeleteAll = false
+                viewerIndex = null
             },
-            dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { confirmDeleteAll = false }) { Text("Cancel") }
-            },
+            onDismiss = { confirmDeleteAll = false },
         )
     }
 }

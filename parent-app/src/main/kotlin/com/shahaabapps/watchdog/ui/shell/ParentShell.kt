@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MoreVert
@@ -846,24 +847,35 @@ private fun ManageChildrenScreen(
     }
 
     when (val rs = reconnectState) {
-        is ReconnectState.Working -> androidx.compose.material3.AlertDialog(
-            onDismissRequest = { },
-            confirmButton = {},
-            title = { Text("Reconnecting…") },
-            text = { Row(verticalAlignment = Alignment.CenterVertically) { com.shahaabapps.core.ui.components.AppLoader(size = 22.dp); Text("  Migrating this child's data.") } },
-        )
-        is ReconnectState.Success -> androidx.compose.material3.AlertDialog(
-            onDismissRequest = viewModel::clearReconnectState,
-            confirmButton = { androidx.compose.material3.TextButton(onClick = viewModel::clearReconnectState) { Text("Done") } },
-            title = { Text("Device reconnected") },
-            text = { Text("The reinstalled device is linked again with all its places, rules and settings.") },
-        )
-        is ReconnectState.Error -> androidx.compose.material3.AlertDialog(
-            onDismissRequest = viewModel::clearReconnectState,
-            confirmButton = { androidx.compose.material3.TextButton(onClick = viewModel::clearReconnectState) { Text("OK") } },
-            title = { Text("Couldn't reconnect") },
-            text = { Text(rs.message) },
-        )
+        is ReconnectState.Working -> com.shahaabapps.core.ui.components.AppDialog(
+            onDismiss = { },
+            title = "Reconnecting…",
+            dismissText = null,
+            dismissOnOutsideTouch = false,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                com.shahaabapps.core.ui.components.AppLoader(size = 22.dp)
+                Text("  Migrating this child's data.")
+            }
+        }
+        is ReconnectState.Success -> com.shahaabapps.core.ui.components.AppDialog(
+            onDismiss = viewModel::clearReconnectState,
+            title = "Device reconnected",
+            icon = Icons.Filled.CheckCircle,
+            dismissText = "Done",
+        ) {
+            Text(
+                "The reinstalled device is linked again with all its places, rules and settings.",
+                textAlign = TextAlign.Center,
+            )
+        }
+        is ReconnectState.Error -> com.shahaabapps.core.ui.components.AppDialog(
+            onDismiss = viewModel::clearReconnectState,
+            title = "Couldn't reconnect",
+            dismissText = "OK",
+        ) {
+            Text(rs.message, textAlign = TextAlign.Center)
+        }
         ReconnectState.Idle -> Unit
     }
 

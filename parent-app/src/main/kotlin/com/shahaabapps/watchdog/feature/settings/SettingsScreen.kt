@@ -12,10 +12,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.LockReset
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Map
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -129,11 +127,17 @@ fun SettingsScreen(
     }
 
     resetMessage?.let { message ->
-        AlertDialog(
-            onDismissRequest = viewModel::clearResetMessage,
-            confirmButton = { TextButton(onClick = viewModel::clearResetMessage) { Text("OK") } },
-            title = { Text("Password reset") },
-            text = { Text(message) },
-        )
+        com.shahaabapps.core.ui.components.AppDialog(
+            onDismiss = viewModel::clearResetMessage,
+            title = "Password reset",
+            icon = Icons.Filled.LockReset,
+            dismissText = "OK",
+        ) {
+            Text(
+                message,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                color = AppTheme.colors.secondaryLabel,
+            )
+        }
     }
 }

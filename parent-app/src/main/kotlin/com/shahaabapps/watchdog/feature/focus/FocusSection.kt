@@ -331,12 +331,14 @@ private fun AllowedAppsDialog(
     onConfirm: (Set<String>) -> Unit,
 ) {
     var picked by remember { mutableStateOf(selected) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = { onConfirm(picked) }) { Text("Done") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        title = { Text(title, style = MaterialTheme.typography.titleMedium) },
-        text = {
+    com.shahaabapps.core.ui.components.AppDialog(
+        onDismiss = onDismiss,
+        title = title,
+        confirmText = "Done",
+        onConfirm = { onConfirm(picked) },
+        dismissText = "Cancel",
+    ) {
+        run {
             if (apps.isEmpty()) {
                 Text(
                     "No apps yet. Open Shield on the child's phone so its apps appear here.",
@@ -381,8 +383,8 @@ private fun AllowedAppsDialog(
                     }
                 }
             }
-        },
-    )
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -393,16 +395,15 @@ private fun TimePickerDialog(initialMinute: Int, onDismiss: () -> Unit, onConfir
         initialMinute = initialMinute % 60,
         is24Hour = false,
     )
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(onClick = { onConfirm(state.hour * 60 + state.minute) }) { Text("OK") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        text = {
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                TimePicker(state = state)
-            }
-        },
-    )
+    com.shahaabapps.core.ui.components.AppDialog(
+        onDismiss = onDismiss,
+        title = "Pick a time",
+        confirmText = "OK",
+        onConfirm = { onConfirm(state.hour * 60 + state.minute) },
+        dismissText = "Cancel",
+    ) {
+        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            TimePicker(state = state)
+        }
+    }
 }

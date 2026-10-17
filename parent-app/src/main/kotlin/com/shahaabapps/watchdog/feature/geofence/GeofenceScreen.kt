@@ -1634,16 +1634,17 @@ private fun SelectorPill(icon: ImageVector, text: String, onClick: () -> Unit, m
 @Composable
 private fun TimeRangePickerDialog(initialMinutes: Int, onDismiss: () -> Unit, onConfirm: (minutes: Int) -> Unit) {
     val tpState = rememberTimePickerState(initialHour = initialMinutes / 60, initialMinute = initialMinutes % 60, is24Hour = false)
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = { onConfirm(tpState.hour * 60 + tpState.minute) }) { Text("OK") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        text = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                TimePicker(state = tpState)
-            }
-        },
-    )
+    com.shahaabapps.core.ui.components.AppDialog(
+        onDismiss = onDismiss,
+        title = "Pick a time",
+        confirmText = "OK",
+        onConfirm = { onConfirm(tpState.hour * 60 + tpState.minute) },
+        dismissText = "Cancel",
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+            TimePicker(state = tpState)
+        }
+    }
 }
 
 /** Interpolated position along the trail at playback time [t]. */

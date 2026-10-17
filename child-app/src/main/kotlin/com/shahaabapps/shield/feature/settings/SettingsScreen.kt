@@ -10,10 +10,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.QrCode2
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -82,31 +80,32 @@ fun SettingsScreen(
 
     if (showCode) {
         val content = qrContent
-        AlertDialog(
-            onDismissRequest = { showCode = false },
-            confirmButton = { TextButton(onClick = { showCode = false }) { Text("Done") } },
-            title = { Text("Secure code") },
-            text = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        com.shahaabapps.core.ui.components.AppDialog(
+            onDismiss = { showCode = false },
+            title = "Secure code",
+            icon = Icons.Filled.QrCode2,
+            dismissText = "Done",
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    "In Watch Dog, tap \"Verify\" on this child, then scan this code.",
+                    color = AppTheme.colors.secondaryLabel,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+                if (content != null) {
+                    Image(
+                        bitmap = QrCodeGenerator.generate(content, sizePx = 520),
+                        contentDescription = "Secure pairing code",
+                        modifier = Modifier.padding(top = Spacing.md).size(240.dp),
+                    )
+                } else {
                     Text(
-                        "In Watch Dog, tap \"Verify\" on this child, then scan this code.",
+                        "Preparing…",
+                        modifier = Modifier.padding(top = Spacing.md),
                         color = AppTheme.colors.secondaryLabel,
                     )
-                    if (content != null) {
-                        Image(
-                            bitmap = QrCodeGenerator.generate(content, sizePx = 520),
-                            contentDescription = "Secure pairing code",
-                            modifier = Modifier.padding(top = Spacing.md).fillMaxWidth().size(240.dp),
-                        )
-                    } else {
-                        Text(
-                            "Preparing…",
-                            modifier = Modifier.padding(top = Spacing.md),
-                            color = AppTheme.colors.secondaryLabel,
-                        )
-                    }
                 }
-            },
-        )
+            }
+        }
     }
 }

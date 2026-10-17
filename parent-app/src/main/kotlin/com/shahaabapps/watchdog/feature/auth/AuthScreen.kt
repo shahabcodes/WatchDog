@@ -116,33 +116,35 @@ private fun ViewerJoinDialog(
 ) {
     var code by rememberSaveable { mutableStateOf("") }
     val joining = joinState is com.shahaabapps.watchdog.ui.ViewerJoinState.Joining
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = { if (!joining) onDismiss() },
-        confirmButton = {
-            androidx.compose.material3.TextButton(
-                onClick = { onJoin(code) },
-                enabled = code.isNotBlank() && !joining,
-            ) { Text(if (joining) "Joining…" else "View") }
-        },
-        dismissButton = {
-            androidx.compose.material3.TextButton(onClick = onDismiss, enabled = !joining) { Text("Cancel") }
-        },
-        title = { Text("View with a code") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Enter the pairing code from the Shield app. You'll see everything, read-only.")
-                androidx.compose.material3.OutlinedTextField(
-                    value = code,
-                    onValueChange = { code = it.uppercase() },
-                    singleLine = true,
-                    label = { Text("Pairing code") },
-                )
-                (joinState as? com.shahaabapps.watchdog.ui.ViewerJoinState.Error)?.let {
-                    Text(it.message, color = Color(0xFFC1362B))
-                }
+    com.shahaabapps.core.ui.components.AppDialog(
+        onDismiss = onDismiss,
+        title = "View with a code",
+        icon = androidx.compose.material.icons.Icons.Filled.Visibility,
+        confirmText = if (joining) "Joining…" else "View",
+        onConfirm = { onJoin(code) },
+        confirmEnabled = code.isNotBlank() && !joining,
+        dismissText = "Cancel",
+        dismissOnOutsideTouch = !joining,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                "Enter the pairing code from the Shield app. You'll see everything, read-only.",
+                textAlign = TextAlign.Center,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            androidx.compose.material3.OutlinedTextField(
+                value = code,
+                onValueChange = { code = it.uppercase() },
+                singleLine = true,
+                label = { Text("Pairing code") },
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            (joinState as? com.shahaabapps.watchdog.ui.ViewerJoinState.Error)?.let {
+                Text(it.message, color = Color(0xFFC1362B), textAlign = TextAlign.Center)
             }
-        },
-    )
+        }
+    }
 }
 
 /**

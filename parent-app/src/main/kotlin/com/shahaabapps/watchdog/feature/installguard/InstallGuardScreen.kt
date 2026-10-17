@@ -4,14 +4,20 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import com.shahaabapps.core.model.InstalledApp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shahaabapps.core.ui.components.CupertinoCard
@@ -28,6 +34,21 @@ fun InstallGuardScreen(
 ) {
     val guard by viewModel.guard.collectAsStateWithLifecycle()
     val apps by viewModel.installedApps.collectAsStateWithLifecycle()
+    var query by remember { mutableStateOf("") }
+    var selectedFirst by remember { mutableStateOf(true) }
+    val visibleApps = remember(apps, guard.packages, query, selectedFirst) {
+        val q = query.trim().lowercase()
+        apps
+            .filter {
+                q.isEmpty() ||
+                    it.label.lowercase().contains(q) ||
+                    it.packageName.lowercase().contains(q)
+            }
+            .sortedWith(
+                compareByDescending<InstalledApp> { if (selectedFirst) it.packageName in guard.packages else false }
+                    .thenBy { it.label.ifBlank { it.packageName }.lowercase() },
+            )
+    }
 
     Column(
         modifier = Modifier
@@ -73,20 +94,36 @@ fun InstallGuardScreen(
                     text = if (guard.allowlist) "Allowed to install" else "Blocked from installing",
                     modifier = Modifier.padding(start = Spacing.md, bottom = Spacing.xs),
                 )
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    singleLine = true,
+                    label = { Text("Search apps") },
+                    modifier = Modifier.fillMaxWidth().padding(bottom = Spacing.sm),
+                )
                 CupertinoCard {
-                    if (apps.isEmpty()) {
+                    CupertinoListRow(
+                        title = "Show selected first",
+                        showDivider = true,
+                        trailing = { Switch(checked = selectedFirst, onCheckedChange = { selectedFirst = it }) },
+                    )
+                    if (visibleApps.isEmpty()) {
                         CupertinoListRow(
-                            title = "No apps reported yet",
-                            subtitle = "Pick apps here once the child device has synced its app list.",
+                            title = if (apps.isEmpty()) "No apps reported yet" else "No matches",
+                            subtitle = if (apps.isEmpty()) {
+                                "Pick apps here once the child device has synced its app list."
+                            } else {
+                                "Try a different search."
+                            },
                             showDivider = false,
                         )
                     } else {
-                        apps.forEachIndexed { index, app ->
+                        visibleApps.forEachIndexed { index, app ->
                             val selected = app.packageName in guard.packages
                             CupertinoListRow(
                                 title = app.label.ifBlank { app.packageName },
                                 subtitle = app.packageName,
-                                showDivider = index < apps.lastIndex,
+                                showDivider = index < visibleApps.lastIndex,
                                 trailing = {
                                     Switch(
                                         checked = selected,

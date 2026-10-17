@@ -51,6 +51,11 @@ class EnforcementService : AccessibilityService() {
     @Inject lateinit var pendingAppsRepository: PendingAppsRepository
     @Inject lateinit var focusRepository: FocusRepository
     @Inject lateinit var screenshotRepository: ScreenshotRepository
+    @Inject lateinit var installGuardRepository: com.shahaabapps.core.firebase.installguard.InstallGuardRepository
+
+    @Volatile private var installGuard: com.shahaabapps.core.model.InstallGuard = com.shahaabapps.core.model.InstallGuard()
+    /** Cache of whether a package was sideloaded (not from Play Store). */
+    private val sideloadedCache = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val screenshotExecutor = Executors.newSingleThreadExecutor()
@@ -67,10 +72,13 @@ class EnforcementService : AccessibilityService() {
     private val packageAddedReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action != Intent.ACTION_PACKAGE_ADDED) return
-            if (intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) return
-            if (!ProtectionLocalStore.isBlockNewApps(this@EnforcementService)) return
             val pkg = intent.data?.schemeSpecificPart ?: return
             if (pkg == this@EnforcementService.packageName) return
+            // Re-evaluate the install source on (re)install so the install guard's
+            // launch-time block reflects where this copy actually came from.
+            sideloadedCache.remove(pkg)
+            if (intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) return
+            if (!ProtectionLocalStore.isBlockNewApps(this@EnforcementService)) return
             handleNewApp(pkg)
         }
     }
@@ -108,6 +116,9 @@ class EnforcementService : AccessibilityService() {
         }
         serviceScope.launch {
             focusRepository.observe(childId).collectLatest { focus = it }
+        }
+        serviceScope.launch {
+            installGuardRepository.observe(childId).collectLatest { installGuard = it }
         }
         // Parent screenshot requests — captured silently via the accessibility
         // screenshot API (no MediaProjection, no on-screen indicator). API 30+.
@@ -182,12 +193,35 @@ class EnforcementService : AccessibilityService() {
             return
         }
 
+        // Install guard: block a sideloaded app the parent's policy disallows, even
+        // if it has no app-rule and the APK quarantine didn't catch the download.
+        if (installGuard.blocks(packageName) && isSideloaded(packageName)) {
+            blockApp(
+                packageName,
+                appLabelFor(packageName),
+                "This app isn't allowed to be installed from outside the Play Store.",
+            )
+            return
+        }
+
         val rule = rulesByPackage[packageName] ?: return
         val usedMinutes = usageTracker.todayForegroundMinutes(packageName)
         val decision = RuleEvaluator.evaluate(rule, usedMinutes)
         if (decision.block) {
             blockApp(packageName, rule.appLabel.ifBlank { packageName }, decision.reason)
         }
+    }
+
+    /** True when [pkg] was installed from somewhere other than the Play Store. */
+    private fun isSideloaded(pkg: String): Boolean = sideloadedCache.getOrPut(pkg) {
+        val installer = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                packageManager.getInstallSourceInfo(pkg).installingPackageName
+            } else {
+                @Suppress("DEPRECATION") packageManager.getInstallerPackageName(pkg)
+            }
+        }.getOrNull()
+        installer != "com.android.vending"
     }
 
     /** Returns a child-facing reason when a focus window is active now, else null. */

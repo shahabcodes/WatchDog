@@ -26,6 +26,9 @@ interface ChildRepository {
     /** All children linked to the given parent (multi-child dashboard). */
     fun observeLinkedChildren(parentId: String): Flow<List<ChildAccount>>
 
+    /** Children this uid can VIEW (read-only observer), newest query wins. */
+    fun observeViewableChildren(viewerId: String): Flow<List<ChildAccount>>
+
     /**
      * Links the scanning parent to a child, validating the pairing code.
      * Runs as a transaction against `children/{childId}`.

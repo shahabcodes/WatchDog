@@ -14,6 +14,8 @@ data class ChildAccount(
     val profile: UserProfile = UserProfile(role = UserRole.CHILD),
     val pairingCode: String = "",
     val linkedParents: List<String> = emptyList(),
+    /** Read-only observers (e.g. the child viewing their own data). See everything, change nothing. */
+    val viewers: List<String> = emptyList(),
     val device: DeviceInfo = DeviceInfo(),
 ) {
     val isLinked: Boolean get() = linkedParents.isNotEmpty()

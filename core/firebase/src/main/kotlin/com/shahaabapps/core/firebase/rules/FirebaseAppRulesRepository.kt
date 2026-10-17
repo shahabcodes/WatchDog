@@ -2,6 +2,8 @@ package com.shahaabapps.core.firebase.rules
 
 import com.shahaabapps.core.common.AppResult
 import com.shahaabapps.core.common.runCatchingResult
+import com.shahaabapps.core.firebase.auth.AuthRepository
+import com.shahaabapps.core.firebase.e2ee.E2eeManager
 import com.shahaabapps.core.model.AppRule
 import com.shahaabapps.core.model.InstalledApp
 import com.shahaabapps.core.model.TimeWindow
@@ -11,10 +13,14 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
+import org.json.JSONArray
+import org.json.JSONObject
 import javax.inject.Inject
 
 class FirebaseAppRulesRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
+    private val e2ee: E2eeManager,
+    private val authRepository: AuthRepository,
 ) : AppRulesRepository {
 
     override fun observeAppRules(childId: String): Flow<List<AppRule>> = callbackFlow {
@@ -57,17 +63,37 @@ class FirebaseAppRulesRepository @Inject constructor(
         childId: String,
         apps: List<InstalledApp>,
     ): AppResult<Unit> = runCatchingResult {
-        val data = mapOf(
-            "apps" to apps.map {
-                buildMap {
-                    put("packageName", it.packageName)
-                    put("label", it.label)
-                    if (it.icon != null) put("icon", it.icon)
-                    put("installedAt", it.installedAtMillis)
-                }
-            },
-            "updatedAtMillis" to System.currentTimeMillis(),
-        )
+        // The app list (names + icons) reveals exactly what's on the child's phone,
+        // so E2E-encrypt the whole payload; only the parent/child apps read it. Fall
+        // back to plaintext if the key isn't ready yet.
+        val uid = authRepository.currentUserIdOrNull()
+        val json = JSONArray().apply {
+            apps.forEach {
+                put(
+                    JSONObject()
+                        .put("p", it.packageName)
+                        .put("l", it.label)
+                        .put("i", it.icon ?: "")
+                        .put("t", it.installedAtMillis),
+                )
+            }
+        }.toString()
+        val sealed = e2ee.sealString(childId, uid, json)
+        val data = if (sealed != null) {
+            mapOf("e" to sealed, "enc" to true, "updatedAtMillis" to System.currentTimeMillis())
+        } else {
+            mapOf(
+                "apps" to apps.map {
+                    buildMap {
+                        put("packageName", it.packageName)
+                        put("label", it.label)
+                        if (it.icon != null) put("icon", it.icon)
+                        put("installedAt", it.installedAtMillis)
+                    }
+                },
+                "updatedAtMillis" to System.currentTimeMillis(),
+            )
+        }
         firestore.collection(COLLECTION_CHILDREN)
             .document(childId)
             .collection(COLLECTION_INVENTORY)
@@ -77,6 +103,8 @@ class FirebaseAppRulesRepository @Inject constructor(
     }
 
     override fun observeInstalledApps(childId: String): Flow<List<InstalledApp>> = callbackFlow {
+        val viewerUid = authRepository.currentUserIdOrNull()
+        e2ee.warmReaderKey(childId, viewerUid)
         val registration = firestore.collection(COLLECTION_CHILDREN)
             .document(childId)
             .collection(COLLECTION_INVENTORY)
@@ -86,18 +114,35 @@ class FirebaseAppRulesRepository @Inject constructor(
                     trySend(emptyList())
                     return@addSnapshotListener
                 }
-                @Suppress("UNCHECKED_CAST")
-                val apps = (snapshot?.get("apps") as? List<Map<String, Any?>>).orEmpty().map {
-                    InstalledApp(
-                        packageName = it["packageName"] as? String ?: "",
-                        label = it["label"] as? String ?: "",
-                        icon = it["icon"] as? String,
-                        installedAtMillis = (it["installedAt"] as? Number)?.toLong() ?: 0L,
-                    )
-                }
+                val apps = snapshot?.toInstalledApps(childId, viewerUid) ?: emptyList()
                 trySend(apps)
             }
         awaitClose { registration.remove() }
+    }
+
+    private fun DocumentSnapshot.toInstalledApps(childId: String, viewerUid: String?): List<InstalledApp> {
+        val sealed = getString("e")
+        if (getBoolean("enc") == true && sealed != null) {
+            val json = e2ee.openStringCached(childId, viewerUid, sealed)?.let { JSONArray(it) } ?: return emptyList()
+            return (0 until json.length()).map { i ->
+                val o = json.getJSONObject(i)
+                InstalledApp(
+                    packageName = o.optString("p"),
+                    label = o.optString("l"),
+                    icon = o.optString("i").ifBlank { null },
+                    installedAtMillis = o.optLong("t"),
+                )
+            }
+        }
+        @Suppress("UNCHECKED_CAST")
+        return (get("apps") as? List<Map<String, Any?>>).orEmpty().map {
+            InstalledApp(
+                packageName = it["packageName"] as? String ?: "",
+                label = it["label"] as? String ?: "",
+                icon = it["icon"] as? String,
+                installedAtMillis = (it["installedAt"] as? Number)?.toLong() ?: 0L,
+            )
+        }
     }
 
     private fun appRulesCollection(childId: String) =

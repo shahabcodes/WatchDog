@@ -108,6 +108,40 @@ exports.reconnectChild = onCall(async (request) => {
 });
 
 /**
+ * Join a child as a read-only VIEWER using its pairing code. Verifies the code
+ * and that the parent has enabled viewer access, then adds the caller's uid to
+ * the child's `viewers` list. Read-only access is enforced by security rules.
+ */
+exports.joinAsViewer = onCall(async (request) => {
+  const viewerId = request.auth && request.auth.uid;
+  if (!viewerId) throw new HttpsError("unauthenticated", "Sign in required.");
+
+  const data = request.data || {};
+  const childId = data.childId;
+  const code = data.code;
+  if (!childId || !code) {
+    throw new HttpsError("invalid-argument", "Missing childId or code.");
+  }
+
+  const childRef = db.doc(`children/${childId}`);
+  const childSnap = await childRef.get();
+  if (!childSnap.exists) throw new HttpsError("not-found", "No child found for this code.");
+  const child = childSnap.data() || {};
+
+  if ((child.pairingCode || "") !== code) {
+    throw new HttpsError("permission-denied", "That code doesn't match.");
+  }
+  const accessSnap = await db.doc(`children/${childId}/settings/viewerAccess`).get();
+  if (!(accessSnap.exists && accessSnap.data() && accessSnap.data().enabled === true)) {
+    throw new HttpsError("permission-denied", "Viewing isn't enabled for this child.");
+  }
+
+  const { FieldValue } = require("firebase-admin/firestore");
+  await childRef.update({ viewers: FieldValue.arrayUnion(viewerId) });
+  return { ok: true, childId };
+});
+
+/**
  * When the child reports a geofence enter/exit event, push a notification to
  * every linked parent's devices — honouring each place's enter/exit setting.
  *

@@ -138,7 +138,7 @@ class GeofenceSyncService : Service() {
             // key after being linked is wrapped on the next heartbeat; E2eeManager
             // keeps repeat calls near-free.
             childRepository.observeChild(childId)
-                .map { it?.linkedParents ?: emptyList() }
+                .map { (it?.linkedParents ?: emptyList()) + (it?.viewers ?: emptyList()) }
                 .collect { parents -> runCatching { e2eeManager.syncChildKeys(childId, parents) } }
         }
         scope.launch {

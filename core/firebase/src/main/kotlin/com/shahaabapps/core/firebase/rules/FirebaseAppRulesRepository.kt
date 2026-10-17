@@ -24,40 +24,91 @@ class FirebaseAppRulesRepository @Inject constructor(
 ) : AppRulesRepository {
 
     override fun observeAppRules(childId: String): Flow<List<AppRule>> = callbackFlow {
+        val viewerUid = authRepository.currentUserIdOrNull()
+        e2ee.warmReaderKey(childId, viewerUid)
         val registration = appRulesCollection(childId)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     trySend(emptyList())
                     return@addSnapshotListener
                 }
-                trySend(snapshot?.documents?.map { it.toAppRule() } ?: emptyList())
+                // Dedupe by package: a rule may briefly exist both as a legacy
+                // plaintext-id doc and as the new hashed-id encrypted doc.
+                val rules = snapshot?.documents?.mapNotNull { it.toAppRule(childId, viewerUid) }.orEmpty()
+                    .associateBy { it.packageName }.values.toList()
+                trySend(rules)
             }
         awaitClose { registration.remove() }
     }
 
     override suspend fun saveAppRule(childId: String, rule: AppRule): AppResult<Unit> =
         runCatchingResult {
-            val data = mapOf(
-                "packageName" to rule.packageName,
-                "appLabel" to rule.appLabel,
-                "dailyLimitMinutes" to rule.dailyLimitMinutes,
-                "blocked" to rule.blocked,
-                "updatedAtMillis" to System.currentTimeMillis(),
-                "schedule" to rule.schedule.map { window ->
+            // The rule's package, label, limits and schedule are sensitive. Seal them
+            // and store under a HASHED doc id so the package name isn't in the path
+            // either. updatedAtMillis stays plaintext (a non-sensitive timestamp the
+            // child compares when overriding a grant). Plaintext fallback (legacy id)
+            // when the key isn't ready.
+            val uid = authRepository.currentUserIdOrNull()
+            val json = JSONObject()
+                .put("p", rule.packageName)
+                .put("l", rule.appLabel)
+                .put("dl", rule.dailyLimitMinutes ?: -1)
+                .put("b", rule.blocked)
+                .put(
+                    "sch",
+                    JSONArray().apply {
+                        rule.schedule.forEach { w ->
+                            put(
+                                JSONObject()
+                                    .put("s", w.startMinuteOfDay)
+                                    .put("e", w.endMinuteOfDay)
+                                    .put("d", JSONArray(w.daysOfWeek.sorted())),
+                            )
+                        }
+                    },
+                )
+                .toString()
+            val sealed = e2ee.sealString(childId, uid, json)
+            if (sealed != null) {
+                appRulesCollection(childId).document(ruleDocId(rule.packageName)).set(
+                    mapOf("e" to sealed, "enc" to true, "updatedAtMillis" to System.currentTimeMillis()),
+                ).await()
+                // Remove any legacy plaintext doc keyed by the raw package name.
+                runCatching { appRulesCollection(childId).document(rule.packageName).delete().await() }
+            } else {
+                appRulesCollection(childId).document(rule.packageName).set(
                     mapOf(
-                        "startMinuteOfDay" to window.startMinuteOfDay,
-                        "endMinuteOfDay" to window.endMinuteOfDay,
-                        "daysOfWeek" to window.daysOfWeek.toList(),
-                    )
-                },
-            )
-            appRulesCollection(childId).document(rule.packageName).set(data).await()
+                        "packageName" to rule.packageName,
+                        "appLabel" to rule.appLabel,
+                        "dailyLimitMinutes" to rule.dailyLimitMinutes,
+                        "blocked" to rule.blocked,
+                        "updatedAtMillis" to System.currentTimeMillis(),
+                        "schedule" to rule.schedule.map { window ->
+                            mapOf(
+                                "startMinuteOfDay" to window.startMinuteOfDay,
+                                "endMinuteOfDay" to window.endMinuteOfDay,
+                                "daysOfWeek" to window.daysOfWeek.toList(),
+                            )
+                        },
+                    ),
+                ).await()
+            }
         }
 
     override suspend fun deleteAppRule(childId: String, packageName: String): AppResult<Unit> =
         runCatchingResult {
-            appRulesCollection(childId).document(packageName).delete().await()
+            // Delete both the hashed and any legacy plaintext-id doc for this package.
+            runCatching { appRulesCollection(childId).document(ruleDocId(packageName)).delete().await() }
+            runCatching { appRulesCollection(childId).document(packageName).delete().await() }
+            Unit
         }
+
+    /** Stable, non-reversible document id for a rule so the package isn't in the path. */
+    private fun ruleDocId(packageName: String): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(packageName.toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { "%02x".format(it) }
+    }
 
     override suspend fun reportInstalledApps(
         childId: String,
@@ -148,7 +199,32 @@ class FirebaseAppRulesRepository @Inject constructor(
     private fun appRulesCollection(childId: String) =
         firestore.collection(COLLECTION_CHILDREN).document(childId).collection(COLLECTION_APP_RULES)
 
-    private fun DocumentSnapshot.toAppRule(): AppRule {
+    private fun DocumentSnapshot.toAppRule(childId: String, viewerUid: String?): AppRule? {
+        val updatedAt = (get("updatedAtMillis") as? Long) ?: 0L
+        val sealed = getString("e")
+        if (getBoolean("enc") == true && sealed != null) {
+            val json = e2ee.openStringCached(childId, viewerUid, sealed)?.let { JSONObject(it) } ?: return null
+            val schArr = json.optJSONArray("sch")
+            val schedule = if (schArr == null) emptyList() else (0 until schArr.length()).map { i ->
+                val w = schArr.getJSONObject(i)
+                val d = w.optJSONArray("d")
+                val days = if (d == null) setOf(1, 2, 3, 4, 5, 6, 7)
+                else (0 until d.length()).map { d.getInt(it) }.toSet()
+                TimeWindow(
+                    startMinuteOfDay = w.optInt("s", 0),
+                    endMinuteOfDay = w.optInt("e", 1440),
+                    daysOfWeek = days,
+                )
+            }
+            return AppRule(
+                packageName = json.optString("p"),
+                appLabel = json.optString("l"),
+                dailyLimitMinutes = json.optInt("dl", -1).takeIf { it >= 0 },
+                schedule = schedule,
+                blocked = json.optBoolean("b", false),
+                updatedAtMillis = updatedAt,
+            )
+        }
         @Suppress("UNCHECKED_CAST")
         val scheduleRaw = get("schedule") as? List<Map<String, Any?>> ?: emptyList()
         val schedule = scheduleRaw.map { window ->
@@ -167,7 +243,7 @@ class FirebaseAppRulesRepository @Inject constructor(
             dailyLimitMinutes = (get("dailyLimitMinutes") as? Long)?.toInt(),
             schedule = schedule,
             blocked = getBoolean("blocked") ?: false,
-            updatedAtMillis = (get("updatedAtMillis") as? Long) ?: 0L,
+            updatedAtMillis = updatedAt,
         )
     }
 

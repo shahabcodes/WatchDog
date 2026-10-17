@@ -31,4 +31,7 @@ interface GeofenceRepository {
 
     /** Deletes every stored event for the child (parent "clear all" on the feed). */
     suspend fun clearEvents(childId: String): AppResult<Unit>
+
+    /** Re-saves any still-plaintext saved places so they become E2E-encrypted. */
+    suspend fun reencryptPlaintext(childId: String)
 }

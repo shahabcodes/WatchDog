@@ -79,6 +79,18 @@ class FirebaseUsageRepository @Inject constructor(
         return (get("apps") as? Map<String, Any?>).orEmpty().mapValues { (it.value as? Number)?.toInt() ?: 0 }
     }
 
+    override suspend fun reencryptPlaintext(childId: String) {
+        val viewerUid = authRepository.currentUserIdOrNull()
+        runCatching {
+            val snap = firestore.collection("children").document(childId).collection("usage").get().await()
+            snap.documents.forEach { doc ->
+                if (doc.getBoolean("enc") == true) return@forEach
+                val map = doc.decodeUsage(childId, viewerUid)
+                if (map.isNotEmpty()) reportUsage(childId, doc.id, map)
+            }
+        }
+    }
+
     private fun usageDoc(childId: String, date: String) =
         firestore.collection("children").document(childId).collection("usage").document(date)
 }

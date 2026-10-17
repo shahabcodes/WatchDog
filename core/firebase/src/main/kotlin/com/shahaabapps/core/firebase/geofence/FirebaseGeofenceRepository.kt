@@ -149,6 +149,18 @@ class FirebaseGeofenceRepository @Inject constructor(
         }.getOrNull()
     }
 
+    override suspend fun reencryptPlaintext(childId: String) {
+        val viewerUid = authRepository.currentUserIdOrNull()
+        runCatching {
+            val snap = geofences(childId).get().await()
+            snap.documents.forEach { doc ->
+                if (doc.getBoolean("enc") == true) return@forEach
+                val gf = doc.toGeofence(childId, viewerUid) ?: return@forEach
+                saveGeofence(childId, gf) // re-saves sealed to the same doc id
+            }
+        }
+    }
+
     private fun geofences(childId: String) =
         firestore.collection(CHILDREN).document(childId).collection(GEOFENCES)
 

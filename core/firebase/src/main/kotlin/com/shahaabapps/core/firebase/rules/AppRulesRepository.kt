@@ -26,4 +26,7 @@ interface AppRulesRepository {
 
     /** The child's reported apps (for the parent's picker). */
     fun observeInstalledApps(childId: String): Flow<List<InstalledApp>>
+
+    /** Re-saves any still-plaintext app rules so they become E2E-encrypted (+ hashed id). */
+    suspend fun reencryptPlaintext(childId: String)
 }

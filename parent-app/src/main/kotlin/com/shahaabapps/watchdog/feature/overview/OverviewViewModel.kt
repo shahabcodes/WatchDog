@@ -63,10 +63,16 @@ class OverviewViewModel @Inject constructor(
     geofenceRepository: GeofenceRepository,
     childRepository: ChildRepository,
     e2eeManager: com.shahaabapps.core.firebase.e2ee.E2eeManager,
+    e2eeMigrator: com.shahaabapps.core.firebase.e2ee.E2eeMigrator,
     installGuardRepository: com.shahaabapps.core.firebase.installguard.InstallGuardRepository,
 ) : ViewModel() {
 
     private val childId: String = checkNotNull(savedStateHandle["childId"])
+
+    init {
+        // One-time backfill: re-encrypt any pre-E2EE plaintext data for this child.
+        viewModelScope.launch { runCatching { e2eeMigrator.runIfNeeded(childId) } }
+    }
 
     /** Whether the parent has enabled the sideload install guard (gates the file-access permission row). */
     val installGuardEnabled: StateFlow<Boolean> = installGuardRepository.observe(childId)

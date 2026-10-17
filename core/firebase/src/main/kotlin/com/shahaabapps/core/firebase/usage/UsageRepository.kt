@@ -20,4 +20,7 @@ interface UsageRepository {
      * yyyy-MM-dd) onward, as a map of date -> total minutes. Days with no data are absent.
      */
     fun observeDailyTotals(childId: String, sinceDate: String): Flow<Map<String, Int>>
+
+    /** Re-writes any still-plaintext day docs so they become E2E-encrypted. */
+    suspend fun reencryptPlaintext(childId: String)
 }

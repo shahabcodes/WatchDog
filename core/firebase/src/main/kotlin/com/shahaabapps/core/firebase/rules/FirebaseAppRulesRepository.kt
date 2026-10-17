@@ -103,6 +103,20 @@ class FirebaseAppRulesRepository @Inject constructor(
             Unit
         }
 
+    override suspend fun reencryptPlaintext(childId: String) {
+        val viewerUid = authRepository.currentUserIdOrNull()
+        runCatching {
+            val snap = appRulesCollection(childId).get().await()
+            snap.documents.forEach { doc ->
+                if (doc.getBoolean("enc") == true) return@forEach
+                val rule = doc.toAppRule(childId, viewerUid) ?: return@forEach
+                // Re-save: writes the sealed rule under the hashed id and deletes the
+                // legacy plaintext-id doc.
+                saveAppRule(childId, rule)
+            }
+        }
+    }
+
     /** Stable, non-reversible document id for a rule so the package isn't in the path. */
     private fun ruleDocId(packageName: String): String {
         val digest = java.security.MessageDigest.getInstance("SHA-256")

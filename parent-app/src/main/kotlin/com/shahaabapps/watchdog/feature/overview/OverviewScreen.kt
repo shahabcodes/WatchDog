@@ -114,9 +114,10 @@ fun OverviewScreen(
     val keyVerified by viewModel.keyVerified.collectAsStateWithLifecycle()
     val installGuardEnabled by viewModel.installGuardEnabled.collectAsStateWithLifecycle()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val childLocation by viewModel.childLocation.collectAsStateWithLifecycle()
-    val currentPlace by viewModel.currentPlace.collectAsStateWithLifecycle()
+    // NOTE: childLocation / currentPlace are collected inside the hero item (not here)
+    // so a GPS fix only recomposes the hero, not the whole dashboard.
     val weekly by viewModel.weekly.collectAsStateWithLifecycle()
+    val weekMinutes = remember(weekly) { weekly.map { it.minutes } }
     val trackingMode by viewModel.trackingMode.collectAsStateWithLifecycle()
     val protectionVm: com.shahaabapps.watchdog.feature.protection.ProtectionViewModel = hiltViewModel()
     val protection by protectionVm.settings.collectAsStateWithLifecycle()
@@ -154,6 +155,9 @@ fun OverviewScreen(
         // Full-bleed hero: the live map runs to the top, behind the name pill
         // and the notifications bell.
         item(key = "hero") {
+            // Collected here (not at screen scope) so location fixes only recompose the hero.
+            val childLocation by viewModel.childLocation.collectAsStateWithLifecycle()
+            val currentPlace by viewModel.currentPlace.collectAsStateWithLifecycle()
             HomeHero(
                 location = childLocation,
                 place = currentPlace,
@@ -185,7 +189,7 @@ fun OverviewScreen(
                 ScreenTimeCard(
                     totalMinutes = state.screenTimeMinutes,
                     yesterdayMinutes = if (weekly.size >= 2) weekly[weekly.lastIndex - 1].minutes else null,
-                    weekMinutes = weekly.map { it.minutes },
+                    weekMinutes = weekMinutes,
                     apps = state.topApps,
                 )
             }
@@ -457,9 +461,10 @@ private fun HomeHero(
             .clickable(onClick = onOpenMap),
     ) {
         if (location != null) {
+            // Round to ~1 m so GPS jitter doesn't keep re-rendering the GL snapshot.
             com.shahaabapps.watchdog.util.OpenFreeMapSnapshot(
-                lat = location.latitude,
-                lng = location.longitude,
+                lat = kotlin.math.round(location.latitude * 100_000) / 100_000,
+                lng = kotlin.math.round(location.longitude * 100_000) / 100_000,
                 zoom = 18.5,
                 dotColor = AppTheme.colors.accent,
                 style = mapStyle,

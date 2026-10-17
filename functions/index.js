@@ -393,3 +393,71 @@ exports.notifyNewApp = onDocumentCreated(
     await Promise.all(deletions);
   }
 );
+
+/**
+ * When the child sends an "ask" (more time, unlock an app, use in school, extend
+ * bedtime), push every linked parent so they can approve/deny.
+ *
+ * Firestore trigger: children/{childId}/requests/{requestId}
+ */
+exports.notifyChildRequest = onDocumentCreated(
+  "children/{childId}/requests/{requestId}",
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+    const data = snap.data() || {};
+    if ((data.status || "PENDING") !== "PENDING") return;
+    const childId = event.params.childId;
+    const appLabel = data.appLabel || "an app";
+    const minutes = Number(data.minutes) || 0;
+
+    const childSnap = await db.doc(`children/${childId}`).get();
+    if (!childSnap.exists) return;
+    const child = childSnap.data() || {};
+    const parents = Array.isArray(child.linkedParents) ? child.linkedParents : [];
+    if (parents.length === 0) return;
+    const childName = (child.profile && child.profile.name) ? child.profile.name : "Your child";
+
+    let title;
+    switch (data.kind) {
+      case "UNLOCK_APP": title = `${childName} wants to unlock ${appLabel}`; break;
+      case "USE_IN_SCHOOL": title = `${childName} wants ${appLabel} during school`; break;
+      case "EXTEND_BEDTIME":
+        title = minutes > 0 ? `${childName} wants ${minutes} more min before bedtime` : `${childName} wants to extend bedtime`;
+        break;
+      default:
+        title = minutes > 0 ? `${childName} is asking for ${minutes} more minutes` : `${childName} sent you a request`;
+    }
+    const body = "Tap to approve or deny.";
+
+    const tokenDocs = [];
+    for (const parentId of parents) {
+      const toks = await db.collection(`users/${parentId}/fcmTokens`).get();
+      toks.forEach((d) => tokenDocs.push({ parentId, token: d.id }));
+    }
+    if (tokenDocs.length === 0) return;
+
+    const message = {
+      tokens: tokenDocs.map((t) => t.token),
+      notification: { title, body },
+      data: { type: "request", childId, requestId: event.params.requestId },
+      android: { priority: "high", notification: { channelId: "geofence_alerts" } },
+    };
+    const resp = await getMessaging().sendEachForMulticast(message);
+
+    const deletions = [];
+    resp.responses.forEach((r, i) => {
+      if (!r.success) {
+        const code = r.error && r.error.code;
+        if (
+          code === "messaging/registration-token-not-registered" ||
+          code === "messaging/invalid-argument"
+        ) {
+          const t = tokenDocs[i];
+          deletions.push(db.doc(`users/${t.parentId}/fcmTokens/${t.token}`).delete());
+        }
+      }
+    });
+    await Promise.all(deletions);
+  }
+);

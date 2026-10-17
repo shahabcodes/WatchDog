@@ -52,6 +52,7 @@ import com.shahaabapps.core.ui.theme.Spacing
 @Composable
 fun InstallGuardScreen(
     onBack: () -> Unit,
+    readOnly: Boolean = false,
     viewModel: InstallGuardViewModel = hiltViewModel(),
 ) {
     val guard by viewModel.guard.collectAsStateWithLifecycle()
@@ -103,7 +104,7 @@ fun InstallGuardScreen(
                         title = "Control sideloaded installs",
                         subtitle = "Block apps installed or updated from outside the Play Store",
                         showDivider = false,
-                        trailing = { Switch(checked = guard.enabled, onCheckedChange = viewModel::setEnabled) },
+                        trailing = { Switch(checked = guard.enabled, onCheckedChange = if (readOnly) null else viewModel::setEnabled) },
                     )
                 }
             }
@@ -118,7 +119,7 @@ fun InstallGuardScreen(
                                 subtitle = if (guard.allowlist) "Everything else is blocked from sideloading"
                                 else "Off: instead, block only the apps I pick below",
                                 showDivider = false,
-                                trailing = { Switch(checked = guard.allowlist, onCheckedChange = viewModel::setAllowlistMode) },
+                                trailing = { Switch(checked = guard.allowlist, onCheckedChange = if (readOnly) null else viewModel::setAllowlistMode) },
                             )
                         }
                     }
@@ -158,6 +159,7 @@ fun InstallGuardScreen(
                                 sub = app.packageName,
                                 checked = app.packageName in selectedSet,
                                 onCheckedChange = { viewModel.togglePackage(app.packageName, it) },
+                                enabled = !readOnly,
                             )
                         }
                     }
@@ -178,12 +180,13 @@ fun InstallGuardScreen(
                                 sub = null,
                                 checked = true,
                                 onCheckedChange = { viewModel.togglePackage(pkg, it) },
+                                enabled = !readOnly,
                             )
                         }
                     }
                 }
 
-                item(key = "addByName") {
+                if (!readOnly) item(key = "addByName") {
                     Column(modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.md)) {
                         OutlinedTextField(
                             value = newPackage,
@@ -337,6 +340,7 @@ private fun AppToggleRow(
     sub: String?,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -361,6 +365,6 @@ private fun AppToggleRow(
                 )
             }
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(checked = checked, onCheckedChange = if (enabled) onCheckedChange else null)
     }
 }

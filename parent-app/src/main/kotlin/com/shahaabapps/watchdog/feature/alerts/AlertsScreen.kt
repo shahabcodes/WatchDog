@@ -63,6 +63,7 @@ import java.util.Locale
 @Composable
 fun AlertsScreen(
     onBack: () -> Unit,
+    readOnly: Boolean = false,
     viewModel: AlertsViewModel = hiltViewModel(),
 ) {
     val items by viewModel.items.collectAsStateWithLifecycle()
@@ -82,7 +83,7 @@ fun AlertsScreen(
         androidx.compose.runtime.mutableStateOf(false)
     }
     androidx.compose.runtime.LaunchedEffect(requests) {
-        if (deepLinkHandled) return@LaunchedEffect
+        if (readOnly || deepLinkHandled) return@LaunchedEffect
         val id = viewModel.initialRequestId ?: return@LaunchedEffect
         val approve = when (viewModel.initialAction) {
             "APPROVE" -> true
@@ -178,6 +179,7 @@ fun AlertsScreen(
                     items(requests, key = { it.id }) { req ->
                         RequestCard(
                             request = req,
+                            readOnly = readOnly,
                             onApprove = { approveReq = req },
                             onDeny = { denyReq = req },
                         )
@@ -339,6 +341,7 @@ private fun RequestCard(
     request: com.shahaabapps.core.model.TimeRequest,
     onApprove: () -> Unit,
     onDeny: () -> Unit,
+    readOnly: Boolean = false,
 ) {
     Surface(
         shape = RoundedCornerShape(22.dp),
@@ -348,6 +351,15 @@ private fun RequestCard(
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Your child is asking ${request.summary}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+            // A viewer can see pending asks but not act on them.
+            if (readOnly) {
+                Text(
+                    "Waiting for a parent to decide",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = AppTheme.colors.secondaryLabel,
+                )
+                return@Column
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Box(
                     modifier = Modifier

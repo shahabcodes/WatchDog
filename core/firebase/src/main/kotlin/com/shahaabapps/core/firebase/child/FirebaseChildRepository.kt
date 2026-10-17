@@ -157,6 +157,7 @@ class FirebaseChildRepository @Inject constructor(
                 "lastChargeFromPercent" to stats.lastChargeFromPercent,
                 "lastChargeToPercent" to stats.lastChargeToPercent,
                 "hourly" to stats.hourly.map { mapOf("t" to it.atMillis, "p" to it.percent, "c" to it.tempTenthsC) },
+                "tempHistory" to stats.temperatureHistory.map { mapOf("t" to it.atMillis, "c" to it.tempTenthsC) },
             )
             childrenCollection.document(childId).set(
                 mapOf(FIELD_DEVICE to mapOf("batteryStats" to map)),
@@ -229,6 +230,8 @@ class FirebaseChildRepository @Inject constructor(
                 batteryStats = (deviceMap["batteryStats"] as? Map<*, *>)?.let { b ->
                     @Suppress("UNCHECKED_CAST")
                     val raw = b["hourly"] as? List<Map<String, Any?>> ?: emptyList()
+                    @Suppress("UNCHECKED_CAST")
+                    val rawTemp = b["tempHistory"] as? List<Map<String, Any?>> ?: emptyList()
                     BatteryStats(
                         lastChargeStartMillis = (b["lastChargeStartMillis"] as? Long) ?: 0L,
                         lastChargeEndMillis = (b["lastChargeEndMillis"] as? Long) ?: 0L,
@@ -238,6 +241,12 @@ class FirebaseChildRepository @Inject constructor(
                             BatterySample(
                                 atMillis = (it["t"] as? Long) ?: 0L,
                                 percent = (it["p"] as? Long)?.toInt() ?: 0,
+                                tempTenthsC = (it["c"] as? Long)?.toInt() ?: 0,
+                            )
+                        },
+                        temperatureHistory = rawTemp.map {
+                            BatterySample(
+                                atMillis = (it["t"] as? Long) ?: 0L,
                                 tempTenthsC = (it["c"] as? Long)?.toInt() ?: 0,
                             )
                         },

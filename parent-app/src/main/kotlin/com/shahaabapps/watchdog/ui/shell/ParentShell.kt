@@ -273,6 +273,7 @@ fun ParentShell(
             composable("installguard/{childId}", childArg) {
                 com.shahaabapps.watchdog.feature.installguard.InstallGuardScreen(
                     onBack = { navController.popBackStack() },
+                    readOnly = viewer,
                 )
             }
             composable("verify/{childId}", childArg) { entry ->
@@ -293,7 +294,7 @@ fun ParentShell(
                     navArgument("action") { type = NavType.StringType; defaultValue = "VIEW" },
                 ),
             ) {
-                AlertsScreen(onBack = { navController.popBackStack() })
+                AlertsScreen(onBack = { navController.popBackStack() }, readOnly = viewer)
             }
             composable("screentime/{childId}", childArg) { UsageScreen(onBack = { }, embedded = true) }
             composable("settings") {

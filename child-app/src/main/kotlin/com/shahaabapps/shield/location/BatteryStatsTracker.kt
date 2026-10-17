@@ -44,6 +44,15 @@ class BatteryStatsTracker(context: Context) {
             prefs.edit().putLong(KEY_LAST_BUCKET, bucket).apply()
         }
 
+        // Temperature history: a finer (~5 min) cadence so a recent-temperature
+        // curve appears within minutes; the first reading is recorded immediately.
+        var tempSeries = parseTemp(prefs.getString(KEY_TEMP_SERIES, "") ?: "")
+        val tempBucket = now - (now % TEMP_BUCKET_MS)
+        if (tempTenthsC > 0 && (tempSeries.isEmpty() || prefs.getLong(KEY_TEMP_BUCKET, -1L) != tempBucket)) {
+            tempSeries = (tempSeries + BatterySample(now, 0, tempTenthsC)).takeLast(MAX_TEMP_SAMPLES)
+            prefs.edit().putLong(KEY_TEMP_BUCKET, tempBucket).apply()
+        }
+
         prefs.edit()
             .putBoolean(KEY_WAS_CHARGING, charging)
             .putLong(KEY_CHARGE_START_MS, chargeStartMs)
@@ -53,6 +62,7 @@ class BatteryStatsTracker(context: Context) {
             .putInt(KEY_LAST_FROM, lastFrom)
             .putInt(KEY_LAST_TO, lastTo)
             .putString(KEY_HOURLY, serialize(hourly))
+            .putString(KEY_TEMP_SERIES, serializeTemp(tempSeries))
             .apply()
 
         return BatteryStats(
@@ -61,8 +71,20 @@ class BatteryStatsTracker(context: Context) {
             lastChargeFromPercent = lastFrom,
             lastChargeToPercent = lastTo,
             hourly = hourly,
+            temperatureHistory = tempSeries,
         )
     }
+
+    private fun serializeTemp(samples: List<BatterySample>): String =
+        samples.joinToString(",") { "${it.atMillis}:${it.tempTenthsC}" }
+
+    private fun parseTemp(s: String): List<BatterySample> =
+        if (s.isBlank()) emptyList() else s.split(",").mapNotNull { part ->
+            val bits = part.split(":")
+            val t = bits.getOrNull(0)?.toLongOrNull()
+            val temp = bits.getOrNull(1)?.toIntOrNull()
+            if (t != null && temp != null) BatterySample(t, 0, temp) else null
+        }
 
     private fun serialize(samples: List<BatterySample>): String =
         samples.joinToString(",") { "${it.atMillis}:${it.percent}:${it.tempTenthsC}" }
@@ -80,6 +102,10 @@ class BatteryStatsTracker(context: Context) {
     private companion object {
         const val HOUR_MS = 3_600_000L
         const val MAX_SAMPLES = 24
+        const val TEMP_BUCKET_MS = 5 * 60_000L
+        const val MAX_TEMP_SAMPLES = 24
+        const val KEY_TEMP_SERIES = "tempSeries"
+        const val KEY_TEMP_BUCKET = "tempBucket"
         const val KEY_WAS_CHARGING = "wasCharging"
         const val KEY_CHARGE_START_MS = "chargeStartMs"
         const val KEY_CHARGE_START_PCT = "chargeStartPct"

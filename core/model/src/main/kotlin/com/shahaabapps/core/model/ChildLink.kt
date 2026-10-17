@@ -57,6 +57,12 @@ data class BatteryStats(
     val lastChargeToPercent: Int = 0,
     /** Up to the last ~24 hourly readings, oldest first. */
     val hourly: List<BatterySample> = emptyList(),
+    /**
+     * Temperature history on a finer (~5 min) cadence than [hourly], so a useful
+     * recent-temperature curve appears within minutes. Each sample's [BatterySample.tempTenthsC]
+     * carries the reading. Up to ~24 samples (~2 h), oldest first.
+     */
+    val temperatureHistory: List<BatterySample> = emptyList(),
 )
 
 /**

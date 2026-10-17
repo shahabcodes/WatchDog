@@ -61,6 +61,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.Surface
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,7 +69,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -185,7 +190,7 @@ fun OverviewScreen(
         }
         // Screen time today.
         item(key = "screentime") {
-            Box(Modifier.padding(horizontal = Spacing.lg)) {
+            Box(Modifier.padding(horizontal = Spacing.lg).dashReveal()) {
                 ScreenTimeCard(
                     totalMinutes = state.screenTimeMinutes,
                     yesterdayMinutes = if (weekly.size >= 2) weekly[weekly.lastIndex - 1].minutes else null,
@@ -240,21 +245,23 @@ fun OverviewScreen(
                 }
             }
         }
-        if (!readOnly) {
-            item(key = "installs") {
-                Box(Modifier.padding(horizontal = Spacing.lg)) {
-                    DashSection("App installs") {
-                        CupertinoCard {
-                            CupertinoListRow(
-                                title = "Control app installs",
-                                subtitle = "Allow or block sideloaded apps by package",
-                                showDivider = false,
-                                onClick = onOpenInstallGuard,
-                            )
-                        }
+        // App installs — viewers can open it read-only too.
+        item(key = "installs") {
+            Box(Modifier.padding(horizontal = Spacing.lg)) {
+                DashSection("App installs") {
+                    CupertinoCard {
+                        CupertinoListRow(
+                            title = "Control app installs",
+                            subtitle = if (readOnly) "View which sideloaded apps are allowed or blocked"
+                            else "Allow or block sideloaded apps by package",
+                            showDivider = false,
+                            onClick = onOpenInstallGuard,
+                        )
                     }
                 }
             }
+        }
+        if (!readOnly) {
             item(key = "viewerAccess") {
                 Box(Modifier.padding(horizontal = Spacing.lg)) {
                     val viewerVm: com.shahaabapps.watchdog.feature.viewer.ViewerAccessViewModel = hiltViewModel()
@@ -1150,11 +1157,16 @@ private fun tempLabel(tenthsC: Int): String =
 /** Child device temperature: current reading plus the hourly history, like Battery. */
 @Composable
 private fun TemperatureCard(currentTenthsC: Int, stats: com.shahaabapps.core.model.BatteryStats?) {
-    val samples = remember(stats?.hourly) { stats?.hourly.orEmpty().filter { it.tempTenthsC > 0 } }
+    // Prefer the fine-grained temperature series; fall back to the hourly battery
+    // samples' temperature (older data) if the finer series isn't present yet.
+    val samples = remember(stats?.temperatureHistory, stats?.hourly) {
+        val fine = stats?.temperatureHistory.orEmpty().filter { it.tempTenthsC > 0 }
+        fine.ifEmpty { stats?.hourly.orEmpty().filter { it.tempTenthsC > 0 } }
+    }
     // Prefer the live heartbeat reading; fall back to the newest hourly sample.
     val current = if (currentTenthsC > 0) currentTenthsC else samples.lastOrNull()?.tempTenthsC ?: 0
     if (current <= 0) return
-    val clock = remember { java.text.SimpleDateFormat("h a", java.util.Locale.getDefault()) }
+    val clock = remember { java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault()) }
     val peak = samples.maxByOrNull { it.tempTenthsC }
     // Capture composable colours into plain locals so the non-composable tint()
     // helper can read them.
@@ -1228,14 +1240,14 @@ private fun TemperatureCard(currentTenthsC: Int, stats: com.shahaabapps.core.mod
             }
             if (!hasHistory) {
                 Text(
-                    "Collecting hourly history…",
+                    "Collecting history…",
                     style = MaterialTheme.typography.bodySmall,
                     color = AppTheme.colors.secondaryLabel,
                 )
             }
             if (hasHistory) {
             Text(
-                "Temperature over the last ${samples.size} ${if (samples.size == 1) "hour" else "hours"}",
+                "Recent temperature",
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = AppTheme.colors.accent,
@@ -1470,8 +1482,24 @@ private fun BedtimeBanner(focus: com.shahaabapps.core.model.FocusSettings) {
 
 /** A dashboard section: an uppercase header tucked tightly above its card. */
 @Composable
+/**
+ * A subtle "reveal" as a card scrolls into view: fade in + a small upward slide,
+ * once per appearance. Driven through graphicsLayer (layer phase, not recomposition)
+ * so it stays cheap.
+ */
+@Composable
+private fun Modifier.dashReveal(): Modifier {
+    val anim = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { anim.animateTo(1f, tween(durationMillis = 320, easing = FastOutSlowInEasing)) }
+    return this.graphicsLayer {
+        alpha = anim.value
+        translationY = (1f - anim.value) * 20.dp.toPx()
+    }
+}
+
+@Composable
 private fun DashSection(title: String, content: @Composable () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+    Column(modifier = Modifier.dashReveal(), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         Text(
             text = title.uppercase(),
             style = MaterialTheme.typography.labelMedium,

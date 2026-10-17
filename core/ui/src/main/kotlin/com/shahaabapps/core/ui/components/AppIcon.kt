@@ -24,6 +24,23 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
+ * Small in-memory LRU of decoded icons, keyed by the Base64 source. A list (e.g.
+ * the app picker) recycles rows as it scrolls; without this, each re-entry would
+ * re-decode the same Base64 and reallocate a bitmap, causing jank and a monogram
+ * flash. Cached icons display instantly with no re-decode.
+ */
+private const val ICON_CACHE_MAX = 256
+private val iconCache = object : LinkedHashMap<String, ImageBitmap>(ICON_CACHE_MAX, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImageBitmap>) = size > ICON_CACHE_MAX
+}
+
+@Synchronized
+private fun cachedIcon(key: String): ImageBitmap? = iconCache[key]
+
+@Synchronized
+private fun cacheIcon(key: String, value: ImageBitmap) { iconCache[key] = value }
+
+/**
  * Renders an app's icon from a Base64 image (as reported by the child), falling
  * back to a coloured monogram of the app's first letter.
  */
@@ -34,17 +51,16 @@ fun AppIcon(
     modifier: Modifier = Modifier,
     size: Dp = 40.dp,
 ) {
-    // Decode off the main thread so a card scrolling into view doesn't block the
-    // frame; the monogram shows until the bitmap is ready.
-    val image by produceState<ImageBitmap?>(initialValue = null, base64) {
-        value = base64?.let {
-            withContext(Dispatchers.Default) {
-                runCatching {
-                    val bytes = Base64.decode(it, Base64.NO_WRAP)
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
-                }.getOrNull()
-            }
-        }
+    // Reuse an already-decoded icon instantly; otherwise decode once off the main
+    // thread and cache it. The monogram shows until the bitmap is ready.
+    val image by produceState<ImageBitmap?>(initialValue = base64?.let { cachedIcon(it) }, base64) {
+        if (value != null || base64 == null) return@produceState
+        value = withContext(Dispatchers.Default) {
+            runCatching {
+                val bytes = Base64.decode(base64, Base64.NO_WRAP)
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+            }.getOrNull()
+        }?.also { cacheIcon(base64, it) }
     }
     val bmp = image
     if (bmp != null) {

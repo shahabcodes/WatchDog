@@ -186,6 +186,7 @@ private fun categoryLabel(key: String): String =
 fun GeofenceScreen(
     onBack: () -> Unit,
     showBack: Boolean = true,
+    readOnly: Boolean = false,
     viewModel: GeofenceViewModel = hiltViewModel(),
     mapStyleViewModel: com.shahaabapps.watchdog.util.MapStyleViewModel = hiltViewModel(),
 ) {
@@ -351,7 +352,7 @@ fun GeofenceScreen(
             gesturesEnabled = true,
             style = mapStyle,
             onMapClick = { lat, lng ->
-                if (!historyMode) {
+                if (!historyMode && !readOnly) {
                     when (mode) {
                         DrawMode.PIN -> { pending = lat to lng; showCircleSheet = true }
                         DrawMode.AREA -> { area = area + (lat to lng) }
@@ -495,12 +496,14 @@ fun GeofenceScreen(
                     onHistory = { historyMode = true },
                 )
                 Spacer(Modifier.weight(1f))
-                // Round + button in both modes; tap to pick what to add.
-                AddPlaceChip(
-                    mode = mode,
-                    selectedIcon = selectedIcon,
-                    onClick = { showCategorySheet = true },
-                )
+                // Round + button in both modes; tap to pick what to add. Hidden for viewers.
+                if (!readOnly) {
+                    AddPlaceChip(
+                        mode = mode,
+                        selectedIcon = selectedIcon,
+                        onClick = { showCategorySheet = true },
+                    )
+                }
             }
 
             if (historyMode) {

@@ -80,18 +80,69 @@ private val LABEL = Color(0xFF4A5878)
  * / reset form. Welcome is the entry; the form's back button returns to it.
  */
 @Composable
-fun AuthFlow(viewModel: AuthViewModel = hiltViewModel()) {
+fun AuthFlow(
+    viewModel: AuthViewModel = hiltViewModel(),
+    joinState: com.shahaabapps.watchdog.ui.ViewerJoinState = com.shahaabapps.watchdog.ui.ViewerJoinState.Idle,
+    onJoinAsViewer: (String) -> Unit = {},
+    onClearJoinError: () -> Unit = {},
+) {
     var showWelcome by rememberSaveable { mutableStateOf(true) }
+    var showViewerDialog by rememberSaveable { mutableStateOf(false) }
     com.shahaabapps.core.ui.theme.LighthouseType {
         if (showWelcome) {
             WelcomeScreen(
                 onCreateAccount = { viewModel.setMode(AuthMode.SIGN_UP); showWelcome = false },
                 onSignIn = { viewModel.setMode(AuthMode.SIGN_IN); showWelcome = false },
+                onViewWithCode = { showViewerDialog = true },
             )
         } else {
             AuthScreen(onBack = { showWelcome = true }, viewModel = viewModel)
         }
     }
+    if (showViewerDialog) {
+        ViewerJoinDialog(
+            joinState = joinState,
+            onJoin = onJoinAsViewer,
+            onDismiss = { showViewerDialog = false; onClearJoinError() },
+        )
+    }
+}
+
+@Composable
+private fun ViewerJoinDialog(
+    joinState: com.shahaabapps.watchdog.ui.ViewerJoinState,
+    onJoin: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var code by rememberSaveable { mutableStateOf("") }
+    val joining = joinState is com.shahaabapps.watchdog.ui.ViewerJoinState.Joining
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = { if (!joining) onDismiss() },
+        confirmButton = {
+            androidx.compose.material3.TextButton(
+                onClick = { onJoin(code) },
+                enabled = code.isNotBlank() && !joining,
+            ) { Text(if (joining) "Joining…" else "View") }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss, enabled = !joining) { Text("Cancel") }
+        },
+        title = { Text("View with a code") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Enter the pairing code from the Shield app. You'll see everything, read-only.")
+                androidx.compose.material3.OutlinedTextField(
+                    value = code,
+                    onValueChange = { code = it.uppercase() },
+                    singleLine = true,
+                    label = { Text("Pairing code") },
+                )
+                (joinState as? com.shahaabapps.watchdog.ui.ViewerJoinState.Error)?.let {
+                    Text(it.message, color = Color(0xFFC1362B))
+                }
+            }
+        },
+    )
 }
 
 /**
@@ -144,7 +195,7 @@ private fun LighthouseScene(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun WelcomeScreen(onCreateAccount: () -> Unit, onSignIn: () -> Unit) {
+private fun WelcomeScreen(onCreateAccount: () -> Unit, onSignIn: () -> Unit, onViewWithCode: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -192,6 +243,14 @@ private fun WelcomeScreen(onCreateAccount: () -> Unit, onSignIn: () -> Unit) {
             color = SUBTITLE,
             fontSize = 13.sp,
             textAlign = TextAlign.Center,
+        )
+        Text(
+            "View with a pairing code",
+            color = GOLD,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.clickable(onClick = onViewWithCode),
         )
     }
 }

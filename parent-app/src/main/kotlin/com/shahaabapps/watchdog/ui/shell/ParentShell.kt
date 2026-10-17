@@ -112,6 +112,7 @@ private enum class Tab(val route: String, val label: String, val icon: ImageVect
 @Composable
 fun ParentShell(
     profile: UserProfile,
+    viewer: Boolean = false,
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val children by viewModel.children.collectAsStateWithLifecycle()
@@ -150,7 +151,11 @@ fun ParentShell(
 
     if (children.isEmpty()) {
         com.shahaabapps.core.ui.theme.LighthouseType {
-            AddChildScreen(profile = profile, linkState = linkState, viewModel = viewModel)
+            if (viewer) {
+                ViewerEmptyScreen(onSignOut = { viewModel.signOut() })
+            } else {
+                AddChildScreen(profile = profile, linkState = linkState, viewModel = viewModel)
+            }
         }
         return
     }
@@ -243,6 +248,7 @@ fun ParentShell(
                     onSignOut = { viewModel.signOut() },
                     onVerifyConnection = { navController.navigate("verify/$currentChildId") },
                     onOpenInstallGuard = { navController.navigate("installguard/$currentChildId") },
+                    readOnly = viewer,
                 )
             }
             composable("installguard/{childId}", childArg) {
@@ -259,7 +265,7 @@ fun ParentShell(
                     )
                 }
             }
-            composable("map/{childId}", childArg) { GeofenceScreen(onBack = { }, showBack = false) }
+            composable("map/{childId}", childArg) { GeofenceScreen(onBack = { }, showBack = false, readOnly = viewer) }
             composable("alerts/{childId}", childArg) {
                 AlertsScreen(onBack = { navController.popBackStack() })
             }
@@ -376,6 +382,48 @@ private fun ConnectedChildScreen(childName: String?, onContinue: () -> Unit) {
             contentAlignment = Alignment.Center,
         ) {
             Text("Open the family map", color = navy, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+/** Shown to a read-only viewer who isn't (yet) sharing any child's data. */
+@Composable
+private fun ViewerEmptyScreen(onSignOut: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF00133F))
+            .statusBarsPadding()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            "Nothing shared yet",
+            color = Color.White,
+            fontFamily = AppFonts.lighthouse,
+            fontSize = 26.sp,
+            fontWeight = FontWeight.ExtraBold,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "Ask the parent to turn on “Let this child see their own data”, then rejoin with the pairing code.",
+            color = Color(0xFFC7D3F0),
+            fontSize = 15.sp,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(24.dp))
+        Box(
+            modifier = Modifier
+                .height(52.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .border(BorderStroke(1.5.dp, Color(0xFF3A5AA8)), RoundedCornerShape(16.dp))
+                .clickable(onClick = onSignOut)
+                .padding(horizontal = 28.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("Sign out", color = Color.White, fontWeight = FontWeight.SemiBold)
         }
     }
 }

@@ -64,7 +64,12 @@ class DashboardViewModel @Inject constructor(
 
     val children: StateFlow<List<ChildAccount>> = authRepository.currentUserId
         .flatMapLatest { uid ->
-            if (uid == null) flowOf(emptyList()) else childRepository.observeLinkedChildren(uid)
+            when {
+                uid == null -> flowOf(emptyList())
+                // A viewer (anonymous) session observes the children it may view.
+                authRepository.isAnonymous() -> childRepository.observeViewableChildren(uid)
+                else -> childRepository.observeLinkedChildren(uid)
+            }
         }
         .stateIn(
             scope = viewModelScope,
@@ -79,7 +84,11 @@ class DashboardViewModel @Inject constructor(
      */
     val loading: StateFlow<Boolean> = authRepository.currentUserId
         .flatMapLatest { uid ->
-            if (uid == null) flowOf(true) else childRepository.observeLinkedChildren(uid).map { false }
+            when {
+                uid == null -> flowOf(true)
+                authRepository.isAnonymous() -> childRepository.observeViewableChildren(uid).map { false }
+                else -> childRepository.observeLinkedChildren(uid).map { false }
+            }
         }
         .stateIn(
             scope = viewModelScope,

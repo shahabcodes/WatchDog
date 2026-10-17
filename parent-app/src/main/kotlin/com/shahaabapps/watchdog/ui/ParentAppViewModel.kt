@@ -25,12 +25,21 @@ sealed interface ParentAppState {
     data object SignedOut : ParentAppState
     data class NeedsProfile(val userId: String) : ParentAppState
     data class Ready(val profile: UserProfile) : ParentAppState
+    /** Anonymous read-only observer (joined with a pairing code). */
+    data object Viewer : ParentAppState
+}
+
+/** Progress of a "join as viewer" attempt. */
+sealed interface ViewerJoinState {
+    data object Idle : ViewerJoinState
+    data object Joining : ViewerJoinState
+    data class Error(val message: String) : ViewerJoinState
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ParentAppViewModel @Inject constructor(
-    authRepository: AuthRepository,
+    private val authRepository: AuthRepository,
     profileRepository: ProfileRepository,
     private val messagingTokenRepository: MessagingTokenRepository,
 ) : ViewModel() {
@@ -47,10 +56,11 @@ class ParentAppViewModel @Inject constructor(
 
     val state: StateFlow<ParentAppState> = authRepository.currentUserId
         .flatMapLatest { userId ->
-            if (userId == null) {
-                flowOf(ParentAppState.SignedOut)
-            } else {
-                profileRepository.observeProfile(userId).map { profile ->
+            when {
+                userId == null -> flowOf(ParentAppState.SignedOut)
+                // Anonymous session = a read-only viewer (joined with a pairing code).
+                authRepository.isAnonymous() -> flowOf(ParentAppState.Viewer)
+                else -> profileRepository.observeProfile(userId).map { profile ->
                     if (profile == null || profile.name.isBlank()) {
                         ParentAppState.NeedsProfile(userId)
                     } else {
@@ -64,4 +74,38 @@ class ParentAppViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = ParentAppState.Loading,
         )
+
+    private val _joinState = kotlinx.coroutines.flow.MutableStateFlow<ViewerJoinState>(ViewerJoinState.Idle)
+    val joinState: StateFlow<ViewerJoinState> = _joinState
+
+    /**
+     * Join a child as a read-only viewer with its pairing [code]. Runs on the
+     * app-scoped VM so the sign-in + function call survive the screen swap that
+     * anonymous sign-in triggers.
+     */
+    fun joinAsViewer(code: String) {
+        if (_joinState.value == ViewerJoinState.Joining) return
+        _joinState.value = ViewerJoinState.Joining
+        viewModelScope.launch {
+            // Ensure signed in (anonymously) so the callable has an auth context.
+            if (authRepository.currentUserIdOrNull() == null) {
+                authRepository.signInAnonymously()
+            }
+            val result = runCatching {
+                com.google.firebase.functions.FirebaseFunctions.getInstance()
+                    .getHttpsCallable("joinAsViewer")
+                    .call(hashMapOf("code" to code.trim()))
+                    .await()
+            }
+            result.onSuccess {
+                _joinState.value = ViewerJoinState.Idle // state flips to Viewer via auth flow
+            }.onFailure { e ->
+                // Roll back the anonymous session so the user returns to sign-in.
+                runCatching { authRepository.signOut() }
+                _joinState.value = ViewerJoinState.Error(e.message ?: "Couldn't join. Check the code.")
+            }
+        }
+    }
+
+    fun clearJoinError() { _joinState.value = ViewerJoinState.Idle }
 }

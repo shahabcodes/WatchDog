@@ -36,6 +36,7 @@ fun InstallGuardScreen(
     val apps by viewModel.installedApps.collectAsStateWithLifecycle()
     var query by remember { mutableStateOf("") }
     var selectedFirst by remember { mutableStateOf(true) }
+    var newPackage by remember { mutableStateOf("") }
     val visibleApps = remember(apps, guard.packages, query, selectedFirst) {
         val q = query.trim().lowercase()
         apps
@@ -134,6 +135,48 @@ fun InstallGuardScreen(
                         }
                     }
                 }
+
+                // Packages added by name that aren't in the reported app list — so
+                // you can pre-authorize apps that aren't installed yet.
+                val typedPackages = guard.packages.filter { pkg -> apps.none { it.packageName == pkg } }
+                if (typedPackages.isNotEmpty()) {
+                    SectionHeader(
+                        text = "Added by package name",
+                        modifier = Modifier.padding(start = Spacing.md, top = Spacing.md, bottom = Spacing.xs),
+                    )
+                    CupertinoCard {
+                        typedPackages.forEachIndexed { index, pkg ->
+                            CupertinoListRow(
+                                title = pkg,
+                                showDivider = index < typedPackages.lastIndex,
+                                trailing = {
+                                    Switch(checked = true, onCheckedChange = { viewModel.togglePackage(pkg, it) })
+                                },
+                            )
+                        }
+                    }
+                }
+
+                // Add a package by name (for apps not installed yet, e.g. com.android.chrome).
+                OutlinedTextField(
+                    value = newPackage,
+                    onValueChange = { newPackage = it.trim() },
+                    singleLine = true,
+                    label = { Text("Add a package name") },
+                    placeholder = { Text("com.android.chrome") },
+                    modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
+                )
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        if (newPackage.isNotBlank()) {
+                            viewModel.togglePackage(newPackage.trim(), true)
+                            newPackage = ""
+                        }
+                    },
+                    enabled = newPackage.isNotBlank(),
+                    modifier = Modifier.align(androidx.compose.ui.Alignment.End),
+                ) { Text(if (guard.allowlist) "Allow this package" else "Block this package") }
+
                 Text(
                     buildString {
                         append("Matches by the app's real package name from the downloaded APK, so a renamed copy can't slip through. ")

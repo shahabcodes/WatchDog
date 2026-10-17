@@ -34,9 +34,13 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         val now = System.currentTimeMillis()
 
         // Accuracy gate: near a small place, a fuzzy fix can appear inside/outside
-        // when it isn't. Ignore transitions from untrustworthy fixes.
+        // when it isn't. Ignore transitions from untrustworthy fixes. Departures get
+        // a stricter gate — a phantom overnight "left" from a drifted low-power fix is
+        // the usual cause of repeat home visits, so an EXIT must come from a confident fix.
         val triggerLoc = event.triggeringLocation
-        if (triggerLoc != null && triggerLoc.hasAccuracy() && triggerLoc.accuracy > ACCURACY_MAX_METERS) return
+        val acc = triggerLoc?.takeIf { it.hasAccuracy() }?.accuracy
+        if (acc != null && acc > ACCURACY_MAX_METERS) return
+        if (gmsTransition == GmsGeofence.GEOFENCE_TRANSITION_EXIT && acc != null && acc > EXIT_ACCURACY_MAX_METERS) return
 
         // Map Play Services transitions to our model, honouring the inner/outer
         // geofence design: DWELL on the inner fence = "arrived", EXIT on the
@@ -94,5 +98,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
     private companion object {
         // A fix fuzzier than this can't be trusted to decide inside/outside.
         const val ACCURACY_MAX_METERS = 120f
+        // Departures need a confident fix (the 100 m exit buffer must mean something).
+        const val EXIT_ACCURACY_MAX_METERS = 60f
     }
 }

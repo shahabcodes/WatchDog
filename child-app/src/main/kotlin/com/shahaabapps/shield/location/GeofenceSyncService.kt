@@ -82,6 +82,8 @@ class GeofenceSyncService : Service() {
     @Volatile
     private var activeGeofences: List<Geofence> = emptyList()
     private val dwellSince = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    /** When the device first went confidently beyond a place's exit buffer (for sustained-exit confirmation). */
+    private val exitSince = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     // Battery sampling for the drain-rate estimate reported to the parent.
     private var lastBatteryPct = -1
@@ -469,11 +471,15 @@ class GeofenceSyncService : Service() {
             } else {
                 distToCenter <= g.radiusMeters
             }
-            val beyondExit = distToCenter > g.radiusMeters + EXIT_BUFFER_METERS
+            // Account for the fix's own uncertainty: only "beyond exit" when the
+            // device is CONFIDENTLY past the buffer, so a single fuzzy overnight fix
+            // can't trip a phantom departure.
+            val beyondExit = distToCenter - acc.coerceAtLeast(0f) > g.radiusMeters + EXIT_BUFFER_METERS
             val wasInside = GeofenceStateStore.isInside(this, g.id)
 
             when {
                 inside && !wasInside -> {
+                    exitSince.remove(g.id)
                     val since = dwellSince.getOrPut(g.id) { now }
                     if (now - since >= DWELL_DELAY_MS) {
                         dwellSince.remove(g.id)
@@ -481,13 +487,24 @@ class GeofenceSyncService : Service() {
                         if (wantsEnter) reportTransition(childId, g, GeofenceTransition.ENTER, lat, lng, now)
                     }
                 }
-                inside -> dwellSince.remove(g.id) // already inside / counted
+                inside -> { // confidently back inside → cancel any pending exit
+                    dwellSince.remove(g.id)
+                    exitSince.remove(g.id)
+                }
                 else -> {
                     dwellSince.remove(g.id) // left before dwelling → cancel pending arrival
                     if (wasInside && beyondExit) {
-                        GeofenceStateStore.setInside(this, g.id, false)
-                        if (wantsExit) reportTransition(childId, g, GeofenceTransition.EXIT, lat, lng, now)
+                        // Require staying beyond the buffer for a confirmation window
+                        // (like the arrival dwell) before declaring a departure.
+                        val since = exitSince.getOrPut(g.id) { now }
+                        if (now - since >= EXIT_CONFIRM_MS) {
+                            exitSince.remove(g.id)
+                            GeofenceStateStore.setInside(this, g.id, false)
+                            if (wantsExit) reportTransition(childId, g, GeofenceTransition.EXIT, lat, lng, now)
+                        }
                     }
+                    // In the hysteresis band (not confidently beyond): keep any pending
+                    // exit timer, report nothing — avoids boundary flip-flop.
                 }
             }
         }
@@ -634,7 +651,8 @@ class GeofenceSyncService : Service() {
         // Jitter filtering (Phase 1 + 2).
         private const val ACCURACY_MAX_METERS = 50f   // drop fixes worse than this (stationary)
         private const val ACCURACY_MAX_MOVING_METERS = 120f // relaxed while travelling
-        private const val GEO_ACCURACY_MAX_METERS = 120f // max fix fuzziness for geofence enter/exit
+        private const val GEO_ACCURACY_MAX_METERS = 75f // max fix fuzziness for geofence enter/exit
+        private const val EXIT_CONFIRM_MS = 120_000L // must stay beyond the exit buffer this long to count as "left"
         private const val DRAIN_WINDOW_HOURS = 0.25 // ≥15 min window for a stable drain rate
         // Adaptive high-accuracy sampling while moving (dense), vs balanced when still.
         private const val DENSE_INTERVAL_MS = 8_000L

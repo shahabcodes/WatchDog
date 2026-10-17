@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.LockReset
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,6 +39,7 @@ import com.shahaabapps.watchdog.util.MapStyle
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onOpenSecurity: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val mode by viewModel.themeMode.collectAsStateWithLifecycle()
@@ -94,6 +96,12 @@ fun SettingsScreen(
 
         CupertinoCard(modifier = Modifier.padding(horizontal = Spacing.lg)) {
             if (viewModel.email != null) {
+                CupertinoListRow(
+                    title = "Two-factor authentication",
+                    subtitle = "Protect sign-in with an authenticator app",
+                    leadingIcon = Icons.Filled.Shield,
+                    onClick = onOpenSecurity,
+                )
                 CupertinoListRow(
                     title = if (sendingReset) "Sending reset link…" else "Reset password",
                     subtitle = viewModel.email,

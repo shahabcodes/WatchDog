@@ -298,7 +298,13 @@ fun ParentShell(
             }
             composable("screentime/{childId}", childArg) { UsageScreen(onBack = { }, embedded = true) }
             composable("settings") {
-                SettingsScreen(onBack = { navController.popBackStack() })
+                SettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenSecurity = { navController.navigate("security") },
+                )
+            }
+            composable("security") {
+                com.shahaabapps.watchdog.feature.security.MfaScreen(onBack = { navController.popBackStack() })
             }
             composable("manage") {
                 ManageChildrenScreen(

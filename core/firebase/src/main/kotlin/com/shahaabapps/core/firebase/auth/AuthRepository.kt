@@ -22,9 +22,34 @@ interface AuthRepository {
 
     suspend fun signUpWithEmail(email: String, password: String): AppResult<String>
 
-    suspend fun signInWithEmail(email: String, password: String): AppResult<String>
+    /**
+     * Signs in with email/password. If the account has TOTP MFA enrolled, returns
+     * [SignInOutcome.MfaRequired] (the pending resolver is held internally) — finish
+     * with [resolveMfa]. Otherwise [SignInOutcome.Success].
+     */
+    suspend fun signInWithEmail(email: String, password: String): AppResult<SignInOutcome>
+
+    /** Completes an MFA-gated sign-in with the 6-digit TOTP [code]. */
+    suspend fun resolveMfa(code: String): AppResult<String>
 
     suspend fun signInAnonymously(): AppResult<String>
+
+    // --- TOTP multi-factor (parent accounts, opt-in) ---
+
+    /** True when the signed-in user has a second factor enrolled. */
+    fun isMfaEnrolled(): Boolean
+
+    /** Re-authenticates the current user with their password (for recent-login-required ops). */
+    suspend fun reauthenticate(password: String): AppResult<Unit>
+
+    /** Begins TOTP enrollment: returns the QR/shared-key to add to an authenticator app. */
+    suspend fun beginTotpEnrollment(): AppResult<TotpEnrollment>
+
+    /** Finalizes the enrollment started by [beginTotpEnrollment] using the current 6-digit [code]. */
+    suspend fun confirmTotpEnrollment(code: String): AppResult<Unit>
+
+    /** Removes all enrolled second factors (turns MFA off). */
+    suspend fun disableMfa(): AppResult<Unit>
 
     /** Sends a password-reset email to [email]. */
     suspend fun sendPasswordReset(email: String): AppResult<Unit>

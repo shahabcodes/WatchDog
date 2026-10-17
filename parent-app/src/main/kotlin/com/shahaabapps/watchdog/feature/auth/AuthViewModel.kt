@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.shahaabapps.core.common.AppResult
 import com.shahaabapps.core.firebase.auth.AuthRepository
+import com.shahaabapps.core.firebase.auth.SignInOutcome
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,6 +23,9 @@ data class AuthUiState(
     val isSubmitting: Boolean = false,
     val errorMessage: String? = null,
     val infoMessage: String? = null,
+    /** Sign-in hit a TOTP second factor; show the 6-digit code step. */
+    val mfaRequired: Boolean = false,
+    val mfaCode: String = "",
 ) {
     val isSignUp: Boolean get() = mode == AuthMode.SIGN_UP
     val isForgot: Boolean get() = mode == AuthMode.FORGOT
@@ -81,18 +85,48 @@ class AuthViewModel @Inject constructor(
                     }
                 }
                 else -> {
-                    val result = if (current.isSignUp) {
-                        authRepository.signUpWithEmail(current.email, current.password)
+                    if (current.isSignUp) {
+                        when (val result = authRepository.signUpWithEmail(current.email, current.password)) {
+                            is AppResult.Success -> _uiState.update { it.copy(isSubmitting = false) }
+                            is AppResult.Failure -> _uiState.update {
+                                it.copy(isSubmitting = false, errorMessage = result.error.message ?: "Authentication failed")
+                            }
+                        }
                     } else {
-                        authRepository.signInWithEmail(current.email, current.password)
-                    }
-                    when (result) {
-                        is AppResult.Success -> _uiState.update { it.copy(isSubmitting = false) }
-                        is AppResult.Failure -> _uiState.update {
-                            it.copy(isSubmitting = false, errorMessage = result.error.message ?: "Authentication failed")
+                        when (val result = authRepository.signInWithEmail(current.email, current.password)) {
+                            is AppResult.Success -> when (result.data) {
+                                is SignInOutcome.Success -> _uiState.update { it.copy(isSubmitting = false) }
+                                SignInOutcome.MfaRequired -> _uiState.update {
+                                    it.copy(isSubmitting = false, mfaRequired = true, mfaCode = "")
+                                }
+                            }
+                            is AppResult.Failure -> _uiState.update {
+                                it.copy(isSubmitting = false, errorMessage = result.error.message ?: "Authentication failed")
+                            }
                         }
                     }
                     // On success the top-level ParentAppViewModel reacts to the auth state change.
+                }
+            }
+        }
+    }
+
+    fun onMfaCodeChange(value: String) =
+        _uiState.update { it.copy(mfaCode = value.filter { c -> c.isDigit() }.take(6), errorMessage = null) }
+
+    /** Cancel the MFA step and return to the sign-in form. */
+    fun cancelMfa() = _uiState.update { it.copy(mfaRequired = false, mfaCode = "", errorMessage = null) }
+
+    /** Submit the 6-digit authenticator code to finish an MFA-gated sign-in. */
+    fun submitMfa() {
+        val code = _uiState.value.mfaCode
+        if (code.length != 6 || _uiState.value.isSubmitting) return
+        _uiState.update { it.copy(isSubmitting = true, errorMessage = null) }
+        viewModelScope.launch {
+            when (val result = authRepository.resolveMfa(code)) {
+                is AppResult.Success -> _uiState.update { it.copy(isSubmitting = false, mfaRequired = false) }
+                is AppResult.Failure -> _uiState.update {
+                    it.copy(isSubmitting = false, errorMessage = result.error.message ?: "Incorrect code")
                 }
             }
         }

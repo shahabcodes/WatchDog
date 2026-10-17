@@ -353,6 +353,40 @@ fun AuthScreen(
                 .padding(start = 24.dp, end = 24.dp, top = 26.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            // Two-factor step: shown after a correct password when the account has an
+            // authenticator app enrolled.
+            if (state.mfaRequired) {
+                FieldLabel("Verification code")
+                Text(
+                    "Enter the 6-digit code from your authenticator app.",
+                    color = LABEL,
+                    fontSize = 14.sp,
+                )
+                LhField(
+                    value = state.mfaCode,
+                    onValueChange = viewModel::onMfaCodeChange,
+                    placeholder = "123456",
+                    keyboardType = KeyboardType.Number,
+                )
+                state.errorMessage?.let {
+                    Text(it, color = Color(0xFFC1362B), fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                }
+                GoldButton(
+                    text = "Verify",
+                    enabled = state.mfaCode.length == 6 && !state.isSubmitting,
+                    loading = state.isSubmitting,
+                    onClick = viewModel::submitMfa,
+                )
+                Text(
+                    "Use a different account",
+                    color = NAVY,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.CenterHorizontally).clickable { viewModel.cancelMfa() },
+                )
+                return@Column
+            }
+
             val forgotSent = state.isForgot && state.infoMessage != null
             if (!forgotSent) {
                 FieldLabel("Email")

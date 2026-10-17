@@ -212,8 +212,18 @@ class EnforcementService : AccessibilityService() {
         }
     }
 
-    /** True when [pkg] was installed from somewhere other than the Play Store. */
+    /**
+     * True when [pkg] is a user-installed app that did NOT come from the Play
+     * Store. System / pre-installed apps (launcher, dialer, settings…) are never
+     * treated as sideloaded, so allowlist mode can't block them and brick the
+     * device. A non-system app with a null/other installer (incl. adb) counts as
+     * sideloaded.
+     */
     private fun isSideloaded(pkg: String): Boolean = sideloadedCache.getOrPut(pkg) {
+        val appInfo = runCatching { packageManager.getApplicationInfo(pkg, 0) }.getOrNull()
+        val systemFlags = android.content.pm.ApplicationInfo.FLAG_SYSTEM or
+            android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP
+        if (appInfo == null || (appInfo.flags and systemFlags) != 0) return@getOrPut false
         val installer = runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 packageManager.getInstallSourceInfo(pkg).installingPackageName

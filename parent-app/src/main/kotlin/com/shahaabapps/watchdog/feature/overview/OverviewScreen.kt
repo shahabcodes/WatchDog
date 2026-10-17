@@ -1480,8 +1480,6 @@ private fun BedtimeBanner(focus: com.shahaabapps.core.model.FocusSettings) {
     }
 }
 
-/** A dashboard section: an uppercase header tucked tightly above its card. */
-@Composable
 /**
  * A subtle "reveal" as a card scrolls into view: fade in + a small upward slide,
  * once per appearance. Driven through graphicsLayer (layer phase, not recomposition)

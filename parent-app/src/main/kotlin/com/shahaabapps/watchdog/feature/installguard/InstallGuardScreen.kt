@@ -3,13 +3,21 @@ package com.shahaabapps.watchdog.feature.installguard
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -21,10 +29,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shahaabapps.core.model.InstalledApp
+import com.shahaabapps.core.ui.components.AppIcon
 import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.components.CupertinoListRow
 import com.shahaabapps.core.ui.components.GuardianHeader
@@ -43,14 +53,17 @@ fun InstallGuardScreen(
     var selectedFirst by remember { mutableStateOf(true) }
     var newPackage by remember { mutableStateOf("") }
 
-    // Derived once per input change, not per row — keeps scrolling/typing smooth.
+    // Live set for the checkmarks (updates instantly on toggle).
     val selectedSet = remember(guard.packages) { guard.packages.toHashSet() }
-    val visibleApps = remember(apps, selectedSet, query, selectedFirst) {
+    // Ordering is SNAPSHOTTED (keyed on query/selectedFirst, not on packages) so
+    // toggling a row never re-sorts/reorders the list — that reorder was the lag.
+    val orderSelected = remember(selectedFirst, query) { if (selectedFirst) guard.packages.toHashSet() else emptySet() }
+    val visibleApps = remember(apps, query, orderSelected) {
         val q = query.trim().lowercase()
         apps
             .filter { q.isEmpty() || it.label.lowercase().contains(q) || it.packageName.lowercase().contains(q) }
             .sortedWith(
-                compareByDescending<InstalledApp> { if (selectedFirst) it.packageName in selectedSet else false }
+                compareByDescending<InstalledApp> { it.packageName in orderSelected }
                     .thenBy { it.label.ifBlank { it.packageName }.lowercase() },
             )
     }
@@ -100,12 +113,9 @@ fun InstallGuardScreen(
                             text = if (guard.allowlist) "Allowed to install" else "Blocked from installing",
                             modifier = Modifier.padding(start = Spacing.md, bottom = Spacing.xs),
                         )
-                        OutlinedTextField(
+                        SearchField(
                             value = query,
                             onValueChange = { query = it },
-                            singleLine = true,
-                            label = { Text("Search apps") },
-                            shape = RoundedCornerShape(14.dp),
                             modifier = Modifier.fillMaxWidth().padding(bottom = Spacing.sm),
                         )
                         RowCard(top = true, bottom = query.isBlank() && visibleApps.isEmpty()) {
@@ -131,16 +141,12 @@ fun InstallGuardScreen(
                 } else {
                     items(visibleApps, key = { it.packageName }) { app ->
                         RowCard(horizontal = true) {
-                            CupertinoListRow(
-                                title = app.label.ifBlank { app.packageName },
-                                subtitle = app.packageName,
-                                showDivider = false,
-                                trailing = {
-                                    Switch(
-                                        checked = app.packageName in selectedSet,
-                                        onCheckedChange = { viewModel.togglePackage(app.packageName, it) },
-                                    )
-                                },
+                            AppToggleRow(
+                                icon = app.icon,
+                                label = app.label.ifBlank { app.packageName },
+                                sub = app.packageName,
+                                checked = app.packageName in selectedSet,
+                                onCheckedChange = { viewModel.togglePackage(app.packageName, it) },
                             )
                         }
                     }
@@ -155,10 +161,12 @@ fun InstallGuardScreen(
                     }
                     items(typedPackages, key = { "typed_$it" }) { pkg ->
                         RowCard(horizontal = true) {
-                            CupertinoListRow(
-                                title = pkg,
-                                showDivider = false,
-                                trailing = { Switch(checked = true, onCheckedChange = { viewModel.togglePackage(pkg, it) }) },
+                            AppToggleRow(
+                                icon = null,
+                                label = pkg,
+                                sub = null,
+                                checked = true,
+                                onCheckedChange = { viewModel.togglePackage(pkg, it) },
                             )
                         }
                     }
@@ -230,4 +238,67 @@ private fun RowCard(
             .clip(shape)
             .background(AppTheme.colors.card),
     ) { content() }
+}
+
+/** A rounded, icon-led search bar with a clear button. */
+@Composable
+private fun SearchField(value: String, onValueChange: (String) -> Unit, modifier: Modifier = Modifier) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        singleLine = true,
+        shape = RoundedCornerShape(16.dp),
+        placeholder = { Text("Search apps") },
+        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = AppTheme.colors.secondaryLabel) },
+        trailingIcon = {
+            if (value.isNotEmpty()) {
+                IconButton(onClick = { onValueChange("") }) {
+                    Icon(Icons.Filled.Close, contentDescription = "Clear", tint = AppTheme.colors.secondaryLabel)
+                }
+            }
+        },
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = AppTheme.colors.card,
+            unfocusedContainerColor = AppTheme.colors.card,
+            focusedBorderColor = AppTheme.colors.accent,
+            unfocusedBorderColor = AppTheme.colors.separator,
+        ),
+        modifier = modifier,
+    )
+}
+
+/** An app row: launcher icon, name + package, and a toggle. */
+@Composable
+private fun AppToggleRow(
+    icon: String?,
+    label: String,
+    sub: String?,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md, vertical = 8.dp),
+    ) {
+        AppIcon(base64 = icon, label = label, size = 38.dp)
+        Column(modifier = Modifier.weight(1f).padding(horizontal = Spacing.md)) {
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (sub != null) {
+                Text(
+                    sub,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.secondaryLabel,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
 }

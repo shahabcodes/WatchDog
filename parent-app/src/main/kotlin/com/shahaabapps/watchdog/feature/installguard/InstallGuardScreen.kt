@@ -135,9 +135,16 @@ fun InstallGuardScreen(
                     }
                 }
                 Text(
-                    "Matches by the app's real package name read from the downloaded APK, so a " +
-                        "renamed copy can't slip through. Installs from a computer (USB/adb) can't be " +
-                        "stopped this way — you'll be notified instead. Requires All-files access on the child device.",
+                    buildString {
+                        append("Matches by the app's real package name from the downloaded APK, so a renamed copy can't slip through. ")
+                        if (guard.allowlist) {
+                            append("Only these apps can be installed/updated from unknown sources; other new sideloads are blocked at download. ")
+                            append("Apps already on the phone (and all system apps) keep working. ")
+                        } else {
+                            append("These apps are blocked from being installed/updated from unknown sources, and are stopped from opening if already sideloaded. ")
+                        }
+                        append("Installs from a computer (USB/adb) can't be stopped this way — you'll be notified instead. Needs All-files access on the child device.")
+                    },
                     style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
                     color = AppTheme.colors.secondaryLabel,
                     modifier = Modifier.padding(top = Spacing.sm, start = Spacing.md, end = Spacing.md),

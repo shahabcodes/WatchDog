@@ -193,9 +193,11 @@ class EnforcementService : AccessibilityService() {
             return
         }
 
-        // Install guard: block a sideloaded app the parent's policy disallows, even
-        // if it has no app-rule and the APK quarantine didn't catch the download.
-        if (installGuard.blocks(packageName) && isSideloaded(packageName)) {
+        // Install guard — launch-time block ONLY in blocklist mode (explicitly
+        // named apps the parent wants dead). Allowlist mode controls *installs*
+        // via the download quarantine and must NOT disable already-installed apps
+        // (doing so would block the launcher/other apps across the device).
+        if (!installGuard.allowlist && installGuard.blocks(packageName) && isSideloaded(packageName)) {
             blockApp(
                 packageName,
                 appLabelFor(packageName),

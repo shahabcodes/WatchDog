@@ -138,7 +138,7 @@ fun OverviewScreen(
 
     androidx.compose.material3.pulltorefresh.PullToRefreshBox(
         isRefreshing = isRefreshing,
-        onRefresh = { viewModel.refresh() },
+        onRefresh = { if (!readOnly) viewModel.refresh() },
         modifier = modifier.fillMaxSize(),
     ) {
     // LazyColumn so off-screen sections don't all compose on first load.
@@ -230,6 +230,7 @@ fun OverviewScreen(
                     com.shahaabapps.watchdog.feature.focus.FocusCard(
                         settings = focus,
                         onEdit = { if (!readOnly) showFocusSheet = true },
+                        readOnly = readOnly,
                     )
                 }
             }
@@ -241,6 +242,7 @@ fun OverviewScreen(
                     ProtectionCard(
                         blocked = protection.uninstallBlocked,
                         onClick = { if (!readOnly) showProtectionSheet = true },
+                        readOnly = readOnly,
                     )
                 }
             }
@@ -381,6 +383,7 @@ fun OverviewScreen(
                 onAddChild = { showChildSheet = false; onAddChild() },
                 onSettings = { showChildSheet = false; onSettings() },
                 onSignOut = { showChildSheet = false; onSignOut() },
+                readOnly = readOnly,
             )
         }
     }
@@ -650,6 +653,7 @@ private fun ChildSwitcherSheet(
     onAddChild: () -> Unit,
     onSettings: () -> Unit,
     onSignOut: () -> Unit,
+    readOnly: Boolean = false,
 ) {
     Column(
         modifier = Modifier
@@ -706,29 +710,31 @@ private fun ChildSwitcherSheet(
                 }
             }
         }
-        // Add child
-        Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = AppTheme.colors.card,
-            border = androidx.compose.foundation.BorderStroke(1.dp, AppTheme.colors.separator),
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onAddChild),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+        // Add child — not for read-only viewers.
+        if (!readOnly) {
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = AppTheme.colors.card,
+                border = androidx.compose.foundation.BorderStroke(1.dp, AppTheme.colors.separator),
+                modifier = Modifier.fillMaxWidth().clickable(onClick = onAddChild),
             ) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier.size(40.dp).clip(CircleShape)
-                        .background(AppTheme.colors.accent.copy(alpha = 0.16f)),
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
                 ) {
-                    Icon(Icons.Filled.Add, contentDescription = null, tint = AppTheme.colors.accent)
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.size(40.dp).clip(CircleShape)
+                            .background(AppTheme.colors.accent.copy(alpha = 0.16f)),
+                    ) {
+                        Icon(Icons.Filled.Add, contentDescription = null, tint = AppTheme.colors.accent)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Text("Add child", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
                 }
-                Spacer(Modifier.width(12.dp))
-                Text("Add child", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
             }
+            Spacer(Modifier.height(Spacing.xs))
         }
-        Spacer(Modifier.height(Spacing.xs))
         // Settings
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -1574,8 +1580,8 @@ private fun PendingAppsCard(
 }
 
 @Composable
-private fun ProtectionCard(blocked: Boolean, onClick: () -> Unit) {
-    CupertinoCard(onClick = onClick) {
+private fun ProtectionCard(blocked: Boolean, onClick: () -> Unit, readOnly: Boolean = false) {
+    CupertinoCard(onClick = if (readOnly) null else onClick) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
@@ -1593,7 +1599,7 @@ private fun ProtectionCard(blocked: Boolean, onClick: () -> Unit) {
             Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
                 Text("Prevent uninstall", style = MaterialTheme.typography.bodyLarge)
                 Text(
-                    if (blocked) "On · a PIN is required to remove Shield" else "Off · tap to protect Shield",
+                    if (blocked) "On · a PIN is required to remove Shield" else if (readOnly) "Off" else "Off · tap to protect Shield",
                     style = MaterialTheme.typography.bodySmall,
                     color = AppTheme.colors.secondaryLabel,
                 )

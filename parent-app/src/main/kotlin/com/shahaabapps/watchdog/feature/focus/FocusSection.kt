@@ -76,27 +76,29 @@ private fun daysSummary(days: Set<Int>): String = when {
 
 /** Compact summary card shown on the dashboard; tap to edit. */
 @Composable
-fun FocusCard(settings: FocusSettings, onEdit: () -> Unit) {
-    CupertinoCard(onClick = onEdit) {
+fun FocusCard(settings: FocusSettings, onEdit: () -> Unit, readOnly: Boolean = false) {
+    CupertinoCard(onClick = if (readOnly) null else onEdit) {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
             FocusSummaryRow(
                 icon = Icons.Filled.Bedtime,
                 tint = BEDTIME_TINT,
                 title = "Bedtime",
                 window = settings.bedtime,
+                readOnly = readOnly,
             )
             FocusSummaryRow(
                 icon = Icons.Filled.School,
                 tint = SCHOOL_TINT,
                 title = "School",
                 window = settings.school,
+                readOnly = readOnly,
             )
         }
     }
 }
 
 @Composable
-private fun FocusSummaryRow(icon: ImageVector, tint: Color, title: String, window: FocusWindow) {
+private fun FocusSummaryRow(icon: ImageVector, tint: Color, title: String, window: FocusWindow, readOnly: Boolean = false) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier
@@ -112,6 +114,8 @@ private fun FocusSummaryRow(icon: ImageVector, tint: Color, title: String, windo
             Text(
                 if (window.enabled) {
                     "${clock(window.startMinute)} – ${clock(window.endMinute)} · ${daysSummary(window.days)}"
+                } else if (readOnly) {
+                    "Off"
                 } else {
                     "Off · tap to schedule"
                 },

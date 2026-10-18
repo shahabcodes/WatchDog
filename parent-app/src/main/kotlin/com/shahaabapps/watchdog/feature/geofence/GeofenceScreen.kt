@@ -593,6 +593,7 @@ fun GeofenceScreen(
                 onScrub = { playing = false; scope.launch { progress.snapTo(it) } },
                 onSpeedChange = { speed = it },
                 onFocus = { la, ln -> runCatching { controller.animateTo(la, ln, 17.0) } },
+                readOnly = readOnly,
                 onSaveAsPlace = { la, ln ->
                     // Jump to Live and open the add-place sheet prefilled at this stop.
                     pending = la to ln
@@ -721,6 +722,7 @@ fun GeofenceScreen(
                     showList = false
                     runCatching { controller.animateTo(g.latitude, g.longitude, 17.0) }
                 },
+                readOnly = readOnly,
             )
         }
     }
@@ -1081,6 +1083,7 @@ private fun PlacesList(
     onDelete: (String) -> Unit,
     onEdit: (Geofence) -> Unit,
     onFocus: (Geofence) -> Unit,
+    readOnly: Boolean = false,
 ) {
     var pendingDelete by remember { mutableStateOf<Geofence?>(null) }
     pendingDelete?.let { target ->
@@ -1121,7 +1124,7 @@ private fun PlacesList(
                             )
                         }
                         var menuOpen by remember { mutableStateOf(false) }
-                        Box {
+                        if (!readOnly) Box {
                             IconButton(onClick = { menuOpen = true }) {
                                 Icon(Icons.Filled.MoreVert, contentDescription = "More", tint = AppTheme.colors.secondaryLabel)
                             }
@@ -1222,6 +1225,7 @@ private fun HistorySheet(
     onSpeedChange: (Float) -> Unit,
     onFocus: (Double, Double) -> Unit,
     onSaveAsPlace: (Double, Double) -> Unit,
+    readOnly: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     // Collapsed by default so the sheet stays small; tap the header to expand
@@ -1429,7 +1433,7 @@ private fun HistorySheet(
                                 isLast = i == stops.lastIndex,
                                 leg = leg,
                                 number = numbers[item.stop.id],
-                                onSaveAsPlace = if (item.placeName == null && !item.current) {
+                                onSaveAsPlace = if (!readOnly && item.placeName == null && !item.current) {
                                     { onSaveAsPlace(item.stop.latitude, item.stop.longitude) }
                                 } else {
                                     null

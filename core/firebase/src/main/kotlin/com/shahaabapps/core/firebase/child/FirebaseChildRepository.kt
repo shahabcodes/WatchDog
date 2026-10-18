@@ -91,18 +91,16 @@ class FirebaseChildRepository @Inject constructor(
         code: String,
         parentId: String,
     ): AppResult<Unit> = runCatchingResult {
-        val doc = childrenCollection.document(childId)
-        firestore.runTransaction { transaction ->
-            val snapshot = transaction.get(doc)
-            require(snapshot.exists()) { "No child found for this code." }
-            val active = snapshot.getBoolean(FIELD_PAIRING_ACTIVE) ?: false
-            val storedCode = snapshot.getString(FIELD_PAIRING_CODE)
-            require(active) { "This code is no longer active." }
-            require(storedCode != null && storedCode.equals(code, ignoreCase = true)) {
-                "The code doesn't match. Check and try again."
-            }
-            transaction.update(doc, FIELD_LINKED_PARENTS, FieldValue.arrayUnion(parentId))
-        }.await()
+        // Linking is verified and applied SERVER-SIDE by the linkChild Cloud
+        // Function: it checks the pairing code (which security rules can't),
+        // confirms the pairing window is open, and adds only the caller
+        // (request.auth.uid) to linkedParents. The client therefore no longer
+        // reads the child doc or writes linkedParents directly. childId/parentId
+        // are resolved server-side from the code and the auth context.
+        com.google.firebase.functions.FirebaseFunctions.getInstance()
+            .getHttpsCallable("linkChild")
+            .call(hashMapOf("code" to code.trim()))
+            .await()
         Unit
     }
 

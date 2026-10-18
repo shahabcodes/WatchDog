@@ -38,6 +38,41 @@ exports.cleanupScreenshot = onDocumentDeleted(
 );
 
 /**
+ * Link the calling parent to a child using the child's pairing code. The code is
+ * verified SERVER-SIDE here (security rules alone can't check it), the child must
+ * still be in its pairing window, and only the caller's own uid is added to
+ * linkedParents — so a client can't link itself (or anyone else) to an arbitrary
+ * child by writing the document directly.
+ *
+ * Callable data: { code }. Returns { ok, childId }.
+ */
+exports.linkChild = onCall(async (request) => {
+  const parentId = request.auth && request.auth.uid;
+  if (!parentId) throw new HttpsError("unauthenticated", "Sign in required.");
+
+  const code = ((request.data || {}).code || "").trim();
+  if (!code) throw new HttpsError("invalid-argument", "Enter the pairing code.");
+
+  // Resolve the child by its pairing code (codes are effectively unique).
+  const q = await db.collection("children").where("pairingCode", "==", code).limit(2).get();
+  if (q.empty) throw new HttpsError("not-found", "No child found for this code.");
+  if (q.size > 1) throw new HttpsError("failed-precondition", "That code is ambiguous — try again.");
+  const snap = q.docs[0];
+  const data = snap.data() || {};
+
+  if (data.pairingActive !== true) {
+    throw new HttpsError(
+      "failed-precondition",
+      "This code is no longer active — open Shield on the child device for a fresh code.",
+    );
+  }
+
+  const { FieldValue } = require("firebase-admin/firestore");
+  await snap.ref.update({ linkedParents: FieldValue.arrayUnion(parentId) });
+  return { ok: true, childId: snap.id };
+});
+
+/**
  * Reconnect a reinstalled Shield: migrate the old child's data (geofences, rules,
  * protection, history, etc.) onto the new device's ID, move the parent links over,
  * and delete the old child record. Called by a linked parent after scanning the
@@ -72,6 +107,16 @@ exports.reconnectChild = onCall(async (request) => {
   }
   if ((newData.pairingCode || "") !== code) {
     throw new HttpsError("permission-denied", "That pairing code does not match the scanned device.");
+  }
+  // The new device must be in its pairing window (freshly reinstalled, not yet
+  // linked). Without this, a linked parent could rebind ANY child — including one
+  // already paired to another family — onto their own account using only its
+  // (previously readable) pairing code.
+  if (newData.pairingActive !== true) {
+    throw new HttpsError(
+      "failed-precondition",
+      "That device is already set up with an account and can't be reconnected.",
+    );
   }
 
   // Copy every subcollection from the old child onto the new one.

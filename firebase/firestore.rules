@@ -38,19 +38,22 @@ service cloud.firestore {
       function isChildOrParent() { return isChild() || isParent(); }
       // --------------------------------------------------------------------
 
-      // Any signed-in user may read a child doc. This is needed so a parent can
-      // verify a scanned pairing code before linking. Tighten in production by
-      // moving linking to a Cloud Function (then restrict reads to linkedParents).
-      allow read: if request.auth != null;
+      // Only the child device and its already-linked parents may read the child
+      // doc (profile + pairing code). Uses resource.data directly so a parent's
+      // whereArrayContains(linkedParents) query is allowed per-doc. Pairing-code
+      // verification and linking happen server-side in the linkChild Cloud
+      // Function (Admin SDK), so no pre-link client read of this doc is needed.
+      allow read: if request.auth != null && (
+                    request.auth.uid == childId ||
+                    request.auth.uid in resource.data.linkedParents
+                  );
 
       // The child device owns its document.
       allow create, update, delete: if request.auth != null && request.auth.uid == childId;
 
-      // A signed-in parent may link themselves while pairing is active, and may
-      // ONLY change the linkedParents field.
-      allow update: if request.auth != null
-                    && resource.data.pairingActive == true
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['linkedParents']);
+      // Linking is done by the linkChild Cloud Function (it verifies the pairing
+      // code server-side and adds only the caller), so there is deliberately NO
+      // client-writable linking rule here.
 
       // A linked parent may remove (unlink) themselves, updating linkedParents
       // (and re-opening pairing); they must not remain linked afterwards.

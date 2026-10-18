@@ -192,6 +192,10 @@ class E2eeManager @Inject constructor(
                 if (!ensureWrappedFor(childId, parentUid)) allWrapped = false
             }
             childEncryptionReady = allWrapped
+            // Defense-in-depth: once this child has been fully ready, its own
+            // enforcement reads refuse plaintext too (the child doesn't run the
+            // parent-side migrator). Sticky — it only ever reads its own data.
+            if (allWrapped) markEncryptionCutover(childId)
         }
 
     /**

@@ -164,7 +164,14 @@ class FirebaseChildRepository @Inject constructor(
                 }
             }
             childrenCollection.document(childId).set(
-                mapOf(FIELD_DEVICE to device),
+                mapOf(
+                    FIELD_DEVICE to device,
+                    // Publish whether this child is currently encrypting (all linked
+                    // parents wrapped), so security rules can reject plaintext writes
+                    // to E2EE collections once active (anti-downgrade). Tracks current
+                    // readiness so a just-linked parent in the wrap window isn't blocked.
+                    "encActive" to e2ee.childEncryptionReady,
+                ),
                 SetOptions.merge(),
             ).await()
         }

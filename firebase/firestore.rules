@@ -36,6 +36,13 @@ service cloud.firestore {
       }
       function canRead() { return isChild() || isParent(); }
       function isChildOrParent() { return isChild() || isParent(); }
+      // Whether this child is currently encrypting (all linked parents wrapped);
+      // the child publishes `encActive` on its doc from its heartbeat.
+      function encActive() { return childDoc().encActive == true; }
+      // A create/update to an E2EE collection must carry the encrypted form once
+      // encryption is active, so a (co-)parent can't silently downgrade/forge a
+      // plaintext value. Only valid for create/update (request.resource exists).
+      function encWriteOk() { return !encActive() || request.resource.data.enc == true; }
       // --------------------------------------------------------------------
 
       // Only the child device and its already-linked parents may read the child
@@ -65,10 +72,12 @@ service cloud.firestore {
       // The child and its linked parents read everything below; writes are
       // restricted per collection to the child and/or parents as noted.
 
-      // App usage rules: child/parent read/write; viewers read.
+      // App block/limit rules (E2EE): child/parent read; child/parent write, but
+      // once encryption is active the written doc must be encrypted (anti-downgrade).
       match /appRules/{packageName} {
         allow read: if canRead();
-        allow write: if isChildOrParent();
+        allow delete: if isChildOrParent();
+        allow create, update: if isChildOrParent() && encWriteOk();
       }
 
       // App inventory: the child writes it; child/parent/viewer read it.
@@ -77,10 +86,12 @@ service cloud.firestore {
         allow write: if isChild();
       }
 
-      // Geofences: a parent authors them; the child reads them to enforce; viewers read.
+      // Geofences (E2EE): a parent authors them; the child reads to enforce. Once
+      // encryption is active the written doc must be encrypted (anti-downgrade).
       match /geofences/{geoId} {
         allow read: if canRead();
-        allow write: if isChildOrParent();
+        allow delete: if isChildOrParent();
+        allow create, update: if isChildOrParent() && encWriteOk();
       }
 
       // Screen-time usage: the child writes it; child/parent/viewer read it.
@@ -108,11 +119,15 @@ service cloud.firestore {
         allow create: if isChild();
       }
 
-      // Settings (protection PIN, focus, tracking, install guard):
-      // a parent writes them; the child enforces (reads).
+      // Settings (protection PIN, focus, tracking, install guard): a parent writes
+      // them; the child enforces (reads). focus + installGuard are E2EE, so once
+      // encryption is active they must be written encrypted (anti-downgrade);
+      // protection + tracking are plaintext by design and exempt.
       match /settings/{docId} {
         allow read: if canRead();
-        allow write: if isParent();
+        allow delete: if isParent();
+        allow create, update: if isParent()
+          && (!(docId == 'focus' || docId == 'installGuard') || encWriteOk());
       }
 
       // Auto-blocked new apps awaiting review: the child creates them; a parent

@@ -347,8 +347,8 @@ fun OverviewScreen(
         ModalBottomSheet(onDismissRequest = { showProtectionSheet = false }, sheetState = sheetState) {
             ProtectionEditor(
                 initial = protection,
-                onSave = { settings ->
-                    protectionVm.save(settings)
+                onSave = { uninstallBlocked, blockNewApps, newPin ->
+                    protectionVm.save(uninstallBlocked, blockNewApps, newPin)
                     showProtectionSheet = false
                 },
             )
@@ -1552,19 +1552,20 @@ private fun ProtectionCard(blocked: Boolean, onClick: () -> Unit) {
 @Composable
 private fun ProtectionEditor(
     initial: com.shahaabapps.core.model.ProtectionSettings,
-    onSave: (com.shahaabapps.core.model.ProtectionSettings) -> Unit,
+    onSave: (uninstallBlocked: Boolean, blockNewApps: Boolean, newPin: String?) -> Unit,
 ) {
     var blocked by remember { mutableStateOf(initial.uninstallBlocked) }
-    var pin by remember { mutableStateOf(initial.pin) }
+    var pin by remember { mutableStateOf("") }
     var blockNewApps by remember { mutableStateOf(initial.blockNewApps) }
-    // An existing, still-valid PIN can be kept; otherwise (none yet, or an old
-    // too-short PIN) we start in "reset" mode so a compliant one must be entered.
-    val existingValid = initial.pin.length in PIN_MIN_LEN..PIN_MAX_LEN && initial.pin.all { it.isDigit() }
-    var resetting by remember { mutableStateOf(!existingValid) }
+    // The stored PIN is hashed, so we can't reveal it — we only know whether one
+    // is set. Keep it, or switch to "reset" to enter a new one. With no PIN set
+    // yet, start in reset mode so a compliant one must be entered.
+    val hasExistingPin = initial.hasPin
+    var resetting by remember { mutableStateOf(!hasExistingPin) }
     val pinValid = pin.length in PIN_MIN_LEN..PIN_MAX_LEN && pin.all { it.isDigit() }
     // Save is allowed if protection is off, or a valid PIN is already kept, or a
     // valid new PIN has been entered.
-    val canSave = !blocked || (!resetting && existingValid) || (resetting && pinValid)
+    val canSave = !blocked || (!resetting && hasExistingPin) || (resetting && pinValid)
 
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl),
@@ -1610,13 +1611,13 @@ private fun ProtectionEditor(
                 if (pin.isNotEmpty() && !pinValid) {
                     Text("Enter $PIN_MIN_LEN to $PIN_MAX_LEN digits.", color = AppTheme.colors.destructive, style = MaterialTheme.typography.bodySmall)
                 }
-                if (existingValid) {
+                if (hasExistingPin) {
                     Text(
                         text = "Keep current PIN",
                         style = MaterialTheme.typography.bodyLarge,
                         color = AppTheme.colors.accent,
                         modifier = Modifier
-                            .clickable { resetting = false; pin = initial.pin }
+                            .clickable { resetting = false; pin = "" }
                             .padding(vertical = 4.dp),
                     )
                 }
@@ -1634,18 +1635,10 @@ private fun ProtectionEditor(
             text = "Save",
             enabled = canSave,
             onClick = {
-                val finalPin = when {
-                    !blocked -> ""
-                    resetting -> pin
-                    else -> initial.pin
-                }
-                onSave(
-                    com.shahaabapps.core.model.ProtectionSettings(
-                        uninstallBlocked = blocked,
-                        pin = finalPin,
-                        blockNewApps = blockNewApps,
-                    ),
-                )
+                // Only send a new PIN when the parent actually entered one; otherwise
+                // keep the stored hash (toggling protection off keeps the PIN).
+                val newPin = if (blocked && resetting) pin else null
+                onSave(blocked, blockNewApps, newPin)
             },
         )
     }

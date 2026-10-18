@@ -92,7 +92,7 @@ class OverviewViewModel @Inject constructor(
      */
     val keyVerified: StateFlow<Boolean> = e2eeManager.observeChildKeyVerified(childId)
         .map { it != null }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     /**
      * Name of the saved place the child is currently inside (nearest one whose

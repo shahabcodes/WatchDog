@@ -39,5 +39,22 @@ class PinnedKeyStore @Inject constructor(
         context.pinnedKeysDataStore.edit { it[key(childId)] = publicKeyB64 }
     }
 
+    /** Drop the pinned key (e.g. after detecting the child's key changed), so the UI re-prompts verification. */
+    suspend fun unpin(childId: String) {
+        context.pinnedKeysDataStore.edit { it.remove(key(childId)) }
+    }
+
+    // --- trust-on-first-use (TOFU) record of the backend-published child key ---
+    // Separate from the QR-pinned key: this is simply the first key we ever saw
+    // for a child, so we can detect (and alert on) a later silent key substitution.
+
+    suspend fun getSeenKey(childId: String): String? =
+        context.pinnedKeysDataStore.data.first()[seenKey(childId)]
+
+    suspend fun putSeenKey(childId: String, publicKeyB64: String) {
+        context.pinnedKeysDataStore.edit { it[seenKey(childId)] = publicKeyB64 }
+    }
+
     private fun key(childId: String) = stringPreferencesKey("child_$childId")
+    private fun seenKey(childId: String) = stringPreferencesKey("seen_$childId")
 }

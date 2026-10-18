@@ -102,11 +102,17 @@ object E2ee {
         peerPublic: ByteArray,
     ): ByteArray = Aead.open(deriveKek(sharedSecret, myPublic, peerPublic), wrapped)
 
-    /** Encrypt a payload under the data key. */
-    fun sealPayload(dataKey: ByteArray, plaintext: ByteArray): ByteArray = Aead.seal(dataKey, plaintext)
+    /**
+     * Encrypt a payload under the data key, optionally binding it to [aad]
+     * (associated data, e.g. the childId) so the ciphertext can't be
+     * cut-and-pasted into a different context and still authenticate.
+     */
+    fun sealPayload(dataKey: ByteArray, plaintext: ByteArray, aad: ByteArray? = null): ByteArray =
+        Aead.seal(dataKey, plaintext, aad)
 
-    /** Decrypt a payload under the data key. */
-    fun openPayload(dataKey: ByteArray, blob: ByteArray): ByteArray = Aead.open(dataKey, blob)
+    /** Decrypt a payload under the data key, verifying the same [aad] used to seal. */
+    fun openPayload(dataKey: ByteArray, blob: ByteArray, aad: ByteArray? = null): ByteArray =
+        Aead.open(dataKey, blob, aad)
 
     private fun sha256(bytes: ByteArray): ByteArray =
         MessageDigest.getInstance("SHA-256").digest(bytes)

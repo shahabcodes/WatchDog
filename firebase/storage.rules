@@ -1,10 +1,14 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Avatars: a user may write only their own avatar (<uid>.jpg); any signed-in
-    // user may read.
+    // Avatars: a user may write only their own avatar (<uid>.jpg). Reads are
+    // scoped to the owner and — for a child's avatar — that child's linked
+    // parents, rather than every signed-in user (avoids cross-tenant PII reads).
     match /avatars/{imageId} {
-      allow read: if request.auth != null;
+      allow read: if request.auth != null && (
+        imageId == request.auth.uid + '.jpg' ||
+        request.auth.uid in firestore.get(/databases/(default)/documents/children/$(imageId.split('[.]')[0])).data.linkedParents
+      );
       allow write: if request.auth != null
                    && imageId == request.auth.uid + '.jpg'
                    && request.resource.size < 5 * 1024 * 1024

@@ -23,9 +23,10 @@ class ProtectionViewModel @Inject constructor(
     val settings: StateFlow<ProtectionSettings> = protectionRepository.observe(childId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ProtectionSettings())
 
-    fun save(settings: ProtectionSettings) {
+    /** [newPin] is the plaintext PIN to (re)set, or null to keep the existing one. */
+    fun save(uninstallBlocked: Boolean, blockNewApps: Boolean, newPin: String?) {
         viewModelScope.launch {
-            protectionRepository.save(childId, settings)
+            protectionRepository.save(childId, uninstallBlocked, blockNewApps, newPin)
         }
     }
 }

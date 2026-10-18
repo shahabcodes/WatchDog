@@ -28,7 +28,12 @@ class E2eeMigrator @Inject constructor(
 ) {
     suspend fun runIfNeeded(childId: String) {
         val uid = authRepository.currentUserIdOrNull() ?: return
-        if (isDone(uid, childId)) return
+        if (isDone(uid, childId)) {
+            // Already migrated (possibly before the cutover flag existed) — ensure
+            // the downgrade guard is enabled for this child.
+            e2ee.markEncryptionCutover(childId)
+            return
+        }
         // Probe: skip (and retry on a later launch) until the key is ready, so we
         // don't rewrite docs as plaintext again.
         e2ee.warmReaderKey(childId, uid)
@@ -36,6 +41,9 @@ class E2eeMigrator @Inject constructor(
         geofenceRepository.reencryptPlaintext(childId)
         appRulesRepository.reencryptPlaintext(childId)
         usageRepository.reencryptPlaintext(childId)
+        // All pre-E2EE plaintext for this child is now re-encrypted, so readers may
+        // safely refuse any future plaintext (downgrade/forgery) for it.
+        e2ee.markEncryptionCutover(childId)
         markDone(uid, childId)
     }
 

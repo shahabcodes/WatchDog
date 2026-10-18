@@ -28,7 +28,7 @@ class FirebaseDeviceRepository @Inject constructor(
 
     override suspend fun updateLocation(childId: String, location: ChildLocation): AppResult<Unit> =
         runCatchingResult {
-            val sealed = e2ee.sealCoords(location.latitude, location.longitude)
+            val sealed = e2ee.sealCoords(childId, location.latitude, location.longitude)
             val data = if (sealed != null) {
                 mapOf(
                     "e" to sealed,
@@ -88,7 +88,7 @@ class FirebaseDeviceRepository @Inject constructor(
 
     override suspend fun addTravelStop(childId: String, stop: TravelStop): AppResult<Unit> =
         runCatchingResult {
-            val sealed = e2ee.sealCoords(stop.latitude, stop.longitude)
+            val sealed = e2ee.sealCoords(childId, stop.latitude, stop.longitude)
             val data = if (sealed != null) {
                 mapOf(
                     "e" to sealed,
@@ -127,22 +127,22 @@ class FirebaseDeviceRepository @Inject constructor(
         runCatchingResult {
             // Merge-set with arrayUnion so the day's doc is created on first point.
             trail(childId).document(date)
-                .set(mapOf("points" to FieldValue.arrayUnion(trailEntry(point))), SetOptions.merge())
+                .set(mapOf("points" to FieldValue.arrayUnion(trailEntry(childId, point))), SetOptions.merge())
                 .await()
         }
 
     override suspend fun appendTrailPoints(childId: String, date: String, points: List<TrailPoint>): AppResult<Unit> =
         runCatchingResult {
             if (points.isEmpty()) return@runCatchingResult Unit
-            val entries = points.map { trailEntry(it) }.toTypedArray()
+            val entries = points.map { trailEntry(childId, it) }.toTypedArray()
             trail(childId).document(date)
                 .set(mapOf("points" to FieldValue.arrayUnion(*entries)), SetOptions.merge())
                 .await()
         }
 
     /** A trail array entry: encrypted (`e` + `t`) when possible, else plaintext (`lat`/`lng`/`t`). */
-    private fun trailEntry(point: TrailPoint): Map<String, Any> {
-        val sealed = e2ee.sealCoords(point.latitude, point.longitude)
+    private fun trailEntry(childId: String, point: TrailPoint): Map<String, Any> {
+        val sealed = e2ee.sealCoords(childId, point.latitude, point.longitude)
         return if (sealed != null) {
             mapOf("e" to sealed, "t" to point.timestampMillis)
         } else {
@@ -167,6 +167,8 @@ class FirebaseDeviceRepository @Inject constructor(
                     val coords = e2ee.openCoordsCached(childId, sealed) ?: return@mapNotNull null
                     TrailPoint(latitude = coords.first, longitude = coords.second, timestampMillis = t)
                 } else {
+                    // Trail points are child-write-only and not covered by the
+                    // re-encryption migrator, so pre-E2EE plaintext history is kept.
                     TrailPoint(
                         latitude = (entry["lat"] as? Number)?.toDouble() ?: 0.0,
                         longitude = (entry["lng"] as? Number)?.toDouble() ?: 0.0,
@@ -225,6 +227,8 @@ class FirebaseDeviceRepository @Inject constructor(
         val coords = if (sealed != null) {
             e2ee.openCoordsCached(childId, sealed) ?: return null
         } else {
+            // Travel stops are child-write-only and not covered by the migrator, so
+            // pre-E2EE plaintext history is kept.
             (getDouble("latitude") ?: 0.0) to (getDouble("longitude") ?: 0.0)
         }
         return TravelStop(
@@ -240,6 +244,8 @@ class FirebaseDeviceRepository @Inject constructor(
         val sealed = getString("e")
         val coords = if (sealed != null) {
             e2ee.openCoordsCached(childId, sealed) ?: return null
+        } else if (e2ee.encryptionActive(childId)) {
+            return null // refuse plaintext downgrade once encryption is active
         } else {
             (getDouble("latitude") ?: 0.0) to (getDouble("longitude") ?: 0.0)
         }

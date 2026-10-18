@@ -92,7 +92,14 @@ private fun PinUnlockScreen(
             text = "Allow removal",
             enabled = pin.length in PIN_MIN_LEN..PIN_MAX_LEN,
             onClick = {
-                if (settings.pin.isNotEmpty() && pin == settings.pin) {
+                val ok = when {
+                    settings.pinHash.isNotEmpty() ->
+                        com.shahaabapps.core.common.crypto.PinHasher.verify(pin, settings.pinSalt, settings.pinHash)
+                    // Backward-compat: a plaintext PIN from a doc written before hashing.
+                    settings.legacyPin.isNotEmpty() -> pin == settings.legacyPin
+                    else -> false
+                }
+                if (ok) {
                     ProtectionLocalStore.unlock(context)
                     DeviceAdmin.remove(context)
                     onDone()

@@ -330,6 +330,9 @@ class E2eeManager @Inject constructor(
         const val ENCRYPT_ONLY = false
 
         /** How often the child re-confirms each parent's wrapped key is current. */
-        private const val VERIFY_TTL_MS = 30L * 60 * 1000
+        // Short so a parent that reinstalled / rotated its device key (common on a
+        // shared test device) gets its wrap refreshed within minutes, not half an
+        // hour — the window during which the parent can't decrypt the child's data.
+        private const val VERIFY_TTL_MS = 3L * 60 * 1000
     }
 }

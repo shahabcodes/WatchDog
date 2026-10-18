@@ -184,13 +184,10 @@ fun MfaScreen(
                             }
                         }
                     }
-                    OutlinedTextField(
+                    Text("Enter the 6-digit code", style = MaterialTheme.typography.bodyMedium, color = AppTheme.colors.secondaryLabel)
+                    com.shahaabapps.watchdog.ui.OtpInput(
                         value = state.code,
                         onValueChange = viewModel::onCode,
-                        singleLine = true,
-                        label = { Text("6-digit code") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.fillMaxWidth(),
                     )
                     state.error?.let { ErrorText(it) }

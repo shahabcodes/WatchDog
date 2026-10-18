@@ -10,6 +10,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -362,11 +364,10 @@ fun AuthScreen(
                     color = LABEL,
                     fontSize = 14.sp,
                 )
-                LhField(
+                com.shahaabapps.watchdog.ui.OtpInput(
                     value = state.mfaCode,
                     onValueChange = viewModel::onMfaCodeChange,
-                    placeholder = "123456",
-                    keyboardType = KeyboardType.Number,
+                    modifier = Modifier.fillMaxWidth(),
                 )
                 state.errorMessage?.let {
                     Text(it, color = Color(0xFFC1362B), fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
@@ -619,13 +620,26 @@ private fun PasswordStrength(pw: String) {
 
 @Composable
 private fun GoldButton(text: String, enabled: Boolean, loading: Boolean, onClick: () -> Unit) {
+    val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        if (pressed && enabled && !loading) 0.96f else 1f,
+        animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.5f, stiffness = 600f),
+        label = "goldScale",
+    )
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(RoundedCornerShape(16.dp))
             .background(if (enabled) GOLD else GOLD.copy(alpha = 0.45f))
-            .clickable(enabled = enabled && !loading, onClick = onClick),
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                enabled = enabled && !loading,
+                onClick = onClick,
+            ),
         contentAlignment = Alignment.Center,
     ) {
         if (loading) {

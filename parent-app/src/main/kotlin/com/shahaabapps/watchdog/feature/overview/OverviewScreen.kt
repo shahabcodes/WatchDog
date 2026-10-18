@@ -268,17 +268,40 @@ fun OverviewScreen(
                     val viewerEnabled by viewerVm.enabled.collectAsStateWithLifecycle()
                     DashSection("Viewer access") {
                         CupertinoCard {
-                            CupertinoListRow(
-                                title = "Let this child see their own data",
-                                subtitle = "They install Watch Dog and join with the pairing code — read-only, can't change anything.",
-                                showDivider = false,
-                                trailing = {
-                                    androidx.compose.material3.Switch(
-                                        checked = viewerEnabled,
-                                        onCheckedChange = { viewerVm.setEnabled(it) },
-                                    )
-                                },
-                            )
+                            Column {
+                                CupertinoListRow(
+                                    title = "Let this child see their own data",
+                                    subtitle = "They install Watch Dog and join by scanning this QR (or the code) — read-only, can't change anything.",
+                                    showDivider = viewerEnabled,
+                                    trailing = {
+                                        androidx.compose.material3.Switch(
+                                            checked = viewerEnabled,
+                                            onCheckedChange = { viewerVm.setEnabled(it) },
+                                        )
+                                    },
+                                )
+                                if (viewerEnabled && state.pairingCode.isNotBlank()) {
+                                    val qr = remember(selectedId, state.pairingCode) {
+                                        com.shahaabapps.core.model.PairingCodec.encode(
+                                            com.shahaabapps.core.model.PairingData(selectedId, state.pairingCode, null),
+                                        )
+                                    }
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(Spacing.md),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+                                    ) {
+                                        com.shahaabapps.watchdog.feature.security.QrImage(content = qr, modifier = Modifier.size(180.dp))
+                                        Text("Code: ${state.pairingCode}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            "In Watch Dog on the viewer's phone, tap \"View with a code\" and scan this.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = AppTheme.colors.secondaryLabel,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }

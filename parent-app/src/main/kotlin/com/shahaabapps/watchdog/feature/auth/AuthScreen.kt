@@ -6,7 +6,14 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -118,6 +125,31 @@ private fun ViewerJoinDialog(
 ) {
     var code by rememberSaveable { mutableStateOf("") }
     val joining = joinState is com.shahaabapps.watchdog.ui.ViewerJoinState.Joining
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // A scanned/decoded QR carries the full pairing payload; pull the code out of it
+    // (or use the raw text if it's just a plain code) and join.
+    fun useScanned(contents: String?) {
+        val resolved = com.shahaabapps.core.model.PairingCodec.decode(contents)?.code
+            ?: contents?.trim()?.ifBlank { null }
+        if (resolved != null) { code = resolved.uppercase(); onJoin(resolved) }
+    }
+
+    val scanLauncher = rememberLauncherForActivityResult(com.journeyapps.barcodescanner.ScanContract()) { result ->
+        useScanned(result.contents)
+    }
+    val galleryLauncher = rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        if (uri != null) scope.launch {
+            val contents = withContext(Dispatchers.IO) {
+                com.shahaabapps.watchdog.feature.dashboard.QrImageDecoder.decodeFromUri(context, uri)
+            }
+            useScanned(contents)
+        }
+    }
+
     com.shahaabapps.core.ui.components.AppDialog(
         onDismiss = onDismiss,
         title = "View with a code",
@@ -130,15 +162,41 @@ private fun ViewerJoinDialog(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
-                "Enter the pairing code from the Shield app. You'll see everything, read-only.",
+                "Scan the Watch Dog viewer QR (or the Shield pairing code), or type the code. You'll see everything, read-only.",
                 textAlign = TextAlign.Center,
                 color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                ViewerScanChip(
+                    text = "Scan QR",
+                    icon = androidx.compose.material.icons.Icons.Filled.QrCodeScanner,
+                    enabled = !joining,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    scanLauncher.launch(
+                        com.journeyapps.barcodescanner.ScanOptions()
+                            .setDesiredBarcodeFormats(com.journeyapps.barcodescanner.ScanOptions.QR_CODE)
+                            .setPrompt("Scan the viewer QR").setBeepEnabled(false).setOrientationLocked(false),
+                    )
+                }
+                ViewerScanChip(
+                    text = "From gallery",
+                    icon = androidx.compose.material.icons.Icons.Filled.Image,
+                    enabled = !joining,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    galleryLauncher.launch(
+                        androidx.activity.result.PickVisualMediaRequest(
+                            androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly,
+                        ),
+                    )
+                }
+            }
             androidx.compose.material3.OutlinedTextField(
                 value = code,
                 onValueChange = { code = it.uppercase() },
                 singleLine = true,
-                label = { Text("Pairing code") },
+                label = { Text("Or enter the code") },
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -146,6 +204,29 @@ private fun ViewerJoinDialog(
                 Text(it.message, color = Color(0xFFC1362B), textAlign = TextAlign.Center)
             }
         }
+    }
+}
+
+@Composable
+private fun ViewerScanChip(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Row(
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .height(46.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .border(BorderStroke(1.5.dp, com.shahaabapps.core.ui.theme.AppTheme.colors.separator), RoundedCornerShape(12.dp))
+            .clickable(enabled = enabled, onClick = onClick),
+    ) {
+        androidx.compose.material3.Icon(icon, contentDescription = null, tint = com.shahaabapps.core.ui.theme.AppTheme.colors.accent, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.size(6.dp))
+        Text(text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 

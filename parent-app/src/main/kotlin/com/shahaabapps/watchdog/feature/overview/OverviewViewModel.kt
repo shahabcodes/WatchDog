@@ -37,6 +37,7 @@ data class DayUsage(
 
 data class OverviewUiState(
     val childName: String = "",
+    val pairingCode: String = "",
     val online: Boolean = false,
     val screenTimeMinutes: Int = 0,
     val limitedOrBlocked: Int = 0,
@@ -159,6 +160,7 @@ class OverviewViewModel @Inject constructor(
             .take(5)
         OverviewUiState(
             childName = child?.profile?.name ?: "Child",
+            pairingCode = child?.pairingCode ?: "",
             online = lastSeen > 0 && System.currentTimeMillis() - lastSeen < ONLINE_THRESHOLD_MS,
             screenTimeMinutes = screenTime,
             limitedOrBlocked = rules.count { it.blocked || it.dailyLimitMinutes != null },

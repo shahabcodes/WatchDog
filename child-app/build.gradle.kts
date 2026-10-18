@@ -4,6 +4,7 @@ plugins {
     id("fms.android.hilt")
     id("fms.android.firebase")
     alias(libs.plugins.google.services)
+    alias(libs.plugins.crashlytics)
 }
 
 android {

@@ -20,6 +20,7 @@ class AndroidFirebaseConventionPlugin : Plugin<Project> {
                 add("implementation", libs.findLibrary("firebase-messaging").get())
                 add("implementation", libs.findLibrary("firebase-functions").get())
                 add("implementation", libs.findLibrary("firebase-analytics").get())
+                add("implementation", libs.findLibrary("firebase-crashlytics").get())
 
                 add("implementation", libs.findLibrary("kotlinx-coroutines-play-services").get())
             }

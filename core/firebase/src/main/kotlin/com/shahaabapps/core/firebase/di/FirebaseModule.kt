@@ -140,8 +140,4 @@ interface FirebaseBindsModule {
     @Binds
     @Singleton
     fun bindInstallGuardRepository(impl: com.shahaabapps.core.firebase.installguard.FirebaseInstallGuardRepository): com.shahaabapps.core.firebase.installguard.InstallGuardRepository
-
-    @Binds
-    @Singleton
-    fun bindViewerAccessRepository(impl: com.shahaabapps.core.firebase.viewer.FirebaseViewerAccessRepository): com.shahaabapps.core.firebase.viewer.ViewerAccessRepository
 }

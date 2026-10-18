@@ -86,23 +86,6 @@ class FirebaseChildRepository @Inject constructor(
         awaitClose { registration.remove() }
     }
 
-    override fun observeViewableChildren(viewerId: String): Flow<List<ChildAccount>> = callbackFlow {
-        val registration = childrenCollection
-            .whereArrayContains(FIELD_VIEWERS, viewerId)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    trySend(emptyList())
-                    return@addSnapshotListener
-                }
-                val docs = snapshot?.documents.orEmpty()
-                launch {
-                    docs.forEach { runCatching { e2ee.warmReaderKey(it.id, viewerId) } }
-                    trySend(docs.mapNotNull { it.takeIf { d -> d.exists() }?.toChildAccount(viewerId) })
-                }
-            }
-        awaitClose { registration.remove() }
-    }
-
     override suspend fun linkChild(
         childId: String,
         code: String,
@@ -266,8 +249,6 @@ class FirebaseChildRepository @Inject constructor(
         @Suppress("UNCHECKED_CAST")
         val linkedParents = get(FIELD_LINKED_PARENTS) as? List<String> ?: emptyList()
         @Suppress("UNCHECKED_CAST")
-        val viewers = get(FIELD_VIEWERS) as? List<String> ?: emptyList()
-        @Suppress("UNCHECKED_CAST")
         val deviceMap = get(FIELD_DEVICE) as? Map<String, Any?> ?: emptyMap()
 
         return ChildAccount(
@@ -281,7 +262,6 @@ class FirebaseChildRepository @Inject constructor(
             ),
             pairingCode = getString(FIELD_PAIRING_CODE) ?: "",
             linkedParents = linkedParents,
-            viewers = viewers,
             device = deviceInfo(id, viewerUid, deviceMap),
         )
     }
@@ -405,7 +385,6 @@ class FirebaseChildRepository @Inject constructor(
         const val FIELD_PAIRING_CODE = "pairingCode"
         const val FIELD_PAIRING_ACTIVE = "pairingActive"
         const val FIELD_LINKED_PARENTS = "linkedParents"
-        const val FIELD_VIEWERS = "viewers"
         const val FIELD_DEVICE = "device"
         const val FIELD_ROLE = "role"
     }

@@ -110,7 +110,6 @@ fun OverviewScreen(
     onSignOut: () -> Unit = {},
     onVerifyConnection: () -> Unit = {},
     onOpenInstallGuard: () -> Unit = {},
-    readOnly: Boolean = false,
     modifier: Modifier = Modifier,
     viewModel: OverviewViewModel = hiltViewModel(),
     mapStyleViewModel: com.shahaabapps.watchdog.util.MapStyleViewModel = hiltViewModel(),
@@ -138,7 +137,7 @@ fun OverviewScreen(
 
     androidx.compose.material3.pulltorefresh.PullToRefreshBox(
         isRefreshing = isRefreshing,
-        onRefresh = { if (!readOnly) viewModel.refresh() },
+        onRefresh = { viewModel.refresh() },
         modifier = modifier.fillMaxSize(),
     ) {
     // LazyColumn so off-screen sections don't all compose on first load.
@@ -149,7 +148,7 @@ fun OverviewScreen(
         contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = Spacing.sm),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
-        if (!keyVerified && !readOnly) {
+        if (!keyVerified) {
             item(key = "verify") {
                 VerifyConnectionBanner(
                     onVerify = onVerifyConnection,
@@ -175,17 +174,15 @@ fun OverviewScreen(
                 onOpenMap = onOpenMap,
             )
         }
-        // Ring / Locate / Refresh / Focus toggles. (Actions — hidden for viewers.)
-        if (!readOnly) {
-            item(key = "actions") {
-                Box(Modifier.padding(horizontal = Spacing.lg)) {
-                    QuickActions(
-                        onRing = { showRingSheet = true },
-                        onLocate = onOpenMap,
-                        onRefresh = { viewModel.refresh() },
-                        onFocus = { showFocusSheet = true },
-                    )
-                }
+        // Ring / Locate / Refresh / Focus toggles.
+        item(key = "actions") {
+            Box(Modifier.padding(horizontal = Spacing.lg)) {
+                QuickActions(
+                    onRing = { showRingSheet = true },
+                    onLocate = onOpenMap,
+                    onRefresh = { viewModel.refresh() },
+                    onFocus = { showFocusSheet = true },
+                )
             }
         }
         // Screen time today.
@@ -200,7 +197,7 @@ fun OverviewScreen(
             }
         }
         // New-apps review (conditional alert) — kept near the top so it's seen.
-        if (pendingApps.isNotEmpty() && !readOnly) {
+        if (pendingApps.isNotEmpty()) {
             item(key = "pending") {
                 Box(Modifier.padding(horizontal = Spacing.lg)) {
                     DashSection("New apps to review") {
@@ -213,98 +210,47 @@ fun OverviewScreen(
                 }
             }
         }
-        // Screen capture (an action — hidden for viewers).
-        if (!readOnly) {
-            item(key = "screen") {
-                Box(Modifier.padding(horizontal = Spacing.lg)) {
-                    DashSection("Screen") {
-                        com.shahaabapps.watchdog.feature.screenshot.ScreenshotSection()
-                    }
+        // Screen capture.
+        item(key = "screen") {
+            Box(Modifier.padding(horizontal = Spacing.lg)) {
+                DashSection("Screen") {
+                    com.shahaabapps.watchdog.feature.screenshot.ScreenshotSection()
                 }
             }
         }
-        // Focus modes (status always visible; editing disabled for viewers).
+        // Focus modes.
         item(key = "focus") {
             Box(Modifier.padding(horizontal = Spacing.lg)) {
                 DashSection("Focus modes") {
                     com.shahaabapps.watchdog.feature.focus.FocusCard(
                         settings = focus,
-                        onEdit = { if (!readOnly) showFocusSheet = true },
-                        readOnly = readOnly,
+                        onEdit = { showFocusSheet = true },
                     )
                 }
             }
         }
-        // Protection (status visible; editing disabled for viewers).
+        // Protection.
         item(key = "protection") {
             Box(Modifier.padding(horizontal = Spacing.lg)) {
                 DashSection("Protection") {
                     ProtectionCard(
                         blocked = protection.uninstallBlocked,
-                        onClick = { if (!readOnly) showProtectionSheet = true },
-                        readOnly = readOnly,
+                        onClick = { showProtectionSheet = true },
                     )
                 }
             }
         }
-        // App installs — viewers can open it read-only too.
+        // App installs.
         item(key = "installs") {
             Box(Modifier.padding(horizontal = Spacing.lg)) {
                 DashSection("App installs") {
                     CupertinoCard {
                         CupertinoListRow(
                             title = "Control app installs",
-                            subtitle = if (readOnly) "View which sideloaded apps are allowed or blocked"
-                            else "Allow or block sideloaded apps by package",
+                            subtitle = "Allow or block sideloaded apps by package",
                             showDivider = false,
                             onClick = onOpenInstallGuard,
                         )
-                    }
-                }
-            }
-        }
-        if (!readOnly) {
-            item(key = "viewerAccess") {
-                Box(Modifier.padding(horizontal = Spacing.lg)) {
-                    val viewerVm: com.shahaabapps.watchdog.feature.viewer.ViewerAccessViewModel = hiltViewModel()
-                    val viewerEnabled by viewerVm.enabled.collectAsStateWithLifecycle()
-                    DashSection("Viewer access") {
-                        CupertinoCard {
-                            Column {
-                                CupertinoListRow(
-                                    title = "Let this child see their own data",
-                                    subtitle = "They install Watch Dog and join by scanning this QR (or the code) — read-only, can't change anything.",
-                                    showDivider = viewerEnabled,
-                                    trailing = {
-                                        androidx.compose.material3.Switch(
-                                            checked = viewerEnabled,
-                                            onCheckedChange = { viewerVm.setEnabled(it) },
-                                        )
-                                    },
-                                )
-                                if (viewerEnabled && state.pairingCode.isNotBlank()) {
-                                    val qr = remember(selectedId, state.pairingCode) {
-                                        com.shahaabapps.core.model.PairingCodec.encode(
-                                            com.shahaabapps.core.model.PairingData(selectedId, state.pairingCode, null),
-                                        )
-                                    }
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth().padding(Spacing.md),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
-                                    ) {
-                                        com.shahaabapps.watchdog.feature.security.QrImage(content = qr, modifier = Modifier.size(180.dp))
-                                        Text("Code: ${state.pairingCode}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                        Text(
-                                            "In Watch Dog on the viewer's phone, tap \"View with a code\" and scan this.",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = AppTheme.colors.secondaryLabel,
-                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                        )
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
             }
@@ -343,17 +289,15 @@ fun OverviewScreen(
                 }
             }
         }
-        // Location tracking mode (selector hidden for viewers).
-        if (!readOnly) {
-            item(key = "tracking") {
-                Box(Modifier.padding(horizontal = Spacing.lg)) {
-                    DashSection("Location tracking") {
-                        TrackingCard(mode = trackingMode, onSelect = { viewModel.setTrackingMode(it) })
-                    }
+        // Location tracking mode.
+        item(key = "tracking") {
+            Box(Modifier.padding(horizontal = Spacing.lg)) {
+                DashSection("Location tracking") {
+                    TrackingCard(mode = trackingMode, onSelect = { viewModel.setTrackingMode(it) })
                 }
             }
         }
-        // Permissions on the child's phone (Request buttons hidden for viewers).
+        // Permissions on the child's phone.
         state.permissions?.let { perms ->
             item(key = "permissions") {
                 Box(Modifier.padding(horizontal = Spacing.lg)) {
@@ -361,7 +305,6 @@ fun OverviewScreen(
                         PermissionsCard(
                             perms,
                             showStorage = installGuardEnabled,
-                            readOnly = readOnly,
                             onRequest = { viewModel.requestPermission(it) },
                         )
                     }
@@ -383,7 +326,6 @@ fun OverviewScreen(
                 onAddChild = { showChildSheet = false; onAddChild() },
                 onSettings = { showChildSheet = false; onSettings() },
                 onSignOut = { showChildSheet = false; onSignOut() },
-                readOnly = readOnly,
             )
         }
     }
@@ -653,7 +595,6 @@ private fun ChildSwitcherSheet(
     onAddChild: () -> Unit,
     onSettings: () -> Unit,
     onSignOut: () -> Unit,
-    readOnly: Boolean = false,
 ) {
     Column(
         modifier = Modifier
@@ -710,31 +651,29 @@ private fun ChildSwitcherSheet(
                 }
             }
         }
-        // Add child — not for read-only viewers.
-        if (!readOnly) {
-            Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = AppTheme.colors.card,
-                border = androidx.compose.foundation.BorderStroke(1.dp, AppTheme.colors.separator),
-                modifier = Modifier.fillMaxWidth().clickable(onClick = onAddChild),
+        // Add child
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = AppTheme.colors.card,
+            border = androidx.compose.foundation.BorderStroke(1.dp, AppTheme.colors.separator),
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onAddChild),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.size(40.dp).clip(CircleShape)
+                        .background(AppTheme.colors.accent.copy(alpha = 0.16f)),
                 ) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier.size(40.dp).clip(CircleShape)
-                            .background(AppTheme.colors.accent.copy(alpha = 0.16f)),
-                    ) {
-                        Icon(Icons.Filled.Add, contentDescription = null, tint = AppTheme.colors.accent)
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Text("Add child", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                    Icon(Icons.Filled.Add, contentDescription = null, tint = AppTheme.colors.accent)
                 }
+                Spacer(Modifier.width(12.dp))
+                Text("Add child", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
             }
-            Spacer(Modifier.height(Spacing.xs))
         }
+        Spacer(Modifier.height(Spacing.xs))
         // Settings
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -1416,7 +1355,6 @@ private fun TrackSeg(label: String, selected: Boolean, modifier: Modifier = Modi
 private fun PermissionsCard(
     perms: com.shahaabapps.core.model.DevicePermissions,
     showStorage: Boolean,
-    readOnly: Boolean = false,
     onRequest: (String) -> Unit,
 ) {
     val locationLabel = when {
@@ -1426,14 +1364,14 @@ private fun PermissionsCard(
     }
     CupertinoCard {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            PermRow(Icons.Filled.LocationOn, "Location", perms.locationAlways, locationLabel, "location", onRequest, readOnly)
-            PermRow(Icons.Filled.Accessibility, "Accessibility", perms.accessibility, if (perms.accessibility) "On" else "Off — blocking & screenshots won't work", "accessibility", onRequest, readOnly)
-            PermRow(Icons.Filled.Schedule, "Usage access", perms.usageAccess, if (perms.usageAccess) "On" else "Off — screen time won't be tracked", "usageAccess", onRequest, readOnly)
-            PermRow(Icons.Filled.Notifications, "Notifications", perms.notifications, if (perms.notifications) "On" else "Off", "notifications", onRequest, readOnly)
-            PermRow(Icons.Filled.BatteryStd, "Unrestricted battery", perms.batteryUnrestricted, if (perms.batteryUnrestricted) "On" else "Off — may be killed in the background", "battery", onRequest, readOnly)
-            PermRow(Icons.Filled.Alarm, "Full-screen alarm", perms.fullScreenAlarm, if (perms.fullScreenAlarm) "On" else "Off — Ring device won't show full-screen", "fullScreenAlarm", onRequest, readOnly)
+            PermRow(Icons.Filled.LocationOn, "Location", perms.locationAlways, locationLabel, "location", onRequest)
+            PermRow(Icons.Filled.Accessibility, "Accessibility", perms.accessibility, if (perms.accessibility) "On" else "Off — blocking & screenshots won't work", "accessibility", onRequest)
+            PermRow(Icons.Filled.Schedule, "Usage access", perms.usageAccess, if (perms.usageAccess) "On" else "Off — screen time won't be tracked", "usageAccess", onRequest)
+            PermRow(Icons.Filled.Notifications, "Notifications", perms.notifications, if (perms.notifications) "On" else "Off", "notifications", onRequest)
+            PermRow(Icons.Filled.BatteryStd, "Unrestricted battery", perms.batteryUnrestricted, if (perms.batteryUnrestricted) "On" else "Off — may be killed in the background", "battery", onRequest)
+            PermRow(Icons.Filled.Alarm, "Full-screen alarm", perms.fullScreenAlarm, if (perms.fullScreenAlarm) "On" else "Off — Ring device won't show full-screen", "fullScreenAlarm", onRequest)
             if (showStorage) {
-                PermRow(Icons.Filled.Lock, "Install control (file access)", perms.storageAccess, if (perms.storageAccess) "On" else "Off — app-install blocking won't work", "storage", onRequest, readOnly)
+                PermRow(Icons.Filled.Lock, "Install control (file access)", perms.storageAccess, if (perms.storageAccess) "On" else "Off — app-install blocking won't work", "storage", onRequest)
             }
         }
     }
@@ -1447,7 +1385,6 @@ private fun PermRow(
     detail: String,
     permKey: String,
     onRequest: (String) -> Unit,
-    readOnly: Boolean = false,
 ) {
     var requested by remember(permKey, ok) { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1456,7 +1393,7 @@ private fun PermRow(
             Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
             Text(detail, style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
         }
-        if (!ok && !readOnly) {
+        if (!ok) {
             Text(
                 if (requested) "Requested" else "Request",
                 style = MaterialTheme.typography.labelMedium,
@@ -1580,8 +1517,8 @@ private fun PendingAppsCard(
 }
 
 @Composable
-private fun ProtectionCard(blocked: Boolean, onClick: () -> Unit, readOnly: Boolean = false) {
-    CupertinoCard(onClick = if (readOnly) null else onClick) {
+private fun ProtectionCard(blocked: Boolean, onClick: () -> Unit) {
+    CupertinoCard(onClick = onClick) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
@@ -1599,7 +1536,7 @@ private fun ProtectionCard(blocked: Boolean, onClick: () -> Unit, readOnly: Bool
             Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
                 Text("Prevent uninstall", style = MaterialTheme.typography.bodyLarge)
                 Text(
-                    if (blocked) "On · a PIN is required to remove Shield" else if (readOnly) "Off" else "Off · tap to protect Shield",
+                    if (blocked) "On · a PIN is required to remove Shield" else "Off · tap to protect Shield",
                     style = MaterialTheme.typography.bodySmall,
                     color = AppTheme.colors.secondaryLabel,
                 )

@@ -95,24 +95,8 @@ private fun ParentAppRoot(
 
     when (val current = state) {
         ParentAppState.Loading -> LoadingScreen()
-        ParentAppState.SignedOut -> {
-            val joinState by viewModel.joinState.collectAsStateWithLifecycle()
-            AuthFlow(
-                joinState = joinState,
-                onJoinAsViewer = viewModel::joinAsViewer,
-                onClearJoinError = viewModel::clearJoinError,
-            )
-        }
+        ParentAppState.SignedOut -> AuthFlow()
         is ParentAppState.NeedsProfile -> ProfileSetupScreen(onSaved = { /* state reacts automatically */ })
-        ParentAppState.Viewer -> ParentShell(
-            profile = com.shahaabapps.core.model.UserProfile(
-                name = "Viewer",
-                role = com.shahaabapps.core.model.UserRole.PARENT,
-            ),
-            viewer = true,
-            deepLink = deepLink,
-            onDeepLinkHandled = onDeepLinkHandled,
-        )
         is ParentAppState.Ready -> {
             androidx.compose.runtime.LaunchedEffect(current.profile.id) {
                 viewModel.registerFcmToken(current.profile.id)

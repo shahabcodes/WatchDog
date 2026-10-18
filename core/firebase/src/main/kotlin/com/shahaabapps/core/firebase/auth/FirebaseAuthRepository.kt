@@ -36,8 +36,6 @@ class FirebaseAuthRepository @Inject constructor(
 
     override fun currentUserIdOrNull(): String? = auth.currentUser?.uid
 
-    override fun isAnonymous(): Boolean = auth.currentUser?.isAnonymous == true
-
     override fun currentUserEmail(): String? = auth.currentUser?.email
 
     override suspend fun signUpWithEmail(email: String, password: String): AppResult<String> =

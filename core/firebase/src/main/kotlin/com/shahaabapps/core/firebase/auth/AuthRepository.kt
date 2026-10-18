@@ -14,9 +14,6 @@ interface AuthRepository {
 
     fun currentUserIdOrNull(): String?
 
-    /** True when signed in anonymously (the parent app uses this for read-only viewers). */
-    fun isAnonymous(): Boolean
-
     /** The signed-in user's email, or null (e.g. anonymous / signed out). */
     fun currentUserEmail(): String?
 

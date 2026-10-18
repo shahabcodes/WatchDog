@@ -85,7 +85,6 @@ private val LIMIT_OPTIONS = listOf(null, 15, 30, 60, 120, 180)
 fun UsageScreen(
     onBack: () -> Unit,
     embedded: Boolean = false,
-    readOnly: Boolean = false,
     viewModel: UsageViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -175,7 +174,7 @@ fun UsageScreen(
                         row = row,
                         showInstalled = state.sort == AppSort.INSTALLED,
                         fraction = (row.minutes.toFloat() / maxMinutes).coerceIn(0f, 1f),
-                        onClick = if (readOnly) null else { { editing = row } },
+                        onClick = { editing = row },
                     )
                 }
             }
@@ -203,7 +202,7 @@ fun UsageScreen(
 }
 
 @Composable
-private fun AppCard(row: AppRow, showInstalled: Boolean, fraction: Float, onClick: (() -> Unit)?) {
+private fun AppCard(row: AppRow, showInstalled: Boolean, fraction: Float, onClick: () -> Unit) {
     CupertinoCard(onClick = onClick) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             AppIcon(base64 = row.app.icon, label = row.app.label, size = 40.dp, modifier = Modifier.padding(end = Spacing.md))

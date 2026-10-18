@@ -17,9 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -54,7 +52,6 @@ import com.shahaabapps.core.ui.theme.Spacing
 @Composable
 fun InstallGuardScreen(
     onBack: () -> Unit,
-    readOnly: Boolean = false,
     viewModel: InstallGuardViewModel = hiltViewModel(),
 ) {
     val guard by viewModel.guard.collectAsStateWithLifecycle()
@@ -106,10 +103,7 @@ fun InstallGuardScreen(
                         title = "Control sideloaded installs",
                         subtitle = "Block apps installed or updated from outside the Play Store",
                         showDivider = false,
-                        trailing = {
-                            if (readOnly) ReadOnlyStateLabel(guard.enabled)
-                            else Switch(checked = guard.enabled, onCheckedChange = viewModel::setEnabled)
-                        },
+                        trailing = { Switch(checked = guard.enabled, onCheckedChange = viewModel::setEnabled) },
                     )
                 }
             }
@@ -124,10 +118,7 @@ fun InstallGuardScreen(
                                 subtitle = if (guard.allowlist) "Everything else is blocked from sideloading"
                                 else "Off: instead, block only the apps I pick below",
                                 showDivider = false,
-                                trailing = {
-                                    if (readOnly) ReadOnlyStateLabel(guard.allowlist)
-                                    else Switch(checked = guard.allowlist, onCheckedChange = viewModel::setAllowlistMode)
-                                },
+                                trailing = { Switch(checked = guard.allowlist, onCheckedChange = viewModel::setAllowlistMode) },
                             )
                         }
                     }
@@ -167,7 +158,6 @@ fun InstallGuardScreen(
                                 sub = app.packageName,
                                 checked = app.packageName in selectedSet,
                                 onCheckedChange = { viewModel.togglePackage(app.packageName, it) },
-                                enabled = !readOnly,
                             )
                         }
                     }
@@ -188,13 +178,12 @@ fun InstallGuardScreen(
                                 sub = null,
                                 checked = true,
                                 onCheckedChange = { viewModel.togglePackage(pkg, it) },
-                                enabled = !readOnly,
                             )
                         }
                     }
                 }
 
-                if (!readOnly) item(key = "addByName") {
+                item(key = "addByName") {
                     Column(modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.md)) {
                         OutlinedTextField(
                             value = newPackage,
@@ -348,7 +337,6 @@ private fun AppToggleRow(
     sub: String?,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
-    enabled: Boolean = true,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -373,25 +361,6 @@ private fun AppToggleRow(
                 )
             }
         }
-        if (enabled) {
-            Switch(checked = checked, onCheckedChange = onCheckedChange)
-        } else {
-            // Read-only viewers: show membership as a static mark, not a dead toggle.
-            Icon(
-                imageVector = if (checked) Icons.Filled.Check else Icons.Filled.Remove,
-                contentDescription = if (checked) "In list" else "Not in list",
-                tint = if (checked) AppTheme.colors.accent else AppTheme.colors.secondaryLabel,
-            )
-        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
-}
-
-/** Static "On / Off" label shown to read-only viewers in place of a settings toggle. */
-@Composable
-private fun ReadOnlyStateLabel(on: Boolean) {
-    Text(
-        text = if (on) "On" else "Off",
-        style = MaterialTheme.typography.bodyLarge,
-        color = AppTheme.colors.secondaryLabel,
-    )
 }

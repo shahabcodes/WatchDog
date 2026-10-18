@@ -64,7 +64,7 @@ class ChildAppViewModel @Inject constructor(
             authRepository.currentUserId.filterNotNull()
                 .flatMapLatest { uid ->
                     childRepository.observeChild(uid)
-                        .map { (it?.linkedParents ?: emptyList()) + (it?.viewers ?: emptyList()) }
+                        .map { it?.linkedParents ?: emptyList() }
                 }
                 .collect { parents ->
                     val uid = authRepository.currentUserIdOrNull() ?: return@collect

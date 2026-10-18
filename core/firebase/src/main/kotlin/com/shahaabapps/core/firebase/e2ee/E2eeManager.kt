@@ -7,9 +7,14 @@ import com.shahaabapps.core.common.crypto.DeviceKeyStore
 import com.shahaabapps.core.common.crypto.E2ee
 import com.shahaabapps.core.common.crypto.PinnedKeyStore
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -32,6 +37,9 @@ class E2eeManager @Inject constructor(
 ) {
     private val appContext = context.applicationContext
     private val dekLock = Any()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /** Throttles parent-side re-sync requests per child so a read burst sends one. */
+    private val lastResyncRequest = ConcurrentHashMap<String, Long>()
     /** This child's key-ring, newest first. ring[0] encrypts; any entry can decrypt. */
     @Volatile private var cachedRing: List<ByteArray>? = null
     /** Last linked-parent set seen, to detect a removal and rotate. */
@@ -189,7 +197,35 @@ class E2eeManager @Inject constructor(
     suspend fun openBytes(childId: String, viewerUid: String?, blob: ByteArray): ByteArray? {
         warmReaderKey(childId, viewerUid)
         return tryOpen(readerRing(childId, viewerUid), blob).also {
-            if (it == null) diagnostics.info("e2ee", "bytes decrypt miss (no key) child=$childId viewer=$viewerUid")
+            if (it == null) {
+                diagnostics.info("e2ee", "bytes decrypt miss (no key) child=$childId viewer=$viewerUid")
+                maybeRequestResync(childId, viewerUid)
+            }
+        }
+    }
+
+    /**
+     * A reader that can't decrypt asks the child to re-wrap the data key for it now
+     * (self-heal when a parent's device key rotated). Throttled per child so a read
+     * burst sends a single request; no-op when this device IS the child.
+     */
+    private fun maybeRequestResync(childId: String, viewerUid: String?) {
+        if (viewerUid == null || viewerUid == childId) return
+        val tag = "$childId/$viewerUid"
+        val now = System.currentTimeMillis()
+        if (now - (lastResyncRequest[tag] ?: 0L) < RESYNC_THROTTLE_MS) return
+        lastResyncRequest[tag] = now
+        scope.launch { runCatching { keys.requestResync(childId, viewerUid) } }
+    }
+
+    /** Child: reader uids currently asking for a re-wrap. */
+    fun resyncRequests(childId: String): Flow<List<String>> = keys.observeResyncRequests(childId)
+
+    /** Child: re-wrap the data key for [parentUid] immediately and clear the request. */
+    suspend fun honorResync(childId: String, parentUid: String) = withContext(Dispatchers.Default) {
+        verifiedParents.remove("$childId/$parentUid")
+        if (ensureWrappedFor(childId, parentUid)) {
+            keys.clearResync(childId, parentUid)
         }
     }
 
@@ -236,6 +272,7 @@ class E2eeManager @Inject constructor(
         val raw = tryOpen(readerRing(childId, viewerUid), unb64(sealedB64))
         if (raw == null) {
             diagnostics.info("e2ee", "string decrypt miss (no key) child=$childId viewer=$viewerUid")
+            maybeRequestResync(childId, viewerUid)
             return null
         }
         return runCatching { String(raw, Charsets.UTF_8) }.getOrNull()
@@ -334,5 +371,6 @@ class E2eeManager @Inject constructor(
         // shared test device) gets its wrap refreshed within minutes, not half an
         // hour — the window during which the parent can't decrypt the child's data.
         private const val VERIFY_TTL_MS = 3L * 60 * 1000
+        private const val RESYNC_THROTTLE_MS = 60L * 1000 // at most one re-sync request per child per minute
     }
 }

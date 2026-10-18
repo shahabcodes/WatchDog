@@ -144,6 +144,13 @@ class GeofenceSyncService : Service() {
                 .collect { parents -> runCatching { e2eeManager.syncChildKeys(childId, parents) } }
         }
         scope.launch {
+            // A reader that can't decrypt asks us to re-wrap now — honor it immediately
+            // instead of waiting for the periodic sync.
+            e2eeManager.resyncRequests(childId).collect { uids ->
+                uids.forEach { parentUid -> runCatching { e2eeManager.honorResync(childId, parentUid) } }
+            }
+        }
+        scope.launch {
             geofenceRepository.observeGeofences(childId).collectLatest { geofences ->
                 activeGeofences = geofences
                 runCatching { registrar.register(geofences) }

@@ -40,6 +40,17 @@ interface E2eeKeyRepository {
     suspend fun getWrappedKey(childId: String, parentUid: String): WrappedKey?
     fun observeWrappedKey(childId: String, parentUid: String): Flow<WrappedKey?>
     suspend fun deleteWrappedKey(childId: String, parentUid: String): AppResult<Unit>
+
+    /**
+     * A reader (parent/viewer) that can't decrypt asks the child to re-wrap the
+     * data key for it now, instead of waiting for the child's next periodic sync.
+     * `children/{childId}/keyResync/{parentUid}`.
+     */
+    suspend fun requestResync(childId: String, parentUid: String): AppResult<Unit>
+    /** Child: observe the set of reader uids currently asking for a re-wrap. */
+    fun observeResyncRequests(childId: String): Flow<List<String>>
+    /** Child: clear a request once it has been honoured. */
+    suspend fun clearResync(childId: String, parentUid: String): AppResult<Unit>
 }
 
 /**
@@ -125,14 +136,36 @@ class FirebaseE2eeKeyRepository @Inject constructor(
     override suspend fun deleteWrappedKey(childId: String, parentUid: String): AppResult<Unit> =
         runCatchingResult { wrappedDoc(childId, parentUid).delete().await() }
 
+    override suspend fun requestResync(childId: String, parentUid: String): AppResult<Unit> =
+        runCatchingResult {
+            resyncDoc(childId, parentUid).set(mapOf("at" to System.currentTimeMillis())).await()
+        }
+
+    override fun observeResyncRequests(childId: String): Flow<List<String>> = callbackFlow {
+        val reg = firestore.collection(CHILDREN).document(childId).collection(KEY_RESYNC)
+            .addSnapshotListener { snap, err ->
+                if (err != null || snap == null) { trySend(emptyList()); return@addSnapshotListener }
+                trySend(snap.documents.map { it.id })
+            }
+        awaitClose { reg.remove() }
+    }
+
+    override suspend fun clearResync(childId: String, parentUid: String): AppResult<Unit> =
+        runCatchingResult { resyncDoc(childId, parentUid).delete().await() }
+
     private fun wrappedDoc(childId: String, parentUid: String) =
         firestore.collection(CHILDREN).document(childId)
             .collection(E2EE_KEYS).document(parentUid)
+
+    private fun resyncDoc(childId: String, parentUid: String) =
+        firestore.collection(CHILDREN).document(childId)
+            .collection(KEY_RESYNC).document(parentUid)
 
     private companion object {
         const val CHILDREN = "children"
         const val PUBLIC_KEYS = "publicKeys"
         const val E2EE_KEYS = "e2eeKeys"
+        const val KEY_RESYNC = "keyResync"
         const val FIELD_PUBLIC_KEY = "e2ePublicKey"
     }
 }

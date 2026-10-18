@@ -155,6 +155,14 @@ service cloud.firestore {
         allow write: if isChild();
       }
 
+      // A parent/viewer that can't decrypt asks the child to re-wrap the data key
+      // for it now. The requester may only write its own request doc; the child
+      // honours and clears it (the requester may also read/clear its own).
+      match /keyResync/{recipientUid} {
+        allow create, update: if canRead() && request.auth.uid == recipientUid;
+        allow read, delete: if isChild() || request.auth.uid == recipientUid;
+      }
+
       // Captured screenshots: the child uploads records; a parent reads and
       // deletes them; viewers read.
       match /screenshots/{shotId} {

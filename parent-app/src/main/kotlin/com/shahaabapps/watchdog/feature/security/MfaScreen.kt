@@ -96,6 +96,30 @@ fun MfaScreen(
                     }
                 }
 
+                MfaStep.VERIFY_EMAIL -> {
+                    Text("Verify your email first", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Two-factor needs a verified email. We'll send a link to ${state.email.ifBlank { "your email" }} — tap it, then come back and press \"I've verified\".",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = AppTheme.colors.secondaryLabel,
+                    )
+                    state.info?.let { InfoText(it) }
+                    state.error?.let { ErrorText(it) }
+                    CupertinoPrimaryButton(
+                        text = if (state.verificationSent) "Resend verification email" else "Send verification email",
+                        onClick = viewModel::sendVerificationEmail,
+                        enabled = !state.busy,
+                    )
+                    if (state.verificationSent) {
+                        CupertinoPrimaryButton(
+                            text = "I've verified — continue",
+                            onClick = viewModel::checkedVerification,
+                            enabled = !state.busy,
+                        )
+                    }
+                    CancelLink(viewModel::cancel)
+                }
+
                 MfaStep.REAUTH -> {
                     Text("Confirm your password", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(

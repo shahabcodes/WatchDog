@@ -39,6 +39,15 @@ interface AuthRepository {
     /** True when the signed-in user has a second factor enrolled. */
     fun isMfaEnrolled(): Boolean
 
+    /** True when the signed-in user's email is verified (required before MFA enrollment). */
+    fun isEmailVerified(): Boolean
+
+    /** Sends a verification link to the signed-in user's email. */
+    suspend fun sendEmailVerification(): AppResult<Unit>
+
+    /** Reloads the user so a just-verified email is reflected in [isEmailVerified]. */
+    suspend fun reloadUser(): AppResult<Unit>
+
     /** Re-authenticates the current user with their password (for recent-login-required ops). */
     suspend fun reauthenticate(password: String): AppResult<Unit>
 

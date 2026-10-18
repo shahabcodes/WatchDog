@@ -82,6 +82,18 @@ class FirebaseAuthRepository @Inject constructor(
     override fun isMfaEnrolled(): Boolean =
         auth.currentUser?.multiFactor?.enrolledFactors?.isNotEmpty() == true
 
+    override fun isEmailVerified(): Boolean = auth.currentUser?.isEmailVerified == true
+
+    override suspend fun sendEmailVerification(): AppResult<Unit> =
+        runCatchingResult {
+            val user = requireNotNull(auth.currentUser) { "Not signed in" }
+            user.sendEmailVerification().await()
+            Unit
+        }
+
+    override suspend fun reloadUser(): AppResult<Unit> =
+        runCatchingResult { auth.currentUser?.reload()?.await(); Unit }
+
     override suspend fun reauthenticate(password: String): AppResult<Unit> =
         runCatchingResult {
             val user = requireNotNull(auth.currentUser) { "Not signed in" }

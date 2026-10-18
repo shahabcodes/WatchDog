@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /** Which screen of the 2FA flow is showing. */
-enum class MfaStep { OVERVIEW, REAUTH, ENROLL }
+enum class MfaStep { OVERVIEW, VERIFY_EMAIL, REAUTH, ENROLL }
 
 /** What the password re-auth will lead into. */
 enum class MfaIntent { ENABLE, DISABLE }
@@ -29,6 +29,8 @@ data class MfaUiState(
     val busy: Boolean = false,
     val error: String? = null,
     val info: String? = null,
+    val email: String = "",
+    val verificationSent: Boolean = false,
 )
 
 @HiltViewModel
@@ -39,9 +41,51 @@ class MfaViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(MfaUiState(enrolled = authRepository.isMfaEnrolled()))
     val uiState: StateFlow<MfaUiState> = _uiState.asStateFlow()
 
-    fun startEnable() = _uiState.update { it.copy(step = MfaStep.REAUTH, intent = MfaIntent.ENABLE, password = "", error = null, info = null) }
+    fun startEnable() {
+        // Firebase requires a verified email before enrolling a second factor.
+        if (!authRepository.isEmailVerified()) {
+            _uiState.update {
+                it.copy(
+                    step = MfaStep.VERIFY_EMAIL,
+                    intent = MfaIntent.ENABLE,
+                    email = authRepository.currentUserEmail() ?: "",
+                    error = null, info = null, verificationSent = false,
+                )
+            }
+        } else {
+            _uiState.update { it.copy(step = MfaStep.REAUTH, intent = MfaIntent.ENABLE, password = "", error = null, info = null) }
+        }
+    }
     fun startDisable() = _uiState.update { it.copy(step = MfaStep.REAUTH, intent = MfaIntent.DISABLE, password = "", error = null, info = null) }
     fun cancel() = _uiState.update { it.copy(step = MfaStep.OVERVIEW, password = "", code = "", enrollment = null, error = null) }
+
+    /** Send the verification link to the account's email. */
+    fun sendVerificationEmail() {
+        if (_uiState.value.busy) return
+        _uiState.update { it.copy(busy = true, error = null) }
+        viewModelScope.launch {
+            when (val r = authRepository.sendEmailVerification()) {
+                is AppResult.Success -> _uiState.update {
+                    it.copy(busy = false, verificationSent = true, info = "Verification link sent to ${it.email}. Tap it, then press 'I've verified'.")
+                }
+                is AppResult.Failure -> _uiState.update { it.copy(busy = false, error = r.error.message ?: "Couldn't send the email") }
+            }
+        }
+    }
+
+    /** After the user taps the email link: reload and continue if now verified. */
+    fun checkedVerification() {
+        if (_uiState.value.busy) return
+        _uiState.update { it.copy(busy = true, error = null) }
+        viewModelScope.launch {
+            authRepository.reloadUser()
+            if (authRepository.isEmailVerified()) {
+                _uiState.update { it.copy(busy = false, step = MfaStep.REAUTH, password = "", info = null) }
+            } else {
+                _uiState.update { it.copy(busy = false, error = "Still not verified. Open the link in your email, then try again.") }
+            }
+        }
+    }
 
     fun onPassword(value: String) = _uiState.update { it.copy(password = value, error = null) }
     fun onCode(value: String) = _uiState.update { it.copy(code = value.filter { c -> c.isDigit() }.take(6), error = null) }

@@ -17,7 +17,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -104,7 +106,10 @@ fun InstallGuardScreen(
                         title = "Control sideloaded installs",
                         subtitle = "Block apps installed or updated from outside the Play Store",
                         showDivider = false,
-                        trailing = { Switch(checked = guard.enabled, onCheckedChange = if (readOnly) null else viewModel::setEnabled) },
+                        trailing = {
+                            if (readOnly) ReadOnlyStateLabel(guard.enabled)
+                            else Switch(checked = guard.enabled, onCheckedChange = viewModel::setEnabled)
+                        },
                     )
                 }
             }
@@ -119,7 +124,10 @@ fun InstallGuardScreen(
                                 subtitle = if (guard.allowlist) "Everything else is blocked from sideloading"
                                 else "Off: instead, block only the apps I pick below",
                                 showDivider = false,
-                                trailing = { Switch(checked = guard.allowlist, onCheckedChange = if (readOnly) null else viewModel::setAllowlistMode) },
+                                trailing = {
+                                    if (readOnly) ReadOnlyStateLabel(guard.allowlist)
+                                    else Switch(checked = guard.allowlist, onCheckedChange = viewModel::setAllowlistMode)
+                                },
                             )
                         }
                     }
@@ -365,6 +373,25 @@ private fun AppToggleRow(
                 )
             }
         }
-        Switch(checked = checked, onCheckedChange = if (enabled) onCheckedChange else null)
+        if (enabled) {
+            Switch(checked = checked, onCheckedChange = onCheckedChange)
+        } else {
+            // Read-only viewers: show membership as a static mark, not a dead toggle.
+            Icon(
+                imageVector = if (checked) Icons.Filled.Check else Icons.Filled.Remove,
+                contentDescription = if (checked) "In list" else "Not in list",
+                tint = if (checked) AppTheme.colors.accent else AppTheme.colors.secondaryLabel,
+            )
+        }
     }
+}
+
+/** Static "On / Off" label shown to read-only viewers in place of a settings toggle. */
+@Composable
+private fun ReadOnlyStateLabel(on: Boolean) {
+    Text(
+        text = if (on) "On" else "Off",
+        style = MaterialTheme.typography.bodyLarge,
+        color = AppTheme.colors.secondaryLabel,
+    )
 }

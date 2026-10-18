@@ -296,7 +296,7 @@ fun ParentShell(
             ) {
                 AlertsScreen(onBack = { navController.popBackStack() }, readOnly = viewer)
             }
-            composable("screentime/{childId}", childArg) { UsageScreen(onBack = { }, embedded = true) }
+            composable("screentime/{childId}", childArg) { UsageScreen(onBack = { }, embedded = true, readOnly = viewer) }
             composable("settings") {
                 SettingsScreen(
                     onBack = { navController.popBackStack() },

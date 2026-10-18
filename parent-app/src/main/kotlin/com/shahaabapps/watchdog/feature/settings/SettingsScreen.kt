@@ -11,6 +11,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.LockReset
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Icon
@@ -40,6 +41,7 @@ import com.shahaabapps.watchdog.util.MapStyle
 fun SettingsScreen(
     onBack: () -> Unit,
     onOpenSecurity: () -> Unit = {},
+    onOpenDiagnostics: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val mode by viewModel.themeMode.collectAsStateWithLifecycle()
@@ -109,6 +111,12 @@ fun SettingsScreen(
                     onClick = { if (!sendingReset) confirmReset = true },
                 )
             }
+            CupertinoListRow(
+                title = "Diagnostics",
+                subtitle = "Crash & bug reports to help fix issues",
+                leadingIcon = Icons.Filled.BugReport,
+                onClick = onOpenDiagnostics,
+            )
             CupertinoListRow(
                 title = "Sign out",
                 leadingIcon = Icons.Filled.Logout,

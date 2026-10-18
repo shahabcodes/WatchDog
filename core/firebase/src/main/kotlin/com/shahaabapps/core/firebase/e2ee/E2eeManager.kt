@@ -28,6 +28,7 @@ class E2eeManager @Inject constructor(
     private val deviceKeyStore: DeviceKeyStore,
     private val keys: E2eeKeyRepository,
     private val pinnedKeys: PinnedKeyStore,
+    private val diagnostics: com.shahaabapps.core.firebase.diagnostics.DiagnosticsLogger,
 ) {
     private val appContext = context.applicationContext
     private val dekLock = Any()
@@ -187,7 +188,9 @@ class E2eeManager @Inject constructor(
     /** Parent: decrypt raw bytes, warming + trying the child's key-ring; null if unavailable. */
     suspend fun openBytes(childId: String, viewerUid: String?, blob: ByteArray): ByteArray? {
         warmReaderKey(childId, viewerUid)
-        return tryOpen(readerRing(childId, viewerUid), blob)
+        return tryOpen(readerRing(childId, viewerUid), blob).also {
+            if (it == null) diagnostics.info("e2ee", "bytes decrypt miss (no key) child=$childId viewer=$viewerUid")
+        }
     }
 
     /** Parent: decrypt a coordinate blob using the already-cached key-ring; null if unavailable. */
@@ -230,7 +233,11 @@ class E2eeManager @Inject constructor(
 
     /** Decrypt a string sealed for [childId], using the already-cached key-ring; null if unavailable. */
     fun openStringCached(childId: String, viewerUid: String?, sealedB64: String): String? {
-        val raw = tryOpen(readerRing(childId, viewerUid), unb64(sealedB64)) ?: return null
+        val raw = tryOpen(readerRing(childId, viewerUid), unb64(sealedB64))
+        if (raw == null) {
+            diagnostics.info("e2ee", "string decrypt miss (no key) child=$childId viewer=$viewerUid")
+            return null
+        }
         return runCatching { String(raw, Charsets.UTF_8) }.getOrNull()
     }
 

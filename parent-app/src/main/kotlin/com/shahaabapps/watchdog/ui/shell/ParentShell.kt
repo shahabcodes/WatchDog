@@ -301,10 +301,14 @@ fun ParentShell(
                 SettingsScreen(
                     onBack = { navController.popBackStack() },
                     onOpenSecurity = { navController.navigate("security") },
+                    onOpenDiagnostics = { navController.navigate("diagnostics") },
                 )
             }
             composable("security") {
                 com.shahaabapps.watchdog.feature.security.MfaScreen(onBack = { navController.popBackStack() })
+            }
+            composable("diagnostics") {
+                com.shahaabapps.watchdog.feature.diagnostics.DiagnosticsScreen(onBack = { navController.popBackStack() })
             }
             composable("manage") {
                 ManageChildrenScreen(

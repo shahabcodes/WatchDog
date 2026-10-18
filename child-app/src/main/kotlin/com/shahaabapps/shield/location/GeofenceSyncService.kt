@@ -153,6 +153,16 @@ class GeofenceSyncService : Service() {
         scope.launch {
             geofenceRepository.observeGeofences(childId).collectLatest { geofences ->
                 activeGeofences = geofences
+                // Cache decrypted centres/radii locally so the OS geofence receiver
+                // can verify a platform transition against the real geometry.
+                runCatching {
+                    GeofenceGeoCache.save(
+                        this@GeofenceSyncService,
+                        geofences.filter { it.id.isNotBlank() }.map {
+                            Triple(it.id, it.latitude to it.longitude, it.radiusMeters.toDouble())
+                        },
+                    )
+                }
                 runCatching { registrar.register(geofences) }
             }
         }

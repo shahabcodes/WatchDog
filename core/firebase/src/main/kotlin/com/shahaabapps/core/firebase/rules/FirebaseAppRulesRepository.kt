@@ -199,7 +199,6 @@ class FirebaseAppRulesRepository @Inject constructor(
                 )
             }
         }
-        if (e2ee.encryptionActive(childId)) return emptyList() // refuse plaintext downgrade
         @Suppress("UNCHECKED_CAST")
         return (get("apps") as? List<Map<String, Any?>>).orEmpty().map {
             InstalledApp(
@@ -240,7 +239,6 @@ class FirebaseAppRulesRepository @Inject constructor(
                 updatedAtMillis = updatedAt,
             )
         }
-        if (e2ee.encryptionActive(childId)) return null // refuse plaintext downgrade
         @Suppress("UNCHECKED_CAST")
         val scheduleRaw = get("schedule") as? List<Map<String, Any?>> ?: emptyList()
         val schedule = scheduleRaw.map { window ->

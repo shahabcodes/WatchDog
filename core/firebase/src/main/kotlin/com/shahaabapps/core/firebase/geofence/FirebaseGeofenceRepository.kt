@@ -201,8 +201,8 @@ class FirebaseGeofenceRepository @Inject constructor(
             } ?: emptyList()
             return common(json.optString("name"), json.optDouble("lat", 0.0), json.optDouble("lng", 0.0), pts)
         }
-        // Refuse a plaintext place once this child is encrypting (downgrade/forgery guard).
-        if (e2ee.encryptionActive(childId)) return null
+        // Plaintext places are accepted on read; forged plaintext writes are blocked
+        // at the server (rules require enc once the child is encrypting).
         @Suppress("UNCHECKED_CAST")
         val rawPoints = get("points") as? List<Map<String, Any?>> ?: emptyList()
         val points = rawPoints.map {

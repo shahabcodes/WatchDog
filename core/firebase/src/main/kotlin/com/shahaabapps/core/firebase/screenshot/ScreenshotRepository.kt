@@ -192,10 +192,6 @@ class FirebaseScreenshotRepository @Inject constructor(
                 // once this device's wrapped key is available.
                 e2ee.openBytes(childId, parentUid, raw)
                     ?: error("Encryption key not ready yet — try again shortly.")
-            } else if (e2ee.encryptionActive(childId)) {
-                // Refuse a plaintext screenshot once this child is encrypting — it
-                // would be an unauthenticated (possibly forged) image.
-                error("Unexpected unencrypted screenshot — ignored.")
             } else {
                 raw
             }

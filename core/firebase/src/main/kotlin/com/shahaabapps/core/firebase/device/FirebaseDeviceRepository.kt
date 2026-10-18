@@ -244,9 +244,10 @@ class FirebaseDeviceRepository @Inject constructor(
         val sealed = getString("e")
         val coords = if (sealed != null) {
             e2ee.openCoordsCached(childId, sealed) ?: return null
-        } else if (e2ee.encryptionActive(childId)) {
-            return null // refuse plaintext downgrade once encryption is active
         } else {
+            // Accept plaintext: the child writes it whenever it isn't yet able to
+            // encrypt (key exchange still settling). Availability of the child's
+            // location must not depend on the encryption state having caught up.
             (getDouble("latitude") ?: 0.0) to (getDouble("longitude") ?: 0.0)
         }
         return ChildLocation(

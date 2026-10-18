@@ -37,10 +37,13 @@ object GeofenceNameCache {
     }.getOrNull()
 
     private fun seal(keyStore: DeviceKeyStore, plain: String): String =
-        Base64.encodeToString(keyStore.sealLocal(plain.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
+        Base64.encodeToString(keyStore.sealFast(plain.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
 
-    private fun open(keyStore: DeviceKeyStore, stored: String): String =
-        runCatching {
-            String(keyStore.openLocal(Base64.decode(stored, Base64.NO_WRAP)), Charsets.UTF_8)
-        }.getOrDefault(stored)
+    /** Decrypt: fast key, then legacy keystore-sealed, then legacy cleartext. */
+    private fun open(keyStore: DeviceKeyStore, stored: String): String {
+        val bytes = runCatching { Base64.decode(stored, Base64.NO_WRAP) }.getOrNull() ?: return stored
+        return runCatching { String(keyStore.openFast(bytes), Charsets.UTF_8) }.getOrNull()
+            ?: runCatching { String(keyStore.openLocal(bytes), Charsets.UTF_8) }.getOrNull()
+            ?: stored
+    }
 }

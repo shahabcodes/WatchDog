@@ -73,6 +73,37 @@ class DeviceKeyStore @Inject constructor(
         return cipher.doFinal(ct)
     }
 
+    // ---- fast local sealing for hot paths (caches) ----
+    //
+    // [sealLocal]/[openLocal] run an AndroidKeyStore (StrongBox) cipher op, which
+    // can cost 100ms+ each — far too slow to call per value on the main thread.
+    // These use a 32-byte local data key that is itself keystore-sealed on disk and
+    // loaded ONCE per process (cached statically), then do plain in-memory AES-GCM
+    // (sub-millisecond) per value. Same at-rest protection, no per-value keystore op.
+
+    /** Encrypt [bytes] for on-device storage, fast enough for per-value hot paths. */
+    fun sealFast(bytes: ByteArray): ByteArray = Aead.seal(localDataKey(), bytes)
+
+    /** Decrypt bytes produced by [sealFast]. */
+    fun openFast(blob: ByteArray): ByteArray = Aead.open(localDataKey(), blob)
+
+    private fun localDataKey(): ByteArray {
+        sharedLocalKey?.let { return it }
+        synchronized(localKeyLock) {
+            sharedLocalKey?.let { return it }
+            val file = File(File(context.filesDir, "e2ee"), "local.key")
+            val loaded = if (file.exists()) {
+                runCatching { openLocal(file.readBytes()) }.getOrNull()?.takeIf { it.size == 32 }
+            } else null
+            val key = loaded ?: ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }.also {
+                file.parentFile?.mkdirs()
+                runCatching { file.writeBytes(sealLocal(it)) }
+            }
+            sharedLocalKey = key
+            return key
+        }
+    }
+
     // ---- identity persistence ----
 
     private fun ensureIdentity(): Pair<ByteArray, ByteArray> {
@@ -158,5 +189,12 @@ class DeviceKeyStore @Inject constructor(
         const val TRANSFORM = "AES/GCM/NoPadding"
         const val IV_LEN = 12
         const val FORMAT_VERSION = 1
+
+        // Process-wide cache of the local data key, so a freshly constructed
+        // DeviceKeyStore (the caches build one per call) still pays the keystore
+        // load at most once per process.
+        @Volatile
+        private var sharedLocalKey: ByteArray? = null
+        private val localKeyLock = Any()
     }
 }

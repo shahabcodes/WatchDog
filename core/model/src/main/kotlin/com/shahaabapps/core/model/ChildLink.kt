@@ -58,6 +58,24 @@ data class DeviceInfo(
     val permissions: DevicePermissions? = null,
     /** Detailed battery history (hourly levels + last charge), null if never reported. */
     val batteryStats: BatteryStats? = null,
+    /** Plaintext protection flags (device.guard) — what tamper alerts are based on. */
+    val guard: DeviceGuard = DeviceGuard(),
+)
+
+/**
+ * Shield's plaintext on/off protection status (`device.guard`), readable by the
+ * server for tamper alerts. Missing flags read as "on" so old Shield versions
+ * don't show false alarms.
+ */
+data class DeviceGuard(
+    val accessibility: Boolean = true,
+    val usageAccess: Boolean = true,
+    val admin: Boolean = true,
+    val clockOk: Boolean = true,
+    val gpsGenuine: Boolean = true,
+    /** The zone the phone is set to, and the home zone schedules follow ("" if unknown). */
+    val phoneZone: String = "",
+    val homeZone: String = "",
 )
 
 /**
@@ -99,6 +117,14 @@ data class DevicePermissions(
     val usageAccess: Boolean = false,
     /** Shield is an active device admin (uninstall protection). */
     val adminActive: Boolean = false,
+    /** The phone's clock agrees with network time (false = date/time changed by hand). */
+    val clockOk: Boolean = true,
+    /** No fake (mock) GPS fixes in the last 30 minutes. */
+    val gpsGenuine: Boolean = true,
+    /** The time zone the phone is set to (IANA id), e.g. "Asia/Dubai". */
+    val phoneZone: String = "",
+    /** The child's home zone schedules follow. */
+    val homeZone: String = "",
     /** Notifications allowed. */
     val notifications: Boolean = false,
     /** Exempt from battery optimization ("Unrestricted"). */

@@ -3,7 +3,6 @@ package com.shahaabapps.shield.enforcement
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.util.Calendar
 import javax.inject.Inject
 
 /**
@@ -50,13 +49,14 @@ class UsageTracker @Inject constructor(
             .filterValues { it > 0 }
     }
 
+    /**
+     * Start of "today" — the child's home-zone day by trusted time — expressed on
+     * the phone's clock (usage stats are stamped with the phone's clock). Using the
+     * smallest clock offset seen today means moving the clock forward can't reset
+     * the daily limit; a jump can only make usage count more, never less.
+     */
     private fun startOfTodayMillis(): Long {
-        val cal = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
-        return cal.timeInMillis
+        val dayStart = ChildZone.startOfTodayMillis()
+        return dayStart + TrustedClock.minPhoneOffsetForDay(ChildZone.today().toString())
     }
 }

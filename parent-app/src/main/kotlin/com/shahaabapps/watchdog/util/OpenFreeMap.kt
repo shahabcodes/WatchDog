@@ -137,10 +137,27 @@ class OpenFreeMapController internal constructor(
         }
     }
 
-    /** Screen pixel position of a coordinate, or null before the map is ready. */
+    /**
+     * Screen pixel position of a coordinate, or null before the map is ready or
+     * when the point can't be shown. With the camera tilted (3D style), points
+     * behind the camera project to bogus mirrored positions, which drew stray
+     * route lines across the map; those are detected by projecting back and
+     * checking we land near the original point.
+     */
     fun toScreen(lat: Double, lng: Double): Offset? {
         val m = map ?: return null
-        val p = m.projection.toScreenLocation(LatLng(lat, lng))
+        val proj = m.projection
+        val p = proj.toScreenLocation(LatLng(lat, lng))
+        if (!p.x.isFinite() || !p.y.isFinite()) return null
+        // Far outside the viewport the coordinates get huge; nothing to draw there.
+        if (kotlin.math.abs(p.x) > MAX_SCREEN_COORD || kotlin.math.abs(p.y) > MAX_SCREEN_COORD) return null
+        if (m.cameraPosition.tilt > 0.5) {
+            val back = proj.fromScreenLocation(p)
+            val err = distanceMeters(lat, lng, back.latitude, back.longitude)
+            val target = m.cameraPosition.target
+            val fromCenter = if (target != null) distanceMeters(lat, lng, target.latitude, target.longitude) else 0.0
+            if (err > maxOf(100.0, fromCenter * 0.1)) return null
+        }
         return Offset(p.x, p.y)
     }
 
@@ -428,12 +445,11 @@ fun DrawScope.drawGeoPolyline(
     widthPx: Float,
 ) {
     if (points.size < 2) return
-    val path = Path()
-    points.forEachIndexed { i, (la, ln) ->
-        val o = controller.toScreen(la, ln) ?: return
-        if (i == 0) path.moveTo(o.x, o.y) else path.lineTo(o.x, o.y)
+    for (run in visibleRuns(controller, points)) {
+        val path = Path()
+        run.forEachIndexed { i, o -> if (i == 0) path.moveTo(o.x, o.y) else path.lineTo(o.x, o.y) }
+        drawPath(path, color = color, style = Stroke(width = widthPx, cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
-    drawPath(path, color = color, style = Stroke(width = widthPx, cap = StrokeCap.Round, join = StrokeJoin.Round))
 }
 
 /**
@@ -450,14 +466,13 @@ fun DrawScope.drawGeoRoute(
     casingWidthPx: Float,
 ) {
     if (points.size < 2) return
-    val screen = ArrayList<Offset>(points.size)
-    for ((la, ln) in points) {
-        val o = controller.toScreen(la, ln) ?: return
-        screen.add(o)
+    // Draw each visible run separately, so a hidden point (e.g. behind the tilted
+    // camera) breaks the line instead of aborting it or drawing a stray spur.
+    for (run in visibleRuns(controller, points)) {
+        val path = smoothPath(run)
+        drawPath(path, color = casing, style = Stroke(width = casingWidthPx, cap = StrokeCap.Round, join = StrokeJoin.Round))
+        drawPath(path, color = core, style = Stroke(width = coreWidthPx, cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
-    val path = smoothPath(screen)
-    drawPath(path, color = casing, style = Stroke(width = casingWidthPx, cap = StrokeCap.Round, join = StrokeJoin.Round))
-    drawPath(path, color = core, style = Stroke(width = coreWidthPx, cap = StrokeCap.Round, join = StrokeJoin.Round))
 }
 
 /** Builds a smooth curve through [pts] using a Catmull-Rom → cubic Bézier conversion. */
@@ -577,4 +592,34 @@ fun DrawScope.drawVertex(
     drawCircle(color = Color.White, radius = r, center = o)
     drawCircle(color = accent, radius = r, center = o, style = Stroke(width = diameterPx * 0.12f))
     drawCircle(color = accent, radius = r * 0.5f, center = o)
+}
+
+private const val MAX_SCREEN_COORD = 100_000f
+
+/** Great-circle distance in metres (haversine). */
+private fun distanceMeters(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
+    val r = 6_371_000.0
+    val dLat = Math.toRadians(lat2 - lat1)
+    val dLng = Math.toRadians(lng2 - lng1)
+    val a = kotlin.math.sin(dLat / 2).let { it * it } +
+        kotlin.math.cos(Math.toRadians(lat1)) * kotlin.math.cos(Math.toRadians(lat2)) *
+        kotlin.math.sin(dLng / 2).let { it * it }
+    return 2 * r * kotlin.math.asin(kotlin.math.sqrt(a.coerceIn(0.0, 1.0)))
+}
+
+/** Splits projected points into runs of consecutive visible points (nulls break a run). */
+private fun visibleRuns(controller: OpenFreeMapController, points: List<Pair<Double, Double>>): List<List<Offset>> {
+    val runs = ArrayList<List<Offset>>()
+    var cur = ArrayList<Offset>()
+    for ((la, ln) in points) {
+        val o = controller.toScreen(la, ln)
+        if (o == null) {
+            if (cur.size >= 2) runs.add(cur)
+            cur = ArrayList()
+        } else {
+            cur.add(o)
+        }
+    }
+    if (cur.size >= 2) runs.add(cur)
+    return runs
 }

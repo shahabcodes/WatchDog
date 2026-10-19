@@ -32,11 +32,11 @@ object ProtectionLocalStore {
     fun isBlockNewApps(context: Context): Boolean = prefs(context).getBoolean(KEY_BLOCK_NEW_APPS, false)
 
     fun unlock(context: Context) {
-        prefs(context).edit().putLong(KEY_UNLOCK_UNTIL, System.currentTimeMillis() + UNLOCK_WINDOW_MS).apply()
+        prefs(context).edit().putLong(KEY_UNLOCK_UNTIL, TrustedClock.now() + UNLOCK_WINDOW_MS).apply()
     }
 
     fun isUnlocked(context: Context): Boolean =
-        System.currentTimeMillis() < prefs(context).getLong(KEY_UNLOCK_UNTIL, 0L)
+        TrustedClock.now() < prefs(context).getLong(KEY_UNLOCK_UNTIL, 0L)
 
     /** Package names / class hints that indicate an uninstall or admin-removal screen. */
     val INSTALLER_PACKAGES = setOf(
@@ -72,6 +72,37 @@ object ProtectionLocalStore {
         if (ownLabel.isBlank() || text == null) return false
         return text.contains(ownLabel, ignoreCase = true)
     }
+
+    /** Settings-type apps (incl. the permission controller that hosts app permissions). */
+    fun isSettingsPackage(packageName: String): Boolean =
+        packageName.contains("settings", ignoreCase = true) ||
+            packageName.contains("permissioncontroller", ignoreCase = true)
+
+    /**
+     * A Settings page that would switch Shield off without uninstalling it: its
+     * accessibility toggle (or the "Stop Shield?" confirm), Usage Access, or its
+     * App info page (Force stop, permissions, storage). Requires Shield's own name
+     * on screen plus a sign of one of those pages, so other apps' pages and the
+     * rest of Settings stay reachable.
+     */
+    fun isProtectedSettingsScreen(className: String?, screenText: String, ownLabel: String): Boolean {
+        if (ownLabel.isBlank() || screenText.isBlank()) return false
+        if (!screenText.contains(ownLabel, ignoreCase = true)) return false
+        if (className != null && SETTINGS_CLASS_HINTS.any { className.contains(it, ignoreCase = true) }) return true
+        val t = screenText.lowercase()
+        val label = ownLabel.lowercase()
+        return SETTINGS_TEXT_HINTS.any { t.contains(it) } ||
+            t.contains("use $label") || t.contains("stop $label") || t.contains("turn off $label")
+    }
+
+    private val SETTINGS_CLASS_HINTS = listOf(
+        "Accessibility", "UsageAccess", "AppInfo", "InstalledAppDetails", "AppDetails",
+        "AppPermission", "AppStorage",
+    )
+    private val SETTINGS_TEXT_HINTS = listOf(
+        "force stop", "usage access", "usage data access", "permit usage", "accessibility",
+        "app info", "clear storage", "clear data", "uninstall", "permissions",
+    )
 
     /**
      * The "deactivate device admin" screen. Stock Android uses DeviceAdminAdd, but

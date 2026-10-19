@@ -54,6 +54,7 @@ class EnforcementService : AccessibilityService() {
     @Inject lateinit var protectionRepository: ProtectionRepository
     @Inject lateinit var pendingAppsRepository: PendingAppsRepository
     @Inject lateinit var focusRepository: FocusRepository
+    @Inject lateinit var timeZoneRepository: com.shahaabapps.core.firebase.tracking.ChildTimeZoneRepository
     @Inject lateinit var screenshotRepository: ScreenshotRepository
     @Inject lateinit var requestRepository: RequestRepository
     @Inject lateinit var installGuardRepository: com.shahaabapps.core.firebase.installguard.InstallGuardRepository
@@ -110,6 +111,8 @@ class EnforcementService : AccessibilityService() {
 
     private var lastBlockedPackage: String? = null
     private var lastBlockAtMillis: Long = 0L
+    @Volatile private var lastForegroundPackage: String? = null
+    private var recheckJob: kotlinx.coroutines.Job? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -167,8 +170,17 @@ class EnforcementService : AccessibilityService() {
             }
         }
         focusExempt = computeFocusExempt()
+        startRecheckLoop()
+        serviceScope.launch { runCatching { TrustedClock.syncIfStale() } }
+        // Schedules follow the child's home time zone (set by the parent), not the
+        // phone's zone setting.
         serviceScope.launch {
-            protectionRepository.observe(childId).collectLatest { settings ->
+            timeZoneRepository.observe(childId).collectLatest { ChildZone.setParentZone(it) }
+        }
+        serviceScope.launch {
+            // Server-confirmed only: an error or a missing/cached doc must not turn
+            // protection off (that used to drop device admin on a glitch).
+            protectionRepository.observeConfirmed(childId).collectLatest { settings ->
                 ProtectionLocalStore.setBlocked(this@EnforcementService, settings.uninstallBlocked)
                 ProtectionLocalStore.setBlockNewApps(this@EnforcementService, settings.blockNewApps)
                 // Parent turned protection off → release device admin so the app
@@ -248,15 +260,27 @@ class EnforcementService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val packageName = event.packageName?.toString() ?: return
+        val className = event.className?.toString()
+        if (packageName !in TRANSIENT_PACKAGES) lastForegroundPackage = packageName
 
         // Uninstall protection runs independently of app-limit enforcement.
         val eventText = event.text.joinToString(" ").ifBlank { null }
-        guardUninstall(packageName, event.className?.toString(), eventText)
+        guardUninstall(packageName, className, eventText)
+        guardSettings(packageName, className)
 
+        enforce(packageName)
+    }
+
+    /**
+     * Applies focus windows, install guard, new-app review and app rules to the app
+     * in front. Runs on each window change AND every [RECHECK_MS] while an app stays
+     * open, so a limit or bedtime that starts mid-use still applies.
+     */
+    private fun enforce(packageName: String) {
         if (!supervised) return // device no longer supervised — no restrictions
         if (packageName == this.packageName) return
 
-        val now = System.currentTimeMillis()
+        val now = TrustedClock.now()
         // Parent-approved temporary exceptions. A grant only counts while it is at
         // least as new as the app's last rule change, so re-blocking an app (which
         // bumps updatedAtMillis) immediately voids a lingering approval.
@@ -299,7 +323,12 @@ class EnforcementService : AccessibilityService() {
         // (hard block or daily limit) until the grant expires.
         if (appAllowed) return
         val usedMinutes = usageTracker.todayForegroundMinutes(packageName)
-        val decision = RuleEvaluator.evaluate(rule, usedMinutes)
+        val decision = RuleEvaluator.evaluate(
+            rule,
+            usedMinutes,
+            java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone(ChildZone.zone()))
+                .apply { timeInMillis = TrustedClock.now() },
+        )
         if (decision.block) {
             blockApp(packageName, rule.appLabel.ifBlank { packageName }, decision.reason)
         }
@@ -329,7 +358,7 @@ class EnforcementService : AccessibilityService() {
 
     /** Returns a child-facing reason when a focus window is active now, else null. */
     private fun activeFocusReason(): String? {
-        val now = LocalDateTime.now()
+        val now = ChildZone.now()
         val minute = now.hour * 60 + now.minute
         val iso = now.dayOfWeek.value // 1=Mon..7=Sun
         return when {
@@ -341,7 +370,7 @@ class EnforcementService : AccessibilityService() {
 
     /** Packages the parent allowlisted for whichever focus window is active now. */
     private fun activeFocusAllowed(): Set<String> {
-        val now = LocalDateTime.now()
+        val now = ChildZone.now()
         val minute = now.hour * 60 + now.minute
         val iso = now.dayOfWeek.value
         val allowed = mutableSetOf<String>()
@@ -372,7 +401,7 @@ class EnforcementService : AccessibilityService() {
     private fun maybeCapture(nonce: Long) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
         val childId = authRepository.currentUserIdOrNull() ?: return
-        val recent = System.currentTimeMillis() - nonce < REQUEST_FRESH_MS
+        val recent = TrustedClock.now() - nonce < REQUEST_FRESH_MS
         if (nonce > lastScreenshotNonce && recent) {
             lastScreenshotNonce = nonce
             getSharedPreferences("screenshot_state", Context.MODE_PRIVATE)
@@ -472,6 +501,61 @@ class EnforcementService : AccessibilityService() {
     }
 
     /**
+     * While protection is on (and no PIN unlock window is open), keep the child out
+     * of the Settings pages that switch Shield off without uninstalling it: its
+     * accessibility toggle, Usage Access, and its App info page (Force stop,
+     * permissions, storage). Detected from the window's text, so it only triggers
+     * on pages that show Shield's name — other apps' settings stay reachable.
+     */
+    private fun guardSettings(packageName: String, className: String?) {
+        if (!ProtectionLocalStore.isBlocked(this) || ProtectionLocalStore.isUnlocked(this)) return
+        if (!ProtectionLocalStore.isSettingsPackage(packageName)) return
+        val text = windowText()
+        if (ProtectionLocalStore.isProtectedSettingsScreen(className, text, ownAppLabel)) {
+            performGlobalAction(GLOBAL_ACTION_HOME)
+            android.widget.Toast.makeText(
+                this,
+                "$ownAppLabel settings are locked. Ask a parent to unlock them.",
+                android.widget.Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
+    /** Visible text of the active window (bounded), for the Settings guard. */
+    private fun windowText(): String {
+        val root = runCatching { rootInActiveWindow }.getOrNull() ?: return ""
+        val sb = StringBuilder()
+        val queue = ArrayDeque<android.view.accessibility.AccessibilityNodeInfo>()
+        queue.add(root)
+        var visited = 0
+        while (queue.isNotEmpty() && visited < MAX_NODES) {
+            val node = queue.removeFirst()
+            visited++
+            node.text?.let { sb.append(it).append('\n') }
+            node.contentDescription?.let { sb.append(it).append('\n') }
+            for (i in 0 until node.childCount) node.getChild(i)?.let { queue.add(it) }
+        }
+        return sb.toString()
+    }
+
+    /** Re-checks the app in front every [RECHECK_MS] (limits/bedtime mid-use, Settings pages). */
+    private fun startRecheckLoop() {
+        recheckJob?.cancel()
+        recheckJob = serviceScope.launch(Dispatchers.Main) {
+            while (true) {
+                kotlinx.coroutines.delay(RECHECK_MS)
+                runCatching { TrustedClock.syncIfStale() }
+                val front = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
+                    ?: lastForegroundPackage ?: continue
+                runCatching {
+                    guardSettings(front, null)
+                    enforce(front)
+                }
+            }
+        }
+    }
+
+    /**
      * When uninstall protection is on and device admin is active, bounce the user
      * out of the uninstall dialog or the "deactivate device admin" screen — unless
      * a parent has unlocked a removal window with the PIN.
@@ -495,6 +579,7 @@ class EnforcementService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
+        recheckJob?.cancel()
         super.onDestroy()
         if (instance === this) instance = null
         runCatching { unregisterReceiver(packageAddedReceiver) }
@@ -511,5 +596,17 @@ class EnforcementService : AccessibilityService() {
         // Only honour a screenshot request this fresh, so stale requests aren't
         // replayed when the service (re)starts.
         private const val REQUEST_FRESH_MS = 2 * 60_000L
+
+        /** How often the app in front is re-checked while it stays open. */
+        private const val RECHECK_MS = 20_000L
+        /** Upper bound on nodes read for the Settings guard. */
+        private const val MAX_NODES = 400
+        /** Overlays that aren't "the app in front" (shade, keyboards). */
+        private val TRANSIENT_PACKAGES = setOf(
+            "com.android.systemui",
+            "com.google.android.inputmethod.latin",
+            "com.samsung.android.honeyboard",
+            "com.touchtype.swiftkey",
+        )
     }
 }

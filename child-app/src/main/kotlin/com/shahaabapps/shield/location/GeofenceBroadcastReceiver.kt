@@ -45,6 +45,8 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         // a stricter gate — a phantom overnight "left" from a drifted low-power fix is
         // the usual cause of repeat home visits, so an EXIT must come from a confident fix.
         val triggerLoc = event.triggeringLocation
+        // Transitions from a fake (mock) location are ignored.
+        if (triggerLoc != null && MockLocationGuard.reject(context, triggerLoc)) return
         val acc = triggerLoc?.takeIf { it.hasAccuracy() }?.accuracy
         if (acc != null && acc > ACCURACY_MAX_METERS) return
         if (gmsTransition == GmsGeofence.GEOFENCE_TRANSITION_EXIT && acc != null && acc > EXIT_ACCURACY_MAX_METERS) return

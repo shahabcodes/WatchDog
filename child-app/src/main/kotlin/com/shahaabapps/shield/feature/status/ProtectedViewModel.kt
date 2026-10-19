@@ -40,7 +40,7 @@ class ProtectedViewModel @Inject constructor(
 
             val usage = withContext(Dispatchers.IO) { usageTracker.todayUsageByPackage() }
             if (usage.isNotEmpty()) {
-                usageRepository.reportUsage(childId, LocalDate.now().toString(), usage)
+                usageRepository.reportUsage(childId, com.shahaabapps.shield.enforcement.ChildZone.today().toString(), usage)
             }
         }
     }

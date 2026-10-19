@@ -264,6 +264,7 @@ class GeofenceSyncService : Service() {
                 // run even when offline, so charge sessions and hourly samples are
                 // captured and then uploaded on reconnect.
                 val stats = runCatching { batteryTracker.record(pct, charging, now, batteryTempTenths()) }.getOrNull()
+                runCatching { com.shahaabapps.shield.enforcement.TrustedClock.syncIfStale() }
                 val perms = com.shahaabapps.shield.enforcement.ChildPermissions.snapshot(this@GeofenceSyncService)
                 val drain = drainPerHour
                 // Fire-and-forget the network writes so the sampling loop keeps its
@@ -295,7 +296,7 @@ class GeofenceSyncService : Service() {
             var lastLocationNonce = 0L
             var firstEmit = true
             deviceRepository.observeLocationRequests(childId).collectLatest { nonce ->
-                val recent = System.currentTimeMillis() - nonce < FRESH_REQUEST_MS
+                val recent = com.shahaabapps.shield.enforcement.TrustedClock.now() - nonce < FRESH_REQUEST_MS
                 if (firstEmit) {
                     firstEmit = false
                     lastLocationNonce = nonce
@@ -423,6 +424,13 @@ class GeofenceSyncService : Service() {
         // A raw fix was delivered to the app (the OS/GPS is producing fixes).
         locLastFixMillis = now
         locLastAccuracy = loc.accuracy
+        // Fake GPS (a mock-location app): never publish it; the parent is alerted
+        // via the gpsGenuine guard flag.
+        if (MockLocationGuard.reject(this, loc)) {
+            locOutcome = "rejected_mock"; locOutcomeMillis = now
+            recordStatus(childId)
+            return
+        }
         val prev = accepted
 
         // First fix ever (or after a restart): trust it.

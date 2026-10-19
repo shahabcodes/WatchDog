@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Shield</string>
-    <string name="accessibility_description">Shield uses this to see which app is open so it can apply the time limits and blocks set by a parent. It does not read screen content.</string>
+    <string name="accessibility_description">Shield uses this to see which app is open so it can apply the time limits and blocks set by a parent. It also reads the text of Settings screens, only to recognise and lock Shield’s own settings. It doesn’t read or store other screen content.</string>
     <string name="device_admin_description">Lets Watch Dog stop Shield from being uninstalled. A parent turns this off with a PIN.</string>
 </resources>

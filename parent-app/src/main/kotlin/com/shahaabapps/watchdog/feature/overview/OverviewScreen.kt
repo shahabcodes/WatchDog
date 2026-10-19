@@ -128,6 +128,7 @@ fun OverviewScreen(
     val pendingVm: com.shahaabapps.watchdog.feature.protection.PendingAppsViewModel = hiltViewModel()
     val pendingApps by pendingVm.pending.collectAsStateWithLifecycle()
     val focusVm: com.shahaabapps.watchdog.feature.focus.FocusViewModel = hiltViewModel()
+    val focusZones by focusVm.zones.collectAsStateWithLifecycle()
     val focus by focusVm.settings.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     var showRingSheet by remember { mutableStateOf(false) }
@@ -242,6 +243,8 @@ fun OverviewScreen(
                     com.shahaabapps.watchdog.feature.focus.FocusCard(
                         settings = focus,
                         onEdit = { showFocusSheet = true },
+                        zones = focusZones,
+                        childName = state.childName,
                     )
                 }
             }
@@ -383,6 +386,9 @@ fun OverviewScreen(
                     focusVm.save(settings)
                     showFocusSheet = false
                 },
+                zones = focusZones,
+                childName = state.childName,
+                onSetZone = focusVm::setZone,
             )
         }
     }
@@ -1399,6 +1405,8 @@ private fun LocationHealthCard(
                 "Shield's location service stopped ${healthAgo(s.updatedAtMillis)}."
             reportAge > SERVICE_STALE_MS ->
                 "Shield's location service stopped running ${healthAgo(s.updatedAtMillis)} — it was likely closed or killed by the system (battery optimization / task-killer)."
+            s.lastOutcome == "rejected_mock" ->
+                "Shield is ignoring fake locations: a mock-GPS app on the phone is feeding made-up positions."
             s.lastOutcome == "write_failed" ->
                 "Shield has a location fix but can't send it to you — a network or write error. Check the child's internet."
             s.lastOutcome == "rejected_low_accuracy" && (now - s.lastPublishMillis) > FIX_STALE_MS ->

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -76,9 +77,10 @@ private fun daysSummary(days: Set<Int>): String = when {
 
 /** Compact summary card shown on the dashboard; tap to edit. */
 @Composable
-fun FocusCard(settings: FocusSettings, onEdit: () -> Unit) {
+fun FocusCard(settings: FocusSettings, onEdit: () -> Unit, zones: ChildZones = ChildZones(), childName: String = "") {
     CupertinoCard(onClick = onEdit) {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+            ZoneNote(zones, childName)
             FocusSummaryRow(
                 icon = Icons.Filled.Bedtime,
                 tint = BEDTIME_TINT,
@@ -132,6 +134,9 @@ fun FocusEditor(
     initial: FocusSettings,
     installedApps: List<com.shahaabapps.core.model.InstalledApp>,
     onSave: (FocusSettings) -> Unit,
+    zones: ChildZones = ChildZones(),
+    childName: String = "",
+    onSetZone: (String) -> Unit = {},
 ) {
     var bedtime by remember { mutableStateOf(initial.bedtime) }
     var school by remember { mutableStateOf(initial.school) }
@@ -145,6 +150,7 @@ fun FocusEditor(
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
         Text("Focus modes", style = MaterialTheme.typography.headlineMedium)
+        TimeZoneRow(zones = zones, childName = childName, onSetZone = onSetZone)
         Text(
             "Apps are blocked on the child's phone during these hours. Phone calls still work, " +
                 "plus any apps you allow for each mode.",
@@ -406,4 +412,112 @@ private fun TimePickerDialog(initialMinute: Int, onDismiss: () -> Unit, onConfir
             TimePicker(state = state)
         }
     }
+}
+
+/** "Times are Emma's time (Dubai)" — plus a warning when the phone is elsewhere. */
+@Composable
+private fun ZoneNote(zones: ChildZones, childName: String) {
+    if (zones.home.isBlank()) return
+    val who = childName.ifBlank { "your child" }
+    Column {
+        Text(
+            "Times are $who's time (${zoneCity(zones.home)})",
+            style = MaterialTheme.typography.bodySmall,
+            color = AppTheme.colors.secondaryLabel,
+        )
+        if (zones.away) {
+            Text(
+                "$who's phone is on ${zoneCity(zones.phone)} time · tap to change",
+                style = MaterialTheme.typography.bodySmall,
+                color = AppTheme.colors.destructive,
+            )
+        }
+    }
+}
+
+/** Editor row: the home time zone schedules follow, with a picker. */
+@Composable
+private fun TimeZoneRow(zones: ChildZones, childName: String, onSetZone: (String) -> Unit) {
+    var picking by remember { mutableStateOf(false) }
+    val who = childName.ifBlank { "your child" }
+    CupertinoCard(onClick = { picking = true }) {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            Text("Time zone", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                if (zones.home.isBlank()) "Not set yet · tap to choose"
+                else "Schedules follow $who's time: ${zoneCity(zones.home)} (${zoneOffsetLabel(zones.home)})",
+                style = MaterialTheme.typography.bodySmall,
+                color = AppTheme.colors.secondaryLabel,
+            )
+            if (zones.away) {
+                Text(
+                    "The phone is on ${zoneCity(zones.phone)} time (${zoneOffsetLabel(zones.phone)}). " +
+                        "Switch if $who is travelling.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.destructive,
+                )
+            }
+        }
+    }
+    if (picking) {
+        TimeZonePicker(
+            phoneZone = zones.phone,
+            onPick = { onSetZone(it); picking = false },
+            onDismiss = { picking = false },
+        )
+    }
+}
+
+private fun zoneOffsetLabel(id: String): String {
+    val off = zoneOffset(id) ?: return ""
+    return if (off.totalSeconds == 0) "UTC" else "UTC" + off.id
+}
+
+/** Searchable list of time zones, with the phone's current zone offered first. */
+@Composable
+private fun TimeZonePicker(phoneZone: String, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    var query by remember { mutableStateOf("") }
+    val all = remember {
+        java.time.ZoneId.getAvailableZoneIds()
+            .filter { it.contains('/') && !it.startsWith("Etc/") && !it.startsWith("SystemV/") }
+            .sorted()
+    }
+    val shown = remember(query) {
+        val q = query.trim()
+        if (q.isEmpty()) all else all.filter { it.contains(q, ignoreCase = true) || zoneCity(it).contains(q, ignoreCase = true) }
+    }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Child's time zone") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                if (phoneZone.isNotBlank()) {
+                    Text(
+                        "Use the phone's zone: ${zoneCity(phoneZone)} (${zoneOffsetLabel(phoneZone)})",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = AppTheme.colors.accent,
+                        modifier = Modifier.fillMaxWidth().clickable { onPick(phoneZone) }.padding(vertical = Spacing.sm),
+                    )
+                }
+                androidx.compose.material3.OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    singleLine = true,
+                    label = { Text("Search city") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.height(320.dp)) {
+                    items(shown.size) { i ->
+                        val id = shown[i]
+                        Text(
+                            "${zoneCity(id)} · ${id.substringBefore('/')} (${zoneOffsetLabel(id)})",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.fillMaxWidth().clickable { onPick(id) }.padding(vertical = Spacing.sm),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }

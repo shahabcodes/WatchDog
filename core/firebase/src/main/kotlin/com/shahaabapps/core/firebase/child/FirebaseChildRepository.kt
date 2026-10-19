@@ -245,6 +245,10 @@ class FirebaseChildRepository @Inject constructor(
                 "accessibility" to permissions.accessibility,
                 "usageAccess" to permissions.usageAccess,
                 "admin" to permissions.adminActive,
+                "clockOk" to permissions.clockOk,
+                "gpsGenuine" to permissions.gpsGenuine,
+                "tz" to permissions.phoneZone,
+                "homeTz" to permissions.homeZone,
             )
             val deviceMap: Map<String, Any> = if (sealed != null) {
                 mapOf("permsE" to sealed, "permsEnc" to true, "permissions" to FieldValue.delete(), "guard" to guard)
@@ -405,6 +409,17 @@ class FirebaseChildRepository @Inject constructor(
             temperatureTenthsC = temp,
             permissions = permissions,
             batteryStats = batteryStats,
+            guard = (deviceMap["guard"] as? Map<*, *>)?.let { g ->
+                com.shahaabapps.core.model.DeviceGuard(
+                    accessibility = g["accessibility"] as? Boolean ?: true,
+                    usageAccess = g["usageAccess"] as? Boolean ?: true,
+                    admin = g["admin"] as? Boolean ?: true,
+                    clockOk = g["clockOk"] as? Boolean ?: true,
+                    gpsGenuine = g["gpsGenuine"] as? Boolean ?: true,
+                    phoneZone = g["tz"] as? String ?: "",
+                    homeZone = g["homeTz"] as? String ?: "",
+                )
+            } ?: com.shahaabapps.core.model.DeviceGuard(),
         )
     }
 

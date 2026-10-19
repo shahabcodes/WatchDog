@@ -95,6 +95,9 @@ describe("attacks are refused", () => {
       setDoc(doc(ctx.firestore(), `children/${CHILD}/pendingApps/com.x`), { packageName: "com.x" }));
     await assertFails(deleteDoc(doc(child(), `children/${CHILD}/pendingApps/com.x`)));
   });
+  it("child cannot change its home time zone (schedules follow it)", async () => {
+    await assertFails(setDoc(doc(child(), `children/${CHILD}/settings/timezone`), { zoneId: "Pacific/Kiritimati" }));
+  });
   it("catch-all no longer lets the child write anywhere", async () => {
     await assertFails(setDoc(doc(child(), `children/${CHILD}/anything/x`), { a: 1 }));
   });
@@ -131,7 +134,9 @@ describe("legitimate app writes still work", () => {
   });
   it("child heartbeat, permissions and guard flags", async () => {
     await assertSucceeds(setDoc(doc(child(), `children/${CHILD}`), {
-      device: { online: true, lastSeenMillis: 2, hb: "x", hbEnc: true, guard: { accessibility: true, usageAccess: true, admin: true } },
+      device: { online: true, lastSeenMillis: 2, hb: "x", hbEnc: true, guard: {
+        accessibility: true, usageAccess: true, admin: true, clockOk: true, gpsGenuine: true, tz: "Asia/Dubai", homeTz: "Asia/Dubai",
+      } },
       encActive: true,
     }, { merge: true }));
   });
@@ -153,6 +158,8 @@ describe("legitimate app writes still work", () => {
     await assertSucceeds(deleteDoc(doc(parent(), `children/${CHILD}/appRules/a1`)));
     await assertSucceeds(setDoc(doc(parent(), `children/${CHILD}/geofences/g1`), { e: "x", enc: true, radiusMeters: 100 }));
     await assertSucceeds(setDoc(doc(parent(), `children/${CHILD}/settings/tracking`), { mode: "x", updatedAtMillis: 1 }));
+    await assertSucceeds(setDoc(doc(parent(), `children/${CHILD}/settings/timezone`), { zoneId: "Asia/Dubai", updatedAtMillis: 1 }));
+    await assertSucceeds(getDoc(doc(child(), `children/${CHILD}/settings/timezone`)));
   });
   it("live: child location, parent ring, child stops ring", async () => {
     await assertSucceeds(setDoc(doc(child(), `children/${CHILD}/live/location`), { e: "x", enc: true, accuracyMeters: 5, timestampMillis: 1 }));

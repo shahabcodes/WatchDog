@@ -7,7 +7,9 @@
  *    It also stamps each heartbeat with SERVER time in childMonitor/{childId}
  *    (server-only), so a child moving the phone's clock can't fake liveness.
  *  - checkStaleChildren: every 15 minutes, alert once when a supervised phone
- *    hasn't checked in for STALE_MS (off, no signal, or Shield removed).
+ *    hasn't checked in for STALE_MS (off, no signal, or Shield removed), and once
+ *    when the phone has been on a different time zone than the child's home zone
+ *    for TZ_PROMPT_MS (travelling — the parent may want schedules to follow).
  */
 const { onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
@@ -15,11 +17,33 @@ const { getFirestore, Timestamp } = require("firebase-admin/firestore");
 const { _internal: pairing } = require("./pairing");
 
 const STALE_MS = 3 * 60 * 60 * 1000;
+const TZ_PROMPT_MS = 2 * 60 * 60 * 1000;
+// Each flag is true while that protection is intact; a true → false flip alerts.
 const GUARD_LABELS = {
   accessibility: "app blocking (accessibility) was turned off",
   usageAccess: "screen-time tracking (usage access) was turned off",
   admin: "uninstall protection (device admin) was turned off",
+  clockOk: "the date or time was changed by hand",
+  gpsGenuine: "a fake-location (mock GPS) app is being used",
 };
+
+/** Current UTC offset of an IANA zone in minutes, or null if unknown. */
+function offsetMinutes(zone) {
+  try {
+    const part = new Intl.DateTimeFormat("en-US", { timeZone: zone, timeZoneName: "longOffset" })
+      .formatToParts(new Date()).find((x) => x.type === "timeZoneName");
+    const m = /GMT([+-])(\d{2}):(\d{2})/.exec(part ? part.value : "");
+    if (!m) return part && part.value === "GMT" ? 0 : null;
+    return (m[1] === "-" ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3]));
+  } catch (e) {
+    return null;
+  }
+}
+
+/** A short, readable zone name: "Asia/Dubai" → "Dubai". */
+function zoneLabel(zone) {
+  return String(zone || "").split("/").pop().replace(/_/g, " ");
+}
 
 const db = () => getFirestore();
 
@@ -40,11 +64,30 @@ exports.watchChildGuard = onDocumentUpdated("children/{childId}", async (event) 
     const monitorRef = db().doc(`childMonitor/${childId}`);
     work.push((async () => {
       const prev = await monitorRef.get();
-      if (prev.exists && prev.get("staleAlerted") === true) {
+      const p = prev.exists ? prev.data() : {};
+      if (p.staleAlerted === true) {
         await pairing.notifyParents(parents, `${childName}'s phone is back`,
           `Shield on ${childName}'s phone is checking in again.`);
       }
-      await monitorRef.set({ lastHeartbeatAt: Timestamp.now(), staleAlerted: false, parents, childName });
+      // Time zone: the phone's zone vs the child's home zone (by current offset,
+      // so two names for the same offset don't count as travelling).
+      const guard = afterDevice.guard || {};
+      const tz = typeof guard.tz === "string" ? guard.tz : "";
+      const home = typeof guard.homeTz === "string" ? guard.homeTz : "";
+      const tzOff = tz ? offsetMinutes(tz) : null;
+      const homeOff = home ? offsetMinutes(home) : null;
+      const away = tzOff !== null && homeOff !== null && tzOff !== homeOff;
+      const sameAway = away && p.awayZone === tz;
+      await monitorRef.set({
+        lastHeartbeatAt: Timestamp.now(),
+        staleAlerted: false,
+        parents,
+        childName,
+        awayZone: away ? tz : null,
+        homeZone: home || null,
+        awaySince: sameAway && p.awaySince ? p.awaySince : (away ? Timestamp.now() : null),
+        tzPrompted: sameAway ? p.tzPrompted === true : false,
+      });
     })());
   }
 
@@ -65,6 +108,7 @@ exports.watchChildGuard = onDocumentUpdated("children/{childId}", async (event) 
 });
 
 exports.checkStaleChildren = onSchedule("every 15 minutes", async () => {
+  await promptTravellers().catch((e) => console.error("promptTravellers", e));
   const cutoff = Timestamp.fromMillis(Date.now() - STALE_MS);
   // Single-field query (no composite index needed); filter the flag here.
   const stale = await db().collection("childMonitor").where("lastHeartbeatAt", "<", cutoff).get();
@@ -82,3 +126,24 @@ exports.checkStaleChildren = onSchedule("every 15 minutes", async () => {
     ).catch((e) => console.error("checkStaleChildren", e));
   }
 });
+
+/** Once per trip: the phone has been on another zone than home for TZ_PROMPT_MS. */
+async function promptTravellers() {
+  const cutoff = Timestamp.fromMillis(Date.now() - TZ_PROMPT_MS);
+  const away = await db().collection("childMonitor").where("awaySince", "<", cutoff).get();
+  for (const doc of away.docs) {
+    const d = doc.data();
+    if (d.tzPrompted === true || !d.awayZone) continue;
+    await doc.ref.update({ tzPrompted: true });
+    const childSnap = await db().doc(`children/${doc.id}`).get();
+    const parents = (childSnap.exists && childSnap.get("linkedParents")) || [];
+    if (parents.length === 0) continue;
+    const childName = (childSnap.get("profile") || {}).name || "your child";
+    await pairing.notifyParents(
+      parents,
+      `${childName}'s phone is on ${zoneLabel(d.awayZone)} time`,
+      `Bedtime and other schedules still follow ${zoneLabel(d.homeZone)} time. ` +
+        `If ${childName} is travelling, open Watch Dog → Focus to switch them to ${zoneLabel(d.awayZone)}.`,
+    ).catch((e) => console.error("promptTravellers notify", e));
+  }
+}

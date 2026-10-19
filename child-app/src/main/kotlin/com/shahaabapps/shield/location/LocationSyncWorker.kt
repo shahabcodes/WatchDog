@@ -75,6 +75,7 @@ class LocationSyncWorker(
 
         val fused = LocationServices.getFusedLocationProviderClient(applicationContext)
         val loc = awaitCurrentLocation(fused) ?: return Result.success()
+        if (MockLocationGuard.reject(applicationContext, loc)) return Result.success()
 
         val now = System.currentTimeMillis()
         val date = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).toLocalDate().toString()

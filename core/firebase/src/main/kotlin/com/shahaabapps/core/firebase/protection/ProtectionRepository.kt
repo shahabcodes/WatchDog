@@ -28,6 +28,13 @@ interface ProtectionRepository {
      * hashed before storage and never persisted in clear. Pass null to keep the
      * existing stored PIN unchanged (e.g. when only toggling a switch).
      */
+    /**
+     * For enforcement on the child: emits only server-confirmed settings (the doc
+     * exists and the snapshot isn't from cache), never on an error or a missing
+     * doc — so a glitch can't switch protection off or drop device admin.
+     */
+    fun observeConfirmed(childId: String): Flow<ProtectionSettings>
+
     suspend fun save(
         childId: String,
         uninstallBlocked: Boolean,
@@ -53,6 +60,26 @@ class FirebaseProtectionRepository @Inject constructor(
                     pinHash = snapshot?.getString("pinHash") ?: "",
                     legacyPin = snapshot?.getString("pin") ?: "",
                     blockNewApps = snapshot?.getBoolean("blockNewApps") ?: false,
+                ),
+            )
+        }
+        awaitClose { registration.remove() }
+    }
+
+    override fun observeConfirmed(childId: String): Flow<ProtectionSettings> = callbackFlow {
+        val registration = doc(childId).addSnapshotListener(
+            com.google.firebase.firestore.MetadataChanges.INCLUDE,
+        ) { snapshot, error ->
+            if (error != null || snapshot == null || !snapshot.exists() || snapshot.metadata.isFromCache) {
+                return@addSnapshotListener
+            }
+            trySend(
+                ProtectionSettings(
+                    uninstallBlocked = snapshot.getBoolean("uninstallBlocked") ?: false,
+                    pinSalt = snapshot.getString("pinSalt") ?: "",
+                    pinHash = snapshot.getString("pinHash") ?: "",
+                    legacyPin = snapshot.getString("pin") ?: "",
+                    blockNewApps = snapshot.getBoolean("blockNewApps") ?: false,
                 ),
             )
         }

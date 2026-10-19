@@ -125,6 +125,7 @@ fun OverviewScreen(
     val trackingMode by viewModel.trackingMode.collectAsStateWithLifecycle()
     val protectionVm: com.shahaabapps.watchdog.feature.protection.ProtectionViewModel = hiltViewModel()
     val protection by protectionVm.settings.collectAsStateWithLifecycle()
+    val protectionAlerts by protectionVm.alerts.collectAsStateWithLifecycle()
     val pendingVm: com.shahaabapps.watchdog.feature.protection.PendingAppsViewModel = hiltViewModel()
     val pendingApps by pendingVm.pending.collectAsStateWithLifecycle()
     val focusVm: com.shahaabapps.watchdog.feature.focus.FocusViewModel = hiltViewModel()
@@ -366,9 +367,10 @@ fun OverviewScreen(
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(onDismissRequest = { showProtectionSheet = false }, sheetState = sheetState) {
             ProtectionEditor(
+                initialAlerts = protectionAlerts,
                 initial = protection,
-                onSave = { uninstallBlocked, blockNewApps, newPin ->
-                    protectionVm.save(uninstallBlocked, blockNewApps, newPin)
+                onSave = { uninstallBlocked, blockNewApps, lockSettings, newPin, alerts ->
+                    protectionVm.save(uninstallBlocked, blockNewApps, lockSettings, newPin, alerts)
                     showProtectionSheet = false
                 },
             )
@@ -1699,9 +1701,18 @@ private fun ProtectionCard(blocked: Boolean, onClick: () -> Unit) {
 @Composable
 private fun ProtectionEditor(
     initial: com.shahaabapps.core.model.ProtectionSettings,
-    onSave: (uninstallBlocked: Boolean, blockNewApps: Boolean, newPin: String?) -> Unit,
+    initialAlerts: com.shahaabapps.core.model.AlertSettings,
+    onSave: (
+        uninstallBlocked: Boolean,
+        blockNewApps: Boolean,
+        lockSettings: Boolean,
+        newPin: String?,
+        alerts: com.shahaabapps.core.model.AlertSettings,
+    ) -> Unit,
 ) {
     var blocked by remember { mutableStateOf(initial.uninstallBlocked) }
+    var lockSettings by remember { mutableStateOf(initial.lockSettings) }
+    var alerts by remember { mutableStateOf(initialAlerts) }
     var pin by remember { mutableStateOf("") }
     var blockNewApps by remember { mutableStateOf(initial.blockNewApps) }
     // The stored PIN is hashed, so we can't reveal it — we only know whether one
@@ -1715,7 +1726,11 @@ private fun ProtectionEditor(
     val canSave = !blocked || (!resetting && hasExistingPin) || (resetting && pinValid)
 
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl),
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = Spacing.lg)
+            .padding(bottom = Spacing.xl),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
         Text("Protection", style = MaterialTheme.typography.headlineMedium)
@@ -1772,11 +1787,40 @@ private fun ProtectionEditor(
         }
         CupertinoCard {
             CupertinoListRow(
+                title = "Lock Shield's settings",
+                subtitle = "Keeps your child out of the phone's Settings pages that switch Shield off " +
+                    "(accessibility, usage access, app info). The removal PIN unlocks them on the phone.",
+                showDivider = false,
+                trailing = { CupertinoSwitch(checked = lockSettings, onCheckedChange = { lockSettings = it }) },
+            )
+        }
+        CupertinoCard {
+            CupertinoListRow(
                 title = "Block new apps",
                 subtitle = "Newly installed apps are blocked until you approve them",
                 showDivider = false,
                 trailing = { CupertinoSwitch(checked = blockNewApps, onCheckedChange = { blockNewApps = it }) },
             )
+        }
+        Text("Alerts", style = MaterialTheme.typography.titleMedium)
+        CupertinoCard {
+            Column {
+                AlertRow("Protection turned off", "App blocking, screen-time tracking or uninstall protection was switched off", alerts.protectionOff) {
+                    alerts = alerts.copy(protectionOff = it)
+                }
+                AlertRow("Date or time changed", "Someone set the phone's clock by hand", alerts.clockChanged) {
+                    alerts = alerts.copy(clockChanged = it)
+                }
+                AlertRow("Fake GPS", "A fake-location app is feeding made-up positions", alerts.fakeGps) {
+                    alerts = alerts.copy(fakeGps = it)
+                }
+                AlertRow("Travelling", "The phone has been on another time zone for 2 hours", alerts.travel) {
+                    alerts = alerts.copy(travel = it)
+                }
+                AlertRow("Not checking in", "No contact with the phone for 3 hours, and when it's back", alerts.noCheckIn, showDivider = false) {
+                    alerts = alerts.copy(noCheckIn = it)
+                }
+            }
         }
         CupertinoPrimaryButton(
             text = "Save",
@@ -1785,10 +1829,20 @@ private fun ProtectionEditor(
                 // Only send a new PIN when the parent actually entered one; otherwise
                 // keep the stored hash (toggling protection off keeps the PIN).
                 val newPin = if (blocked && resetting) pin else null
-                onSave(blocked, blockNewApps, newPin)
+                onSave(blocked, blockNewApps, lockSettings, newPin, alerts)
             },
         )
     }
+}
+
+@Composable
+private fun AlertRow(title: String, subtitle: String, checked: Boolean, showDivider: Boolean = true, onChange: (Boolean) -> Unit) {
+    CupertinoListRow(
+        title = title,
+        subtitle = subtitle,
+        showDivider = showDivider,
+        trailing = { CupertinoSwitch(checked = checked, onCheckedChange = onChange) },
+    )
 }
 
 // Navy shades + the brand gold + a neutral grey, so per-app bars stay

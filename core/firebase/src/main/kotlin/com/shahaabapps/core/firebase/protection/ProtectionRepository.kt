@@ -39,8 +39,14 @@ interface ProtectionRepository {
         childId: String,
         uninstallBlocked: Boolean,
         blockNewApps: Boolean,
+        lockSettings: Boolean,
         newPin: String?,
     ): AppResult<Unit>
+
+    /** Which alerts parents get for this child (all on by default). */
+    fun observeAlerts(childId: String): Flow<com.shahaabapps.core.model.AlertSettings>
+
+    suspend fun saveAlerts(childId: String, alerts: com.shahaabapps.core.model.AlertSettings): AppResult<Unit>
 }
 
 class FirebaseProtectionRepository @Inject constructor(
@@ -60,6 +66,8 @@ class FirebaseProtectionRepository @Inject constructor(
                     pinHash = snapshot?.getString("pinHash") ?: "",
                     legacyPin = snapshot?.getString("pin") ?: "",
                     blockNewApps = snapshot?.getBoolean("blockNewApps") ?: false,
+                    lockSettings = snapshot?.getBoolean("lockSettings")
+                        ?: (snapshot?.getBoolean("uninstallBlocked") ?: false),
                 ),
             )
         }
@@ -80,6 +88,8 @@ class FirebaseProtectionRepository @Inject constructor(
                     pinHash = snapshot.getString("pinHash") ?: "",
                     legacyPin = snapshot.getString("pin") ?: "",
                     blockNewApps = snapshot.getBoolean("blockNewApps") ?: false,
+                    lockSettings = snapshot.getBoolean("lockSettings")
+                        ?: (snapshot.getBoolean("uninstallBlocked") ?: false),
                 ),
             )
         }
@@ -90,12 +100,14 @@ class FirebaseProtectionRepository @Inject constructor(
         childId: String,
         uninstallBlocked: Boolean,
         blockNewApps: Boolean,
+        lockSettings: Boolean,
         newPin: String?,
     ): AppResult<Unit> =
         runCatchingResult {
             val base = mutableMapOf<String, Any>(
                 "uninstallBlocked" to uninstallBlocked,
                 "blockNewApps" to blockNewApps,
+                "lockSettings" to lockSettings,
                 "updatedAtMillis" to System.currentTimeMillis(),
             )
             if (newPin != null) {
@@ -110,6 +122,40 @@ class FirebaseProtectionRepository @Inject constructor(
             doc(childId).set(base, SetOptions.merge()).await()
             Unit
         }
+
+    override fun observeAlerts(childId: String): Flow<com.shahaabapps.core.model.AlertSettings> = callbackFlow {
+        val registration = alertsDoc(childId).addSnapshotListener { snapshot, _ ->
+            trySend(
+                com.shahaabapps.core.model.AlertSettings(
+                    protectionOff = snapshot?.getBoolean("protectionOff") ?: true,
+                    clockChanged = snapshot?.getBoolean("clockChanged") ?: true,
+                    fakeGps = snapshot?.getBoolean("fakeGps") ?: true,
+                    travel = snapshot?.getBoolean("travel") ?: true,
+                    noCheckIn = snapshot?.getBoolean("noCheckIn") ?: true,
+                ),
+            )
+        }
+        awaitClose { registration.remove() }
+    }
+
+    override suspend fun saveAlerts(childId: String, alerts: com.shahaabapps.core.model.AlertSettings): AppResult<Unit> =
+        runCatchingResult {
+            alertsDoc(childId).set(
+                mapOf(
+                    "protectionOff" to alerts.protectionOff,
+                    "clockChanged" to alerts.clockChanged,
+                    "fakeGps" to alerts.fakeGps,
+                    "travel" to alerts.travel,
+                    "noCheckIn" to alerts.noCheckIn,
+                    "updatedAtMillis" to System.currentTimeMillis(),
+                ),
+            ).await()
+            Unit
+        }
+
+    private fun alertsDoc(childId: String) =
+        firestore.collection("children").document(childId)
+            .collection("settings").document("alerts")
 
     private fun doc(childId: String) =
         firestore.collection("children").document(childId)

@@ -95,6 +95,10 @@ describe("attacks are refused", () => {
       setDoc(doc(ctx.firestore(), `children/${CHILD}/pendingApps/com.x`), { packageName: "com.x" }));
     await assertFails(deleteDoc(doc(child(), `children/${CHILD}/pendingApps/com.x`)));
   });
+  it("child cannot switch off its parents' alerts or the settings lock", async () => {
+    await assertFails(setDoc(doc(child(), `children/${CHILD}/settings/alerts`), { protectionOff: false, fakeGps: false }));
+    await assertFails(setDoc(doc(child(), `children/${CHILD}/settings/protection`), { lockSettings: false }, { merge: true }));
+  });
   it("child cannot change its home time zone (schedules follow it)", async () => {
     await assertFails(setDoc(doc(child(), `children/${CHILD}/settings/timezone`), { zoneId: "Pacific/Kiritimati" }));
   });
@@ -160,6 +164,8 @@ describe("legitimate app writes still work", () => {
     await assertSucceeds(setDoc(doc(parent(), `children/${CHILD}/settings/tracking`), { mode: "x", updatedAtMillis: 1 }));
     await assertSucceeds(setDoc(doc(parent(), `children/${CHILD}/settings/timezone`), { zoneId: "Asia/Dubai", updatedAtMillis: 1 }));
     await assertSucceeds(getDoc(doc(child(), `children/${CHILD}/settings/timezone`)));
+    await assertSucceeds(setDoc(doc(parent(), `children/${CHILD}/settings/alerts`), { protectionOff: true, clockChanged: false, fakeGps: true, travel: true, noCheckIn: false }));
+    await assertSucceeds(setDoc(doc(parent(), `children/${CHILD}/settings/protection`), { uninstallBlocked: false, lockSettings: true }, { merge: true }));
   });
   it("live: child location, parent ring, child stops ring", async () => {
     await assertSucceeds(setDoc(doc(child(), `children/${CHILD}/live/location`), { e: "x", enc: true, accuracyMeters: 5, timestampMillis: 1 }));

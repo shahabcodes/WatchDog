@@ -1,6 +1,7 @@
 /**
  * Tamper alerts. A parental-control app can't stop every way of switching it off
- * on a child's phone, so the parent must at least be told:
+ * on a child's phone, so the parent must at least be told (each alert can be
+ * switched off per child in Watch Dog → Protection → Alerts, settings/alerts):
  *
  *  - watchChildGuard: when Shield's plaintext `device.guard` flags (accessibility
  *    service, usage access, device admin) flip from on to off, push the parents.
@@ -26,6 +27,29 @@ const GUARD_LABELS = {
   clockOk: "the date or time was changed by hand",
   gpsGenuine: "a fake-location (mock GPS) app is being used",
 };
+
+// Which parent alert switch (settings/alerts) controls each guard flag.
+const GUARD_SWITCH = {
+  accessibility: "protectionOff",
+  usageAccess: "protectionOff",
+  admin: "protectionOff",
+  clockOk: "clockChanged",
+  gpsGenuine: "fakeGps",
+};
+
+/** The child's alert switches (settings/alerts); every alert is on unless switched off. */
+async function alertSwitches(childId) {
+  const snap = await db().doc(`children/${childId}/settings/alerts`).get().catch(() => null);
+  const d = (snap && snap.exists && snap.data()) || {};
+  const on = (k) => d[k] !== false;
+  return {
+    protectionOff: on("protectionOff"),
+    clockChanged: on("clockChanged"),
+    fakeGps: on("fakeGps"),
+    travel: on("travel"),
+    noCheckIn: on("noCheckIn"),
+  };
+}
 
 /** Current UTC offset of an IANA zone in minutes, or null if unknown. */
 function offsetMinutes(zone) {
@@ -65,7 +89,7 @@ exports.watchChildGuard = onDocumentUpdated("children/{childId}", async (event) 
     work.push((async () => {
       const prev = await monitorRef.get();
       const p = prev.exists ? prev.data() : {};
-      if (p.staleAlerted === true) {
+      if (p.staleAlerted === true && (await alertSwitches(childId)).noCheckIn) {
         await pairing.notifyParents(parents, `${childName}'s phone is back`,
           `Shield on ${childName}'s phone is checking in again.`);
       }
@@ -94,8 +118,11 @@ exports.watchChildGuard = onDocumentUpdated("children/{childId}", async (event) 
   // Protections switched off since the last report.
   const beforeGuard = beforeDevice.guard || {};
   const afterGuard = afterDevice.guard || {};
-  const turnedOff = Object.keys(GUARD_LABELS)
-    .filter((k) => beforeGuard[k] === true && afterGuard[k] === false)
+  const flipped = Object.keys(GUARD_LABELS)
+    .filter((k) => beforeGuard[k] === true && afterGuard[k] === false);
+  const switches = flipped.length > 0 ? await alertSwitches(childId) : null;
+  const turnedOff = flipped
+    .filter((k) => switches[GUARD_SWITCH[k]])
     .map((k) => GUARD_LABELS[k]);
   if (turnedOff.length > 0) {
     work.push(pairing.notifyParents(
@@ -118,6 +145,7 @@ exports.checkStaleChildren = onSchedule("every 15 minutes", async () => {
     const parents = (childSnap.exists && childSnap.get("linkedParents")) || [];
     await doc.ref.update({ staleAlerted: true });
     if (parents.length === 0) continue;
+    if (!(await alertSwitches(doc.id)).noCheckIn) continue;
     const childName = (childSnap.get("profile") || {}).name || "your child";
     await pairing.notifyParents(
       parents,
@@ -138,6 +166,7 @@ async function promptTravellers() {
     const childSnap = await db().doc(`children/${doc.id}`).get();
     const parents = (childSnap.exists && childSnap.get("linkedParents")) || [];
     if (parents.length === 0) continue;
+    if (!(await alertSwitches(doc.id)).travel) continue;
     const childName = (childSnap.get("profile") || {}).name || "your child";
     await pairing.notifyParents(
       parents,

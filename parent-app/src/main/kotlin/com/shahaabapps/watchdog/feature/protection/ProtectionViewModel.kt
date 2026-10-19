@@ -23,10 +23,21 @@ class ProtectionViewModel @Inject constructor(
     val settings: StateFlow<ProtectionSettings> = protectionRepository.observe(childId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ProtectionSettings())
 
+    /** Which alerts parents get for this child. */
+    val alerts: StateFlow<com.shahaabapps.core.model.AlertSettings> = protectionRepository.observeAlerts(childId)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), com.shahaabapps.core.model.AlertSettings())
+
     /** [newPin] is the plaintext PIN to (re)set, or null to keep the existing one. */
-    fun save(uninstallBlocked: Boolean, blockNewApps: Boolean, newPin: String?) {
+    fun save(
+        uninstallBlocked: Boolean,
+        blockNewApps: Boolean,
+        lockSettings: Boolean,
+        newPin: String?,
+        alerts: com.shahaabapps.core.model.AlertSettings,
+    ) {
         viewModelScope.launch {
-            protectionRepository.save(childId, uninstallBlocked, blockNewApps, newPin)
+            protectionRepository.save(childId, uninstallBlocked, blockNewApps, lockSettings, newPin)
+            if (alerts != this@ProtectionViewModel.alerts.value) protectionRepository.saveAlerts(childId, alerts)
         }
     }
 }

@@ -12,6 +12,7 @@ object ProtectionLocalStore {
     private const val KEY_BLOCKED = "blocked"
     private const val KEY_UNLOCK_UNTIL = "unlock_until"
     private const val KEY_BLOCK_NEW_APPS = "block_new_apps"
+    private const val KEY_LOCK_SETTINGS = "lock_settings"
 
     /** How long a correct PIN keeps the guard down (to allow removal). */
     const val UNLOCK_WINDOW_MS = 2 * 60_000L
@@ -24,6 +25,14 @@ object ProtectionLocalStore {
     }
 
     fun isBlocked(context: Context): Boolean = prefs(context).getBoolean(KEY_BLOCKED, false)
+
+    /** Parent's "Lock Shield's settings" switch (falls back to uninstall protection). */
+    fun setLockSettings(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_LOCK_SETTINGS, value).apply()
+    }
+
+    fun isLockSettings(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_LOCK_SETTINGS, isBlocked(context))
 
     fun setBlockNewApps(context: Context, value: Boolean) {
         prefs(context).edit().putBoolean(KEY_BLOCK_NEW_APPS, value).apply()

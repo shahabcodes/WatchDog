@@ -23,6 +23,12 @@ data class ProtectionSettings(
     val legacyPin: String = "",
     /** When true, newly installed apps are auto-blocked until the parent approves. */
     val blockNewApps: Boolean = false,
+    /**
+     * When true, Shield keeps the child out of the Settings pages that switch it
+     * off (its accessibility toggle, Usage Access, App info). Independent of
+     * [uninstallBlocked]; if a parent never chose, it follows [uninstallBlocked].
+     */
+    val lockSettings: Boolean = false,
 ) {
     /** Whether a removal PIN has been set (hashed, or a legacy plaintext one). */
     val hasPin: Boolean get() = pinHash.isNotEmpty() || legacyPin.isNotEmpty()
@@ -33,4 +39,21 @@ data class PendingApp(
     val packageName: String = "",
     val label: String = "",
     val installedAtMillis: Long = 0L,
+)
+
+/**
+ * Which alerts the parents get for a child (`settings/alerts`). Every alert is on
+ * unless a parent switched it off; the Cloud Functions check these before pushing.
+ */
+data class AlertSettings(
+    /** App blocking, usage access or uninstall protection switched off on the phone. */
+    val protectionOff: Boolean = true,
+    /** The phone's date or time was changed by hand. */
+    val clockChanged: Boolean = true,
+    /** A fake-location (mock GPS) app is being used. */
+    val fakeGps: Boolean = true,
+    /** The phone has been on another time zone for 2 hours (travel prompt). */
+    val travel: Boolean = true,
+    /** The phone hasn't checked in for 3 hours (and when it's back). */
+    val noCheckIn: Boolean = true,
 )

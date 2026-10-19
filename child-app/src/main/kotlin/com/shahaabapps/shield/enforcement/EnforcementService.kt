@@ -183,6 +183,7 @@ class EnforcementService : AccessibilityService() {
             protectionRepository.observeConfirmed(childId).collectLatest { settings ->
                 ProtectionLocalStore.setBlocked(this@EnforcementService, settings.uninstallBlocked)
                 ProtectionLocalStore.setBlockNewApps(this@EnforcementService, settings.blockNewApps)
+                ProtectionLocalStore.setLockSettings(this@EnforcementService, settings.lockSettings)
                 // Parent turned protection off → release device admin so the app
                 // can be uninstalled again.
                 if (!settings.uninstallBlocked && DeviceAdmin.isActive(this@EnforcementService)) {
@@ -501,14 +502,14 @@ class EnforcementService : AccessibilityService() {
     }
 
     /**
-     * While protection is on (and no PIN unlock window is open), keep the child out
+     * While the parent's "Lock Shield's settings" is on (and no PIN unlock window is open), keep the child out
      * of the Settings pages that switch Shield off without uninstalling it: its
      * accessibility toggle, Usage Access, and its App info page (Force stop,
      * permissions, storage). Detected from the window's text, so it only triggers
      * on pages that show Shield's name — other apps' settings stay reachable.
      */
     private fun guardSettings(packageName: String, className: String?) {
-        if (!ProtectionLocalStore.isBlocked(this) || ProtectionLocalStore.isUnlocked(this)) return
+        if (!ProtectionLocalStore.isLockSettings(this) || ProtectionLocalStore.isUnlocked(this)) return
         if (!ProtectionLocalStore.isSettingsPackage(packageName)) return
         val text = windowText()
         if (ProtectionLocalStore.isProtectedSettingsScreen(className, text, ownAppLabel)) {

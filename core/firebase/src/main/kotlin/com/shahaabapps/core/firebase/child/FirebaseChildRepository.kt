@@ -15,6 +15,7 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.functions.FirebaseFunctions
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -22,7 +23,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import org.json.JSONObject
 import javax.inject.Inject
-import kotlin.random.Random
 
 class FirebaseChildRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
@@ -48,25 +48,56 @@ class FirebaseChildRepository @Inject constructor(
         childId: String,
         profile: UserProfile,
     ): AppResult<Unit> = runCatchingResult {
-        val doc = childrenCollection.document(childId)
-        val existing = doc.get().await()
-        val code = existing.getString(FIELD_PAIRING_CODE) ?: generatePairingCode()
-        @Suppress("UNCHECKED_CAST")
-        val linkedParents = existing.get(FIELD_LINKED_PARENTS) as? List<String> ?: emptyList()
-
+        // Only the profile: linkedParents and pairing are server-managed (the
+        // rules reject client writes to them).
         val data = mapOf(
             FIELD_PROFILE to mapOf(
                 "name" to profile.name,
                 "photoUrl" to profile.photoUrl,
                 "dateOfBirthMillis" to profile.dateOfBirthMillis,
             ),
-            FIELD_PAIRING_CODE to code,
-            FIELD_PAIRING_ACTIVE to linkedParents.isEmpty(),
-            FIELD_LINKED_PARENTS to linkedParents,
             FIELD_ROLE to UserRole.CHILD.name,
         )
-        doc.set(data, SetOptions.merge()).await()
+        childrenCollection.document(childId).set(data, SetOptions.merge()).await()
     }
+
+    override suspend fun startPairing(childId: String?): AppResult<PairingCode> = runCatchingResult {
+        val args = hashMapOf<String, Any>()
+        if (childId != null) args["childId"] = childId
+        val data = functions.getHttpsCallable("startPairing").call(args).await().getData() as? Map<*, *>
+        PairingCode(
+            code = requireNotNull(data?.get("code") as? String) { "No pairing code returned" },
+            expiresAtMillis = (data?.get("expiresAtMillis") as? Number)?.toLong() ?: 0L,
+        )
+    }
+
+    override fun observeParentRequests(childId: String): Flow<List<ParentRequest>> = callbackFlow {
+        val registration = childrenCollection.document(childId).collection("parentRequests")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+                trySend(
+                    snapshot?.documents.orEmpty().map { d ->
+                        ParentRequest(
+                            parentId = d.id,
+                            email = d.getString("email").orEmpty(),
+                            expiresAtMillis = d.getTimestamp("expiresAt")?.toDate()?.time ?: 0L,
+                        )
+                    },
+                )
+            }
+        awaitClose { registration.remove() }
+    }
+
+    override suspend fun respondToParentRequest(parentId: String, approve: Boolean): AppResult<Unit> =
+        runCatchingResult {
+            functions.getHttpsCallable("respondToParentRequest")
+                .call(hashMapOf("parentId" to parentId, "approve" to approve))
+                .await()
+            Unit
+        }
 
     override fun observeLinkedChildren(parentId: String): Flow<List<ChildAccount>> = callbackFlow {
         val registration = childrenCollection
@@ -86,40 +117,20 @@ class FirebaseChildRepository @Inject constructor(
         awaitClose { registration.remove() }
     }
 
-    override suspend fun linkChild(
-        childId: String,
-        code: String,
-        parentId: String,
-    ): AppResult<Unit> = runCatchingResult {
-        // Linking is verified and applied SERVER-SIDE by the linkChild Cloud
-        // Function: it checks the pairing code (which security rules can't),
-        // confirms the pairing window is open, and adds only the caller
-        // (request.auth.uid) to linkedParents. The client therefore no longer
-        // reads the child doc or writes linkedParents directly. childId/parentId
-        // are resolved server-side from the code and the auth context.
-        com.google.firebase.functions.FirebaseFunctions.getInstance()
-            .getHttpsCallable("linkChild")
+    override suspend fun linkChild(code: String): AppResult<LinkOutcome> = runCatchingResult {
+        // The linkChild Cloud Function redeems the single-use code and asks the
+        // child's phone to approve this parent; nothing is linked until it does.
+        val data = functions.getHttpsCallable("linkChild")
             .call(hashMapOf("code" to code.trim()))
             .await()
-        Unit
+            .getData() as? Map<*, *>
+        val childId = requireNotNull(data?.get("childId") as? String) { "No child returned" }
+        if (data?.get("status") == "linked") LinkOutcome.Linked(childId) else LinkOutcome.AwaitingApproval(childId)
     }
 
-    override suspend fun unlinkChild(childId: String, parentId: String): AppResult<Unit> =
+    override suspend fun unlinkChild(childId: String): AppResult<Unit> =
         runCatchingResult {
-            val doc = childrenCollection.document(childId)
-            firestore.runTransaction { transaction ->
-                val snapshot = transaction.get(doc)
-                @Suppress("UNCHECKED_CAST")
-                val remaining = (snapshot.get(FIELD_LINKED_PARENTS) as? List<String> ?: emptyList())
-                    .filter { it != parentId }
-                transaction.update(
-                    doc,
-                    mapOf(
-                        FIELD_LINKED_PARENTS to remaining,
-                        FIELD_PAIRING_ACTIVE to remaining.isEmpty(),
-                    ),
-                )
-            }.await()
+            functions.getHttpsCallable("unlinkChild").call(hashMapOf("childId" to childId)).await()
             Unit
         }
 
@@ -228,10 +239,18 @@ class FirebaseChildRepository @Inject constructor(
                 .put("reportedAtMillis", permissions.reportedAtMillis)
                 .toString()
             val sealed = e2ee.sealString(childId, childId, json)
+            // Plaintext on/off flags for the tamper-alert Cloud Function, which
+            // can't decrypt permsE: just whether each protection is on.
+            val guard = mapOf(
+                "accessibility" to permissions.accessibility,
+                "usageAccess" to permissions.usageAccess,
+                "admin" to permissions.adminActive,
+            )
             val deviceMap: Map<String, Any> = if (sealed != null) {
-                mapOf("permsE" to sealed, "permsEnc" to true, "permissions" to FieldValue.delete())
+                mapOf("permsE" to sealed, "permsEnc" to true, "permissions" to FieldValue.delete(), "guard" to guard)
             } else {
                 mapOf(
+                    "guard" to guard,
                     "permissions" to mapOf(
                         "location" to permissions.location,
                         "locationAlways" to permissions.locationAlways,
@@ -389,10 +408,7 @@ class FirebaseChildRepository @Inject constructor(
         )
     }
 
-    private fun generatePairingCode(): String {
-        val alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // no ambiguous chars
-        return (1..6).map { alphabet[Random.nextInt(alphabet.length)] }.joinToString("")
-    }
+    private val functions get() = FirebaseFunctions.getInstance()
 
     private val childrenCollection get() = firestore.collection(COLLECTION_CHILDREN)
 
@@ -400,7 +416,6 @@ class FirebaseChildRepository @Inject constructor(
         const val COLLECTION_CHILDREN = "children"
         const val FIELD_PROFILE = "profile"
         const val FIELD_PAIRING_CODE = "pairingCode"
-        const val FIELD_PAIRING_ACTIVE = "pairingActive"
         const val FIELD_LINKED_PARENTS = "linkedParents"
         const val FIELD_DEVICE = "device"
         const val FIELD_ROLE = "role"

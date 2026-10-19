@@ -49,10 +49,10 @@ fun PairingScreen(
     keysViewModel: PairingKeysViewModel = hiltViewModel(),
 ) {
     val publicKey by keysViewModel.publicKeyB64.collectAsStateWithLifecycle()
-    val qrBitmap = remember(child.childId, child.pairingCode, publicKey) {
-        QrCodeGenerator.generate(
-            PairingCodec.encode(PairingData(child.childId, child.pairingCode, publicKey)),
-        )
+    val code by keysViewModel.code.collectAsStateWithLifecycle()
+    val codeError by keysViewModel.error.collectAsStateWithLifecycle()
+    val qrBitmap = remember(child.childId, code, publicKey) {
+        code?.let { QrCodeGenerator.generate(PairingCodec.encode(PairingData(child.childId, it, publicKey))) }
     }
 
     Column(
@@ -101,13 +101,20 @@ fun PairingScreen(
                     .padding(Spacing.md),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Image(bitmap = qrBitmap, contentDescription = "Pairing QR code", modifier = Modifier.size(176.dp))
+                if (qrBitmap != null) {
+                    Image(bitmap = qrBitmap, contentDescription = "Pairing QR code", modifier = Modifier.size(176.dp))
+                } else {
+                    Box(modifier = Modifier.size(176.dp), contentAlignment = Alignment.Center) {
+                        AppLoader(size = 28.dp, color = MUTED, strokeWidth = 3.dp)
+                    }
+                }
             }
         }
 
-        Text("Or enter this code", color = MUTED, fontSize = 13.sp)
+        codeError?.let { Text(it, color = Color(0xFFC1362B), fontSize = 14.sp, textAlign = TextAlign.Center) }
+        Text("Or enter this code · it changes every 10 minutes", color = MUTED, fontSize = 13.sp)
         Text(
-            text = child.pairingCode,
+            text = code?.let { "${it.take(4)} ${it.drop(4)}" } ?: "…",
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Bold,
             fontSize = 28.sp,

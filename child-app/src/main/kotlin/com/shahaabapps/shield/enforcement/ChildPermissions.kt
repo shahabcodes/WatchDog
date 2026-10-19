@@ -70,6 +70,7 @@ object ChildPermissions {
             locationAlways = background,
             accessibility = EnforcementPermissions.isAccessibilityEnabled(context),
             usageAccess = EnforcementPermissions.hasUsageAccess(context),
+            adminActive = runCatching { DeviceAdmin.isActive(context) }.getOrDefault(false),
             notifications = notifications,
             batteryUnrestricted = battery,
             fullScreenAlarm = fullScreenAlarm,

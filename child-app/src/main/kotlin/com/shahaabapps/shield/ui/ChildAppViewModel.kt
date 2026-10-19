@@ -123,11 +123,9 @@ class ChildAppViewModel @Inject constructor(
     private fun mapChildState(childId: String, child: ChildAccount?): ChildAppState = when {
         child == null -> ChildAppState.NeedsProfile(childId)
         child.isLinked -> ChildAppState.Protected(child)
-        // A device that has begun pairing (has a code) goes straight to the pairing
-        // screen — including a reconnect, where the name/DOB arrive via migration and
-        // need not be re-entered on the reinstalled device.
-        child.pairingCode.isNotBlank() -> ChildAppState.Pairing(child)
-        child.profile.name.isBlank() -> ChildAppState.NeedsProfile(childId)
+        // Any existing, unlinked record goes to the pairing screen (which fetches a
+        // server-issued code) — including a reconnect, whose record has no name yet
+        // because the name/DOB arrive via migration.
         else -> ChildAppState.Pairing(child)
     }
 }

@@ -40,7 +40,9 @@ class SecureCodeViewModel @Inject constructor(
             .map { child ->
                 val pub = runCatching { e2eeManager.myPublicKeyB64() }.getOrNull()
                 if (childId == null || child == null || pub == null) null
-                else PairingCodec.encode(PairingData(childId, child.pairingCode, pub))
+                // Key-verification QR only: the parent pins the key and ignores the
+                // code, so a fixed placeholder (pairing codes are server-issued now).
+                else PairingCodec.encode(PairingData(childId, VERIFY_ONLY_CODE, pub))
             }
             .flowOn(Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -66,3 +68,5 @@ class SecureCodeViewModel @Inject constructor(
         }
     }
 }
+
+private const val VERIFY_ONLY_CODE = "verify"

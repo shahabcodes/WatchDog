@@ -532,6 +532,30 @@ private fun AddChildScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            if (linkState is LinkState.AwaitingApproval) {
+                // Code accepted; nothing is linked until the child's phone approves.
+                Text(
+                    "Almost done",
+                    color = navy,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                )
+                Text(
+                    "On your child's phone, Shield is asking to connect your account. Tap Approve there.",
+                    color = Color(0xFF5C4A1E),
+                    fontSize = 15.sp,
+                    textAlign = TextAlign.Center,
+                )
+                com.shahaabapps.core.ui.components.AppLoader(size = 28.dp, color = navy, strokeWidth = 3.dp)
+                Text(
+                    "Cancel",
+                    color = navy,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable { viewModel.clearLinkState() }.padding(8.dp),
+                )
+                return@Column
+            }
             if (linkState is LinkState.Error) {
                 Text(linkState.message, color = Color(0xFFC1362B), textAlign = TextAlign.Center)
             }

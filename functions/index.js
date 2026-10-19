@@ -2,7 +2,7 @@ const { onDocumentCreated, onDocumentDeleted, onDocumentWritten } = require("fir
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { initializeApp } = require("firebase-admin/app");
-const { getFirestore } = require("firebase-admin/firestore");
+const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
 const { getStorage } = require("firebase-admin/storage");
 
@@ -10,6 +10,8 @@ initializeApp();
 setGlobalOptions({ region: "us-central1", maxInstances: 10 });
 
 const db = getFirestore();
+const pairing = require("./pairing");
+const pairingInternal = pairing._internal;
 const STORAGE_BUCKET = "watch-dog-13d09.firebasestorage.app";
 // Events older than this (e.g. recorded offline, synced late) are recorded in
 // history but don't trigger a push — the alert would be stale/misleading.
@@ -26,9 +28,15 @@ exports.cleanupScreenshot = onDocumentDeleted(
   "children/{childId}/screenshots/{shotId}",
   async (event) => {
     const data = (event.data && event.data.data()) || {};
-    let path = data.storagePath ||
-      `screenshots/${event.params.childId}/${data.capturedAtMillis}.png`;
-    path = String(path).replace(/^\/+/, "");
+    // The doc is client-written, so only ever delete inside this child's own
+    // screenshots folder: a crafted storagePath must not reach other objects.
+    const prefix = `screenshots/${event.params.childId}/`;
+    let path = String(data.storagePath || "").replace(/^\/+/, "");
+    if (!path.startsWith(prefix) || path.includes("..") || path.slice(prefix.length).includes("/")) {
+      const millis = Number(data.capturedAtMillis);
+      if (!Number.isSafeInteger(millis) || millis <= 0) return;
+      path = `${prefix}${millis}.png`;
+    }
     try {
       await getStorage().bucket(STORAGE_BUCKET).file(path).delete({ ignoreNotFound: true });
     } catch (e) {
@@ -36,41 +44,6 @@ exports.cleanupScreenshot = onDocumentDeleted(
     }
   },
 );
-
-/**
- * Link the calling parent to a child using the child's pairing code. The code is
- * verified SERVER-SIDE here (security rules alone can't check it), the child must
- * still be in its pairing window, and only the caller's own uid is added to
- * linkedParents — so a client can't link itself (or anyone else) to an arbitrary
- * child by writing the document directly.
- *
- * Callable data: { code }. Returns { ok, childId }.
- */
-exports.linkChild = onCall(async (request) => {
-  const parentId = request.auth && request.auth.uid;
-  if (!parentId) throw new HttpsError("unauthenticated", "Sign in required.");
-
-  const code = ((request.data || {}).code || "").trim();
-  if (!code) throw new HttpsError("invalid-argument", "Enter the pairing code.");
-
-  // Resolve the child by its pairing code (codes are effectively unique).
-  const q = await db.collection("children").where("pairingCode", "==", code).limit(2).get();
-  if (q.empty) throw new HttpsError("not-found", "No child found for this code.");
-  if (q.size > 1) throw new HttpsError("failed-precondition", "That code is ambiguous — try again.");
-  const snap = q.docs[0];
-  const data = snap.data() || {};
-
-  if (data.pairingActive !== true) {
-    throw new HttpsError(
-      "failed-precondition",
-      "This code is no longer active — open Shield on the child device for a fresh code.",
-    );
-  }
-
-  const { FieldValue } = require("firebase-admin/firestore");
-  await snap.ref.update({ linkedParents: FieldValue.arrayUnion(parentId) });
-  return { ok: true, childId: snap.id };
-});
 
 /**
  * Reconnect a reinstalled Shield: migrate the old child's data (geofences, rules,
@@ -83,15 +56,12 @@ exports.reconnectChild = onCall(async (request) => {
   if (!parentId) throw new HttpsError("unauthenticated", "Sign in required.");
 
   const data = request.data || {};
-  const oldChildId = data.oldChildId;
-  const newChildId = data.newChildId;
-  const code = data.code;
-  if (!oldChildId || !newChildId || !code) {
-    throw new HttpsError("invalid-argument", "Missing oldChildId, newChildId or code.");
-  }
+  const oldChildId = pairingInternal.requireId(data.oldChildId, "child");
+  const newChildId = pairingInternal.requireId(data.newChildId, "device");
   if (oldChildId === newChildId) {
     throw new HttpsError("invalid-argument", "This device is already connected.");
   }
+  await pairingInternal.rateLimit(`reconnect_${parentId}`, 10);
 
   const oldRef = db.doc(`children/${oldChildId}`);
   const newRef = db.doc(`children/${newChildId}`);
@@ -105,17 +75,19 @@ exports.reconnectChild = onCall(async (request) => {
   if (!parents.includes(parentId)) {
     throw new HttpsError("permission-denied", "You are not linked to this child.");
   }
-  if ((newData.pairingCode || "") !== code) {
-    throw new HttpsError("permission-denied", "That pairing code does not match the scanned device.");
-  }
-  // The new device must be in its pairing window (freshly reinstalled, not yet
-  // linked). Without this, a linked parent could rebind ANY child — including one
-  // already paired to another family — onto their own account using only its
-  // (previously readable) pairing code.
-  if (newData.pairingActive !== true) {
+  // The new device must be unsupervised (freshly reinstalled), so this can never
+  // rebind a child that already belongs to a family.
+  if (Array.isArray(newData.linkedParents) && newData.linkedParents.length > 0) {
     throw new HttpsError(
       "failed-precondition",
       "That device is already set up with an account and can't be reconnected.",
+    );
+  }
+  // ...and the caller must hold the fresh code currently shown on that device.
+  if (!(await pairingInternal.consumeInviteFor(newChildId, data.code))) {
+    throw new HttpsError(
+      "permission-denied",
+      "That code is wrong or has expired. Scan the code on the reinstalled phone again.",
     );
   }
 
@@ -141,6 +113,7 @@ exports.reconnectChild = onCall(async (request) => {
       profile: oldData.profile || newData.profile || {},
       linkedParents: parents,
       pairingActive: false,
+      pairingCode: FieldValue.delete(),
       role: "CHILD",
     },
     { merge: true },
@@ -496,3 +469,14 @@ const mfaBackupCodes = require("./mfaBackupCodes");
 exports.generateMfaBackupCodes = mfaBackupCodes.generateMfaBackupCodes;
 exports.getMfaBackupCodeStatus = mfaBackupCodes.getMfaBackupCodeStatus;
 exports.redeemMfaBackupCode = mfaBackupCodes.redeemMfaBackupCode;
+
+// Pairing: server-issued single-use codes + approval on the child's phone.
+exports.startPairing = pairing.startPairing;
+exports.linkChild = pairing.linkChild;
+exports.respondToParentRequest = pairing.respondToParentRequest;
+exports.unlinkChild = pairing.unlinkChild;
+
+// Tamper alerts: protections switched off, or the phone stops checking in.
+const monitor = require("./monitor");
+exports.watchChildGuard = monitor.watchChildGuard;
+exports.checkStaleChildren = monitor.checkStaleChildren;

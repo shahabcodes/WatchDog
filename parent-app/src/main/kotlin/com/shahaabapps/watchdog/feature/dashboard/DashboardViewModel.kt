@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.shahaabapps.core.common.AppResult
 import com.shahaabapps.core.firebase.auth.AuthRepository
 import com.shahaabapps.core.firebase.child.ChildRepository
+import com.shahaabapps.core.firebase.child.LinkOutcome
 import com.shahaabapps.core.firebase.e2ee.E2eeManager
 import com.shahaabapps.core.model.ChildAccount
 import com.shahaabapps.core.model.PairingCodec
@@ -28,6 +29,8 @@ import javax.inject.Inject
 sealed interface LinkState {
     data object Idle : LinkState
     data object Linking : LinkState
+    /** The code was accepted; the child's phone must tap Approve. */
+    data class AwaitingApproval(val childId: String) : LinkState
     data class Success(val childName: String?) : LinkState
     data class Error(val message: String) : LinkState
 }
@@ -98,27 +101,50 @@ class DashboardViewModel @Inject constructor(
             _linkState.value = LinkState.Error("That QR code isn't a valid pairing code.")
             return
         }
-        linkWith(pairing.childId, pairing.code, pairing.childPublicKey)
+        linkWith(pairing.code, pairing.childPublicKey)
     }
 
-    fun onManualCode(childId: String, code: String) = linkWith(childId, code.trim())
+    fun onManualCode(code: String) = linkWith(code.trim())
 
     fun onImageDecodeFailed() {
         _linkState.value = LinkState.Error("No QR code found in that image.")
     }
 
-    private fun linkWith(childId: String, code: String, childPublicKey: String? = null) {
-        val parentId = authRepository.currentUserIdOrNull() ?: return
+    private fun linkWith(code: String, childPublicKey: String? = null) {
         _linkState.value = LinkState.Linking
         viewModelScope.launch {
-            _linkState.value = when (val result = childRepository.linkChild(childId, code, parentId)) {
+            _linkState.value = when (val result = childRepository.linkChild(code)) {
                 is AppResult.Success -> {
+                    val childId = result.data.childId
                     // Pin the child's key captured out-of-band from the QR, so this
                     // link is verified independently of the backend.
                     childPublicKey?.let { runCatching { e2eeManager.pinChildKey(childId, it) } }
-                    LinkState.Success(null)
+                    when (result.data) {
+                        is LinkOutcome.Linked -> LinkState.Success(null)
+                        is LinkOutcome.AwaitingApproval -> {
+                            awaitApproval(childId)
+                            LinkState.AwaitingApproval(childId)
+                        }
+                    }
                 }
                 is AppResult.Failure -> LinkState.Error(result.error.message ?: "Couldn't link this device.")
+            }
+        }
+    }
+
+    /** Flip to Success once the child's phone approves (the child joins our list). */
+    private fun awaitApproval(childId: String) {
+        viewModelScope.launch {
+            val approved = kotlinx.coroutines.withTimeoutOrNull(APPROVAL_WAIT_MS) {
+                children.first { list -> list.any { it.childId == childId } }
+            }
+            val state = _linkState.value
+            if (state is LinkState.AwaitingApproval && state.childId == childId) {
+                _linkState.value = if (approved != null) {
+                    LinkState.Success(null)
+                } else {
+                    LinkState.Error("The child's phone didn't approve in time. Scan a fresh code to try again.")
+                }
             }
         }
     }
@@ -187,8 +213,7 @@ class DashboardViewModel @Inject constructor(
 
     /** Unlinks (removes) a child from this parent. */
     fun removeChild(childId: String) {
-        val parentId = authRepository.currentUserIdOrNull() ?: return
-        viewModelScope.launch { childRepository.unlinkChild(childId, parentId) }
+        viewModelScope.launch { childRepository.unlinkChild(childId) }
     }
 
     private val _reconnectState = MutableStateFlow<ReconnectState>(ReconnectState.Idle)
@@ -226,4 +251,8 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun clearReconnectState() { _reconnectState.value = ReconnectState.Idle }
+
+    private companion object {
+        const val APPROVAL_WAIT_MS = 15 * 60_000L
+    }
 }

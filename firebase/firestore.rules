@@ -14,12 +14,13 @@ service cloud.firestore {
     }
 
     // E2EE public-key directory: a device's public key, keyed by its uid. Public
-    // keys are not secret, so any signed-in user may read one (needed so a child
-    // can fetch a linked parent's key to wrap its data key); only the owner may
-    // write their own.
+    // keys are not secret, so any signed-in user may fetch one by uid (a child
+    // fetches a linked parent's key to wrap its data key) — but not LIST the
+    // collection, which would enumerate every account id. Only the owner writes.
     match /publicKeys/{uid} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == uid;
+      allow get: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['e2ePublicKey']);
     }
 
     // Hashed two-factor backup codes. Server-only: the backup-code Cloud
@@ -28,7 +29,24 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Server-only bookkeeping (Cloud Functions, Admin SDK): pairing codes (hashed),
+    // attempt counters, and server-time heartbeats for tamper alerts.
+    match /pairingInvites/{id} {
+      allow read, write: if false;
+    }
+    match /rateLimits/{id} {
+      allow read, write: if false;
+    }
+    match /childMonitor/{id} {
+      allow read, write: if false;
+    }
+
     // Child account documents.
+    //
+    // Threat model: the child device's own account must be treated as the child
+    // (who can extract its token). So anything that weakens supervision —
+    // linkedParents, pairing, rules, grants — is parent- or server-only, and every
+    // collection lists its writers explicitly (there is no write catch-all).
     match /children/{childId} {
       // --- access helpers -------------------------------------------------
       function childDoc() {
@@ -41,7 +59,6 @@ service cloud.firestore {
         return request.auth != null && request.auth.uid in childDoc().linkedParents;
       }
       function canRead() { return isChild() || isParent(); }
-      function isChildOrParent() { return isChild() || isParent(); }
       // Whether this child is currently encrypting (all linked parents wrapped);
       // the child publishes `encActive` on its doc from its heartbeat.
       function encActive() { return childDoc().encActive == true; }
@@ -49,77 +66,89 @@ service cloud.firestore {
       // encryption is active, so a (co-)parent can't silently downgrade/forge a
       // plaintext value. Only valid for create/update (request.resource exists).
       function encWriteOk() { return !encActive() || request.resource.data.enc == true; }
+      function changedOnly(keys) {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+      }
+      // Fields the child device may write on its own doc. Never linkedParents or
+      // the pairing fields: only the pairing Cloud Functions change those.
+      function childDocFieldsOk() {
+        return (!('role' in request.resource.data) || request.resource.data.role == 'CHILD')
+          && (!('profile' in request.resource.data) || !('name' in request.resource.data.profile)
+              || (request.resource.data.profile.name is string && request.resource.data.profile.name.size() <= 60));
+      }
       // --------------------------------------------------------------------
 
-      // Only the child device and its already-linked parents may read the child
-      // doc (profile + pairing code). Uses resource.data directly so a parent's
-      // whereArrayContains(linkedParents) query is allowed per-doc. Pairing-code
-      // verification and linking happen server-side in the linkChild Cloud
-      // Function (Admin SDK), so no pre-link client read of this doc is needed.
+      // Only the child device and its linked parents may read the child doc. Uses
+      // resource.data directly so a parent's whereArrayContains(linkedParents)
+      // query is allowed per-doc.
       allow read: if request.auth != null && (
                     request.auth.uid == childId ||
                     request.auth.uid in resource.data.linkedParents
                   );
 
-      // The child device owns its document.
-      allow create, update, delete: if request.auth != null && request.auth.uid == childId;
+      // The child device creates its doc unsupervised (no parents) ...
+      allow create: if isChild()
+                    && request.resource.data.keys().hasOnly(['profile', 'role', 'device', 'encActive', 'linkedParents'])
+                    && (!('linkedParents' in request.resource.data) || request.resource.data.linkedParents.size() == 0)
+                    && childDocFieldsOk();
+      // ... and afterwards may only update its profile and device status.
+      allow update: if isChild()
+                    && changedOnly(['profile', 'role', 'device', 'encActive'])
+                    && childDocFieldsOk();
+      // No client deletes and no parent writes here: linking, unlinking and
+      // reconnecting go through Cloud Functions (pairing.js / reconnectChild).
 
-      // Linking is done by the linkChild Cloud Function (it verifies the pairing
-      // code server-side and adds only the caller), so there is deliberately NO
-      // client-writable linking rule here.
-
-      // A linked parent may remove (unlink) themselves, updating linkedParents
-      // (and re-opening pairing); they must not remain linked afterwards.
-      allow update: if request.auth != null
-                    && request.auth.uid in resource.data.linkedParents
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['linkedParents', 'pairingActive'])
-                    && !(request.auth.uid in request.resource.data.linkedParents);
-
-      // The child and its linked parents read everything below; writes are
-      // restricted per collection to the child and/or parents as noted.
-
-      // App block/limit rules (E2EE): child/parent read; child/parent write, but
-      // once encryption is active the written doc must be encrypted (anti-downgrade).
-      match /appRules/{packageName} {
-        allow read: if canRead();
-        allow delete: if isChildOrParent();
-        allow create, update: if isChildOrParent() && encWriteOk();
+      // Parent requests awaiting approval on the child's phone (written by the
+      // linkChild function). The child lists them; a parent sees its own.
+      match /parentRequests/{parentUid} {
+        allow read: if isChild() || (request.auth != null && request.auth.uid == parentUid);
       }
 
-      // App inventory: the child writes it; child/parent/viewer read it.
+      // App block/limit rules (E2EE): parents author them; the child only reads.
+      // (New apps the child auto-blocks go to pendingApps instead.)
+      match /appRules/{packageName} {
+        allow read: if canRead();
+        allow delete: if isParent();
+        allow create, update: if isParent() && encWriteOk();
+      }
+
+      // App inventory: the child writes it; child/parent read it.
       match /inventory/{docId} {
         allow read: if canRead();
         allow write: if isChild();
       }
 
-      // Geofences (E2EE): a parent authors them; the child reads to enforce. Once
-      // encryption is active the written doc must be encrypted (anti-downgrade).
+      // Geofences (E2EE): a parent authors them; the child reads to enforce.
       match /geofences/{geoId} {
         allow read: if canRead();
-        allow delete: if isChildOrParent();
-        allow create, update: if isChildOrParent() && encWriteOk();
+        allow delete: if isParent();
+        allow create, update: if isParent() && encWriteOk();
       }
 
-      // Screen-time usage: the child writes it; child/parent/viewer read it.
+      // Screen-time usage: the child writes it; child/parent read it.
       match /usage/{date} {
         allow read: if canRead();
         allow write: if isChild();
       }
 
-      // Live device state (location + ring command): the child publishes location
-      // and clears rings; a parent reads location and sends rings; viewers read.
+      // Live device state: the child publishes location + location status; a
+      // parent starts a ring; the child may only switch a ring off.
       match /live/{docId} {
         allow read: if canRead();
-        allow write: if isChildOrParent();
+        allow write: if isChild() && (docId == 'location' || docId == 'locationStatus');
+        allow create, update: if isParent() && docId == 'ring'
+          && request.resource.data.keys().hasOnly(['active', 'message', 'nonce', 'requestedAtMillis']);
+        allow update: if isChild() && docId == 'ring'
+          && changedOnly(['active']) && request.resource.data.active == false;
       }
 
-      // Location trail (continuous path): the child appends points; child/parent/viewer read.
+      // Location trail (continuous path): the child appends points.
       match /trail/{date} {
         allow read: if canRead();
         allow write: if isChild();
       }
 
-      // Travel history: the child records stops; child/parent/viewer read.
+      // Travel history: the child records stops.
       match /travelHistory/{stopId} {
         allow read: if canRead();
         allow create: if isChild();
@@ -136,63 +165,72 @@ service cloud.firestore {
           && (!(docId == 'focus' || docId == 'installGuard') || encWriteOk());
       }
 
-      // Auto-blocked new apps awaiting review: the child creates them; a parent
-      // resolves (deletes); viewers read.
+      // New apps awaiting review: the child adds them (and blocks them until a
+      // parent decides); only a parent resolves (deletes) them.
       match /pendingApps/{pkg} {
         allow read: if canRead();
-        allow delete: if isChildOrParent();
+        allow delete: if isParent();
         allow create, update: if isChild();
       }
 
-      // Child "asks" (more time, unlock an app): the child creates; child/parent
-      // respond (approve/deny); viewers read.
+      // Child "asks" (more time, unlock an app): the child creates a PENDING ask
+      // and may withdraw it while pending; only a parent approves or denies.
       match /requests/{requestId} {
         allow read: if canRead();
-        allow create: if isChild();
-        allow update, delete: if isChildOrParent();
+        allow create: if isChild()
+          && request.resource.data.keys().hasOnly(
+               ['kind', 'appPackage', 'appLabel', 'minutes', 'status', 'createdAtMillis', 'respondedAtMillis'])
+          && request.resource.data.status == 'PENDING'
+          && request.resource.data.get('respondedAtMillis', 0) == 0
+          && request.resource.data.get('appLabel', '') is string
+          && request.resource.data.get('appLabel', '').size() <= 100;
+        allow delete: if isChild() && resource.data.status == 'PENDING';
+        allow update: if isParent()
+          && changedOnly(['status', 'respondedAtMillis', 'grantUntilMillis'])
+          && request.resource.data.status in ['APPROVED', 'DENIED'];
       }
 
-      // Geofence events: the child reports them; a parent reads/clears; viewers read.
+      // Geofence events: the child reports them; a parent reads/clears.
       match /geofenceEvents/{eventId} {
         allow read: if canRead();
-        allow delete: if isChildOrParent();
+        allow delete: if isParent();
         allow create: if isChild();
       }
 
-      // On-demand commands (e.g. screenshot/ring): a parent writes the request;
-      // the child reads it; viewers read but cannot issue commands.
+      // On-demand commands (screenshot, location refresh, permission ask): a
+      // parent writes them; the child reports screenshot progress.
       match /commands/{docId} {
         allow read: if canRead();
-        allow write: if isParent();
+        allow write: if isParent() && docId != 'screenshotStatus';
+        allow write: if isChild() && docId == 'screenshotStatus';
       }
 
       // E2EE key exchange: the child writes a per-recipient wrapped data key; the
-      // matching parent/viewer reads its own copy. Only ciphertext — never a
-      // private key or plaintext.
+      // matching parent reads its own copy. Only ciphertext.
       match /e2eeKeys/{recipientUid} {
         allow read: if canRead();
         allow write: if isChild();
       }
 
-      // A parent/viewer that can't decrypt asks the child to re-wrap the data key
-      // for it now. The requester may only write its own request doc; the child
-      // honours and clears it (the requester may also read/clear its own).
+      // A parent that can't decrypt asks the child to re-wrap the data key for it
+      // now. The requester may only write its own request doc; the child honours
+      // and clears it (the requester may also read/clear its own).
       match /keyResync/{recipientUid} {
         allow create, update: if canRead() && request.auth.uid == recipientUid;
         allow read, delete: if isChild() || request.auth.uid == recipientUid;
       }
 
       // Captured screenshots: the child uploads records; a parent reads and
-      // deletes them; viewers read.
+      // deletes them (a Cloud Function then deletes the stored image).
       match /screenshots/{shotId} {
         allow read: if canRead();
-        allow delete: if isChildOrParent();
+        allow delete: if isParent();
         allow create: if isChild();
       }
 
+      // Anything else below a child: readable by the family, written by no client.
       match /{document=**} {
         allow read: if canRead();
-        allow write: if isChild();
       }
     }
   }

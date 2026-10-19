@@ -37,6 +37,14 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                     }
                 }
                 buildTypes {
+                    debug {
+                        // The APKs users install are these CI-built debug variants.
+                        // A debuggable app lets anyone with USB debugging read its
+                        // private files (login tokens, keys) via `run-as`, so CI
+                        // builds are not debuggable. Local builds stay debuggable
+                        // for Android Studio. Signing (shared key) is unchanged.
+                        isDebuggable = System.getenv("CI") != "true"
+                    }
                     release {
                         isMinifyEnabled = true
                         proguardFiles(

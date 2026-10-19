@@ -76,4 +76,9 @@ private fun ChildAppRoot(
         is ChildAppState.Pairing -> com.shahaabapps.core.ui.theme.LighthouseType { PairingScreen(child = current.child) }
         is ChildAppState.Protected -> com.shahaabapps.core.ui.theme.LighthouseType { com.shahaabapps.shield.feature.kid.KidShell(child = current.child) }
     }
+    // A parent who redeemed a pairing code waits for approval on this phone
+    // (first pairing, or a co-parent joining a supervised phone).
+    if (state is ChildAppState.Pairing || state is ChildAppState.Protected) {
+        com.shahaabapps.shield.feature.pairing.ParentRequestPrompt()
+    }
 }

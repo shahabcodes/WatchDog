@@ -97,6 +97,8 @@ data class DevicePermissions(
     val accessibility: Boolean = false,
     /** Usage Access (to measure screen time). */
     val usageAccess: Boolean = false,
+    /** Shield is an active device admin (uninstall protection). */
+    val adminActive: Boolean = false,
     /** Notifications allowed. */
     val notifications: Boolean = false,
     /** Exempt from battery optimization ("Unrestricted"). */

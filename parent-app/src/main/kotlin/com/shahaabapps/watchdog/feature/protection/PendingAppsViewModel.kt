@@ -33,10 +33,21 @@ class PendingAppsViewModel @Inject constructor(
         }
     }
 
-    /** Keep it blocked: just clear it from review (the block rule stays). */
+    /**
+     * Keep it blocked: write a parent-owned block rule, then clear it from review.
+     * (Shield only holds new apps back while they're pending; app rules are
+     * parent-only, so the lasting block must come from here.)
+     */
     fun keepBlocked(packageName: String) {
+        val label = pending.value.firstOrNull { it.packageName == packageName }?.label ?: packageName
         viewModelScope.launch {
-            pendingAppsRepository.remove(childId, packageName)
+            val saved = appRulesRepository.saveAppRule(
+                childId,
+                com.shahaabapps.core.model.AppRule(packageName = packageName, appLabel = label, blocked = true),
+            )
+            if (saved is com.shahaabapps.core.common.AppResult.Success) {
+                pendingAppsRepository.remove(childId, packageName)
+            }
         }
     }
 }

@@ -102,6 +102,8 @@ class EnforcementService : AccessibilityService() {
     @Volatile
     private var rulesByPackage: Map<String, AppRule> = emptyMap()
 
+    @Volatile private var pendingPackages: Set<String> = emptySet()
+
     // Only enforce while the device is supervised (linked to a parent).
     @Volatile
     private var supervised: Boolean = false
@@ -128,6 +130,13 @@ class EnforcementService : AccessibilityService() {
         serviceScope.launch {
             childRepository.observeChild(childId).collectLatest { child ->
                 supervised = child?.isLinked == true
+            }
+        }
+        // New apps awaiting a parent's review stay blocked until a parent allows
+        // them (only a parent can clear this list; the child can't).
+        serviceScope.launch {
+            pendingAppsRepository.observe(childId).collectLatest { list ->
+                pendingPackages = list.map { it.packageName }.toSet()
             }
         }
         serviceScope.launch {
@@ -229,10 +238,9 @@ class EnforcementService : AccessibilityService() {
             pm.getApplicationInfo(pkg, 0).loadLabel(pm).toString()
         }.getOrDefault(pkg)
         serviceScope.launch {
-            appRulesRepository.saveAppRule(
-                childId,
-                AppRule(packageName = pkg, appLabel = label, blocked = true),
-            )
+            // Blocked via the pending list (see pendingPackages); app rules are
+            // parent-only, so the parent's "Keep blocked" writes the real rule.
+            pendingPackages = pendingPackages + pkg
             pendingAppsRepository.add(childId, PendingApp(pkg, label, System.currentTimeMillis()))
         }
     }
@@ -278,6 +286,11 @@ class EnforcementService : AccessibilityService() {
                 appLabelFor(packageName),
                 "This app isn't allowed to be installed from outside the Play Store.",
             )
+            return
+        }
+
+        if (packageName in pendingPackages && !appAllowed) {
+            blockApp(packageName, appLabelFor(packageName), "This new app is waiting for a parent to review it.")
             return
         }
 

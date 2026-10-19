@@ -201,6 +201,44 @@ class FirebaseDeviceRepository @Inject constructor(
         Unit
     }
 
+    override suspend fun updateLocationStatus(
+        childId: String,
+        status: com.shahaabapps.core.model.LocationStatus,
+    ): AppResult<Unit> = runCatchingResult {
+        live(childId).document(LOCATION_STATUS).set(
+            mapOf(
+                "state" to status.state,
+                "lastOutcome" to status.lastOutcome,
+                "lastOutcomeMillis" to status.lastOutcomeMillis,
+                "lastFixMillis" to status.lastFixMillis,
+                "lastPublishMillis" to status.lastPublishMillis,
+                "lastAccuracyMeters" to status.lastAccuracyMeters.toDouble(),
+                "updatedAtMillis" to status.updatedAtMillis,
+            ),
+        ).await()
+        Unit
+    }
+
+    override fun observeLocationStatus(childId: String): Flow<com.shahaabapps.core.model.LocationStatus?> = callbackFlow {
+        val registration = live(childId).document(LOCATION_STATUS).addSnapshotListener { snapshot, error ->
+            if (error != null || snapshot == null || !snapshot.exists()) {
+                trySend(null); return@addSnapshotListener
+            }
+            trySend(
+                com.shahaabapps.core.model.LocationStatus(
+                    state = snapshot.getString("state") ?: "",
+                    lastOutcome = snapshot.getString("lastOutcome") ?: "",
+                    lastOutcomeMillis = snapshot.getLong("lastOutcomeMillis") ?: 0L,
+                    lastFixMillis = snapshot.getLong("lastFixMillis") ?: 0L,
+                    lastPublishMillis = snapshot.getLong("lastPublishMillis") ?: 0L,
+                    lastAccuracyMeters = (snapshot.getDouble("lastAccuracyMeters") ?: 0.0).toFloat(),
+                    updatedAtMillis = snapshot.getLong("updatedAtMillis") ?: 0L,
+                ),
+            )
+        }
+        awaitClose { registration.remove() }
+    }
+
     override fun observeLocationRequests(childId: String): Flow<Long> = callbackFlow {
         val registration = firestore.collection(CHILDREN).document(childId)
             .collection(COMMANDS).document(LOCATION)
@@ -270,6 +308,7 @@ class FirebaseDeviceRepository @Inject constructor(
         const val LIVE = "live"
         const val COMMANDS = "commands"
         const val LOCATION = "location"
+        const val LOCATION_STATUS = "locationStatus"
         const val RING = "ring"
         const val TRAVEL_HISTORY = "travelHistory"
         const val TRAIL = "trail"

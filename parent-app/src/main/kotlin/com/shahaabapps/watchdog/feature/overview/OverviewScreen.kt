@@ -189,6 +189,7 @@ fun OverviewScreen(
         // background-location permission, battery saver, battery optimization, …).
         item(key = "locationHealth") {
             val healthLoc by viewModel.childLocation.collectAsStateWithLifecycle()
+            val locStatus by viewModel.locationStatus.collectAsStateWithLifecycle()
             Box(Modifier.padding(horizontal = Spacing.lg)) {
                 DashSection("Location health") {
                     LocationHealthCard(
@@ -196,6 +197,7 @@ fun OverviewScreen(
                         lastSeenMillis = state.lastSeenMillis,
                         locationTimestampMillis = healthLoc?.timestampMillis ?: 0L,
                         perms = state.permissions,
+                        status = locStatus,
                     )
                 }
             }
@@ -1377,41 +1379,81 @@ private fun LocationHealthCard(
     lastSeenMillis: Long,
     locationTimestampMillis: Long,
     perms: com.shahaabapps.core.model.DevicePermissions?,
+    status: com.shahaabapps.core.model.LocationStatus?,
 ) {
     val now = System.currentTimeMillis()
-    val fixAge = if (locationTimestampMillis > 0) now - locationTimestampMillis else -1L
-    val STALE_MS = 30 * 60_000L
+    // The service refreshes its diagnostic every ~2 min while alive; if it hasn't
+    // in a while, the location service itself has stopped running.
+    val SERVICE_STALE_MS = 8 * 60_000L
+    val FIX_STALE_MS = 30 * 60_000L
 
-    val issues = buildList {
-        if (!online) {
-            add("Device looks offline — last seen ${healthAgo(lastSeenMillis)}. It may be powered off or without internet.")
-        } else if (fixAge > STALE_MS) {
-            add("Location hasn't refreshed in ${healthAgo(locationTimestampMillis)}, though the device is online.")
-        }
-        perms?.let { p ->
-            if (p.locationServicesOff) add("Location (GPS) is turned off on the device.")
-            if (!p.locationAlways) add("Location permission isn't set to “Allow all the time” — background updates won't work.")
-            if (p.powerSaveMode) add("Battery saver is on — it can pause background location updates.")
-            if (!p.batteryUnrestricted) add("Battery optimization isn't disabled for Shield — the system may stop it in the background.")
-            if (p.backgroundRestricted) add("Background activity is restricted for Shield — it can't run to report location.")
+    // The exact, factual cause (from the child's own pipeline report), if we have one.
+    val exact: String? = status?.let { s ->
+        val reportAge = now - s.updatedAtMillis
+        when {
+            s.state == "no_permission" ->
+                "Shield doesn't have location permission on the device, so it can't get a fix."
+            s.state == "stopped_app_removed" ->
+                "Shield's location service was stopped ${healthAgo(s.updatedAtMillis)} because the app was swiped away from recent apps."
+            s.state == "stopped" ->
+                "Shield's location service stopped ${healthAgo(s.updatedAtMillis)}."
+            reportAge > SERVICE_STALE_MS ->
+                "Shield's location service stopped running ${healthAgo(s.updatedAtMillis)} — it was likely closed or killed by the system (battery optimization / task-killer)."
+            s.lastOutcome == "write_failed" ->
+                "Shield has a location fix but can't send it to you — a network or write error. Check the child's internet."
+            s.lastOutcome == "rejected_low_accuracy" && (now - s.lastPublishMillis) > FIX_STALE_MS ->
+                "Shield is getting GPS fixes but they're too inaccurate to trust (last ≈${s.lastAccuracyMeters.toInt()} m) — usually weak signal indoors or power-saving GPS."
+            s.lastFixMillis > 0 && (now - s.lastFixMillis) > FIX_STALE_MS ->
+                "Shield is running but the phone hasn't produced a GPS fix in ${healthAgo(s.lastFixMillis)} — location/GPS may be off, or signal is blocked."
+            s.lastPublishMillis > 0 && (now - s.lastPublishMillis) <= FIX_STALE_MS ->
+                "Location is updating normally — last sent ${healthAgo(s.lastPublishMillis)}."
+            else -> null
         }
     }
 
+    // Secondary heuristic hints from the reported device state (what to fix).
+    val hints = buildList {
+        if (!online && status == null) {
+            add("Device looks offline — last seen ${healthAgo(lastSeenMillis)}. It may be off or without internet.")
+        }
+        perms?.let { p ->
+            if (p.locationServicesOff) add("Location (GPS) is turned off on the device.")
+            if (!p.locationAlways) add("Location permission isn't “Allow all the time” — background updates won't work.")
+            if (p.powerSaveMode) add("Battery saver is on — it can pause background location.")
+            if (!p.batteryUnrestricted) add("Battery optimization isn't disabled for Shield — the system may stop it.")
+            if (p.backgroundRestricted) add("Background activity is restricted for Shield.")
+        }
+        // Fallback when there's no exact report yet (e.g. child on an older build).
+        if (exact == null && status == null) {
+            val fixAge = if (locationTimestampMillis > 0) now - locationTimestampMillis else -1L
+            if (online && fixAge > FIX_STALE_MS) {
+                add("Location hasn't refreshed in ${healthAgo(locationTimestampMillis)}, though the device is online.")
+            }
+        }
+    }
+
+    val healthy = exact?.startsWith("Location is updating normally") == true ||
+        (exact == null && status == null && hints.isEmpty() && online)
+
     CupertinoCard {
-        when {
-            perms == null && issues.isEmpty() -> HealthRow(
-                ok = true,
-                text = "Waiting for the device to report its status…",
-            )
-            issues.isEmpty() -> HealthRow(ok = true, text = "Location is updating normally.")
-            else -> Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                issues.forEach { HealthRow(ok = false, text = it) }
-                Text(
-                    "Fix on the child's phone: open Shield, allow location “all the time”, turn off battery saver, and set Shield to unrestricted battery.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.colors.secondaryLabel,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            when {
+                healthy -> HealthRow(ok = true, text = exact ?: "Location is updating normally.")
+                exact != null -> HealthRow(ok = false, text = exact)
+                hints.isEmpty() && status == null -> HealthRow(ok = true, text = "Waiting for the device to report its status…")
+                hints.isEmpty() -> HealthRow(ok = true, text = "Location is updating normally.")
+                else -> {} // only hints below
+            }
+            if (!healthy) {
+                hints.forEach { HealthRow(ok = false, text = it) }
+                if (exact != null || hints.isNotEmpty()) {
+                    Text(
+                        "Fix on the child's phone: open Shield, allow location “all the time”, turn off battery saver, and set Shield to unrestricted battery.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AppTheme.colors.secondaryLabel,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
             }
         }
     }

@@ -20,6 +20,27 @@ data class ChildAccount(
 }
 
 /**
+ * Child-reported diagnostic of the location pipeline, so the parent can see the
+ * exact reason location is (or isn't) updating rather than a heuristic guess.
+ * Stored in plaintext (no coordinates — only states/timestamps/accuracy) so it
+ * stays readable even when location *decryption* is unavailable.
+ *
+ * [state]: "tracking" | "stopped" | "stopped_app_removed" | "no_permission" | "location_off".
+ * [lastOutcome]: "published" | "rejected_low_accuracy" | "rejected_teleport" | "write_failed".
+ */
+data class LocationStatus(
+    val state: String = "",
+    val lastOutcome: String = "",
+    val lastOutcomeMillis: Long = 0L,
+    /** Last raw fix the OS delivered to the app. */
+    val lastFixMillis: Long = 0L,
+    /** Last fix actually written to the parent. */
+    val lastPublishMillis: Long = 0L,
+    val lastAccuracyMeters: Float = 0f,
+    val updatedAtMillis: Long = 0L,
+)
+
+/**
  * Snapshot of a child device's state, reported by the child app.
  */
 data class DeviceInfo(

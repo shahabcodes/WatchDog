@@ -69,6 +69,35 @@ class GeofenceSyncService : Service() {
     private var started = false
     private var lastRingNonce: String? = null
 
+    // --- location-pipeline diagnostic reported to the parent (plaintext) ---
+    @Volatile private var taskRemoved = false
+    @Volatile private var locState = "stopped"
+    @Volatile private var locOutcome = ""
+    @Volatile private var locOutcomeMillis = 0L
+    @Volatile private var locLastFixMillis = 0L
+    @Volatile private var locLastPublishMillis = 0L
+    @Volatile private var locLastAccuracy = 0f
+    @Volatile private var lastStatusWriteMillis = 0L
+
+    private fun locationStatusSnapshot() = com.shahaabapps.core.model.LocationStatus(
+        state = locState,
+        lastOutcome = locOutcome,
+        lastOutcomeMillis = locOutcomeMillis,
+        lastFixMillis = locLastFixMillis,
+        lastPublishMillis = locLastPublishMillis,
+        lastAccuracyMeters = locLastAccuracy,
+        updatedAtMillis = System.currentTimeMillis(),
+    )
+
+    /** Publish the location diagnostic (throttled unless [force]). */
+    private fun recordStatus(childId: String, force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!force && now - lastStatusWriteMillis < STATUS_WRITE_MIN_MS) return
+        lastStatusWriteMillis = now
+        val snap = locationStatusSnapshot()
+        scope.launch { runCatching { deviceRepository.updateLocationStatus(childId, snap) } }
+    }
+
     // Parent-chosen tracking accuracy + adaptive-sampling state.
     @Volatile
     private var trackingMode: com.shahaabapps.core.model.TrackingMode = com.shahaabapps.core.model.TrackingMode.DEFAULT
@@ -246,6 +275,9 @@ class GeofenceSyncService : Service() {
                     runCatching { childRepository.updatePermissions(childId, perms) }
                     if (stats != null) runCatching { childRepository.updateBatteryStats(childId, stats) }
                 }
+                // Keep the location diagnostic fresh so the parent can tell the
+                // service is alive; if it goes stale, the service has stopped.
+                recordStatus(childId, force = true)
                 kotlinx.coroutines.delay(HEARTBEAT_MS)
             }
         }
@@ -305,7 +337,11 @@ class GeofenceSyncService : Service() {
     private fun startLocationUpdates(childId: String) {
         val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
         val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
-        if (fine != PackageManager.PERMISSION_GRANTED && coarse != PackageManager.PERMISSION_GRANTED) return
+        if (fine != PackageManager.PERMISSION_GRANTED && coarse != PackageManager.PERMISSION_GRANTED) {
+            locState = "no_permission"
+            recordStatus(childId, force = true)
+            return
+        }
 
         // Reset the jitter filter so the first fresh fix is trusted (no line drawn
         // from a stale position left over from a previous run).
@@ -341,6 +377,8 @@ class GeofenceSyncService : Service() {
         }
         locationCallback = callback
         applyLocationRequest(desiredDense(System.currentTimeMillis()))
+        locState = "tracking"
+        recordStatus(childId, force = true)
     }
 
     /** Whether dense/high-accuracy sampling should be active right now. */
@@ -382,6 +420,9 @@ class GeofenceSyncService : Service() {
      */
     private fun publishLocation(childId: String, loc: android.location.Location) {
         val now = System.currentTimeMillis()
+        // A raw fix was delivered to the app (the OS/GPS is producing fixes).
+        locLastFixMillis = now
+        locLastAccuracy = loc.accuracy
         val prev = accepted
 
         // First fix ever (or after a restart): trust it.
@@ -393,11 +434,19 @@ class GeofenceSyncService : Service() {
         //    (travelling): a stricter gate drops valid highway fixes, leaving holes.
         val moving = loc.hasSpeed() && loc.speed > MOVING_SPEED_MPS
         val maxAccuracy = if (moving) ACCURACY_MAX_MOVING_METERS else ACCURACY_MAX_METERS
-        if (loc.accuracy > maxAccuracy) return
+        if (loc.accuracy > maxAccuracy) {
+            locOutcome = "rejected_low_accuracy"; locOutcomeMillis = now
+            recordStatus(childId)
+            return
+        }
         // 2. Teleport gate — ignore impossibly fast jumps.
         val dtSec = ((now - acceptedTime).coerceAtLeast(1L)) / 1000.0
         val dist = prev.distanceTo(loc)
-        if (dist / dtSec > MAX_SPEED_MPS) return
+        if (dist / dtSec > MAX_SPEED_MPS) {
+            locOutcome = "rejected_teleport"; locOutcomeMillis = now
+            recordStatus(childId)
+            return
+        }
         // 3. Jitter gate — within combined accuracy noise = still stationary.
         val noise = maxOf(prev.accuracy, loc.accuracy) + MOVE_MARGIN_METERS
         if (dist <= noise) {
@@ -455,11 +504,18 @@ class GeofenceSyncService : Service() {
 
     private fun publishLive(childId: String, lat: Double, lng: Double, acc: Float, now: Long) {
         scope.launch {
-            runCatching {
+            val ok = runCatching {
                 deviceRepository.updateLocation(
                     childId,
                     ChildLocation(latitude = lat, longitude = lng, accuracyMeters = acc, timestampMillis = now),
                 )
+            }.getOrNull()?.let { it is com.shahaabapps.core.common.AppResult.Success } ?: false
+            if (ok) {
+                locLastPublishMillis = System.currentTimeMillis(); locOutcome = "published"
+                recordStatus(childId)
+            } else {
+                locOutcome = "write_failed"; locOutcomeMillis = System.currentTimeMillis()
+                recordStatus(childId, force = true)
             }
         }
         detectGeofenceTransitions(childId, lat, lng, acc, now)
@@ -643,10 +699,28 @@ class GeofenceSyncService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // The user swiped the app from recents — record it so the parent can show
+        // the exact reason location stopped (rather than inferring from staleness).
+        taskRemoved = true
+        locState = "stopped_app_removed"
+        authRepository.currentUserIdOrNull()?.let { recordStatus(it, force = true) }
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         locationCallback?.let { runCatching { fusedClient.removeLocationUpdates(it) } }
         apkInstallGuard?.stop()
+        // Best-effort final status on a detached scope (the service scope is about
+        // to be cancelled). If the process is killed outright this won't land — the
+        // parent then infers "stopped" from the diagnostic going stale.
+        authRepository.currentUserIdOrNull()?.let { childId ->
+            val snap = locationStatusSnapshot().copy(state = if (taskRemoved) "stopped_app_removed" else "stopped")
+            CoroutineScope(Dispatchers.IO).launch {
+                runCatching { deviceRepository.updateLocationStatus(childId, snap) }
+            }
+        }
         scope.cancel()
     }
 
@@ -657,6 +731,9 @@ class GeofenceSyncService : Service() {
 
         // Only honour a fresh-location request this recent (avoids replay on restart).
         private const val FRESH_REQUEST_MS = 2 * 60_000L
+
+        // Min gap between location-diagnostic writes (state changes force a write).
+        private const val STATUS_WRITE_MIN_MS = 60_000L
 
         // Travel-history "stop" detection.
         private const val STOP_RADIUS_METERS = 150f

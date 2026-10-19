@@ -2,6 +2,7 @@ package com.shahaabapps.core.firebase.device
 
 import com.shahaabapps.core.common.AppResult
 import com.shahaabapps.core.model.ChildLocation
+import com.shahaabapps.core.model.LocationStatus
 import com.shahaabapps.core.model.RingCommand
 import com.shahaabapps.core.model.TrailPoint
 import com.shahaabapps.core.model.TravelStop
@@ -54,4 +55,14 @@ interface DeviceRepository {
 
     /** Child observes fresh-location requests (emits the latest request nonce). */
     fun observeLocationRequests(childId: String): Flow<Long>
+
+    /**
+     * Child publishes a plaintext diagnostic of its location pipeline (service
+     * state, last fix/publish time, last outcome). Plaintext on purpose, so the
+     * parent can read the exact cause even when location decryption is unavailable.
+     */
+    suspend fun updateLocationStatus(childId: String, status: LocationStatus): AppResult<Unit>
+
+    /** Parent observes the child's location pipeline diagnostic. */
+    fun observeLocationStatus(childId: String): Flow<LocationStatus?>
 }

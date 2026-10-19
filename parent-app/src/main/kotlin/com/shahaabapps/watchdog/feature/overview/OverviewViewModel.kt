@@ -86,6 +86,12 @@ class OverviewViewModel @Inject constructor(
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    /** Child-reported location-pipeline diagnostic (plaintext), for the health card. */
+    val locationStatus: StateFlow<com.shahaabapps.core.model.LocationStatus?> =
+        deviceRepository.observeLocationStatus(childId)
+            .distinctUntilChanged()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     /**
      * Whether this child's E2EE key has been verified out-of-band (pinned from a
      * QR scan). False prompts a one-time "verify secure connection" banner.

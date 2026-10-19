@@ -84,6 +84,13 @@ data class DevicePermissions(
     val fullScreenAlarm: Boolean = false,
     /** All-files / storage access — needed for the sideload install guard. */
     val storageAccess: Boolean = false,
+    // --- device state that affects whether location can update in the background ---
+    /** System battery saver is ON (can delay/stop background location). */
+    val powerSaveMode: Boolean = false,
+    /** The OS location toggle (GPS) is OFF — no app can get a fix. */
+    val locationServicesOff: Boolean = false,
+    /** The app's background activity is restricted by the system. */
+    val backgroundRestricted: Boolean = false,
     val reportedAtMillis: Long = 0L,
 )
 

@@ -222,6 +222,9 @@ class FirebaseChildRepository @Inject constructor(
                 .put("batteryUnrestricted", permissions.batteryUnrestricted)
                 .put("fullScreenAlarm", permissions.fullScreenAlarm)
                 .put("storageAccess", permissions.storageAccess)
+                .put("powerSaveMode", permissions.powerSaveMode)
+                .put("locationServicesOff", permissions.locationServicesOff)
+                .put("backgroundRestricted", permissions.backgroundRestricted)
                 .put("reportedAtMillis", permissions.reportedAtMillis)
                 .toString()
             val sealed = e2ee.sealString(childId, childId, json)
@@ -238,6 +241,9 @@ class FirebaseChildRepository @Inject constructor(
                         "batteryUnrestricted" to permissions.batteryUnrestricted,
                         "fullScreenAlarm" to permissions.fullScreenAlarm,
                         "storageAccess" to permissions.storageAccess,
+                        "powerSaveMode" to permissions.powerSaveMode,
+                        "locationServicesOff" to permissions.locationServicesOff,
+                        "backgroundRestricted" to permissions.backgroundRestricted,
                         "reportedAtMillis" to permissions.reportedAtMillis,
                     ),
                 )
@@ -298,6 +304,9 @@ class FirebaseChildRepository @Inject constructor(
                 batteryUnrestricted = permsJson.optBoolean("batteryUnrestricted"),
                 fullScreenAlarm = permsJson.optBoolean("fullScreenAlarm"),
                 storageAccess = permsJson.optBoolean("storageAccess"),
+                powerSaveMode = permsJson.optBoolean("powerSaveMode"),
+                locationServicesOff = permsJson.optBoolean("locationServicesOff"),
+                backgroundRestricted = permsJson.optBoolean("backgroundRestricted"),
                 reportedAtMillis = permsJson.optLong("reportedAtMillis"),
             )
             else -> (deviceMap["permissions"] as? Map<*, *>)?.let { p ->
@@ -310,6 +319,9 @@ class FirebaseChildRepository @Inject constructor(
                     batteryUnrestricted = p["batteryUnrestricted"] as? Boolean ?: false,
                     fullScreenAlarm = p["fullScreenAlarm"] as? Boolean ?: false,
                     storageAccess = p["storageAccess"] as? Boolean ?: false,
+                    powerSaveMode = p["powerSaveMode"] as? Boolean ?: false,
+                    locationServicesOff = p["locationServicesOff"] as? Boolean ?: false,
+                    backgroundRestricted = p["backgroundRestricted"] as? Boolean ?: false,
                     reportedAtMillis = (p["reportedAtMillis"] as? Long) ?: 0L,
                 )
             }

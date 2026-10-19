@@ -46,6 +46,25 @@ object ChildPermissions {
                 PackageManager.PERMISSION_GRANTED
         }
 
+        // Device state that stops background location even when permissions are fine.
+        val powerSave = runCatching {
+            (context.getSystemService(Context.POWER_SERVICE) as PowerManager).isPowerSaveMode
+        }.getOrDefault(false)
+        val locationOff = runCatching {
+            val lm = context.getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) !lm.isLocationEnabled
+            else !(lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) ||
+                lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER))
+        }.getOrDefault(false)
+        val bgRestricted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            runCatching {
+                (context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager)
+                    .isBackgroundRestricted
+            }.getOrDefault(false)
+        } else {
+            false
+        }
+
         return DevicePermissions(
             location = fine || coarse,
             locationAlways = background,
@@ -55,6 +74,9 @@ object ChildPermissions {
             batteryUnrestricted = battery,
             fullScreenAlarm = fullScreenAlarm,
             storageAccess = storage,
+            powerSaveMode = powerSave,
+            locationServicesOff = locationOff,
+            backgroundRestricted = bgRestricted,
             reportedAtMillis = System.currentTimeMillis(),
         )
     }

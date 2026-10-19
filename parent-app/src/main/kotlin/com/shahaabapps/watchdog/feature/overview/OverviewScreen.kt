@@ -185,6 +185,21 @@ fun OverviewScreen(
                 )
             }
         }
+        // Location health: surfaces why location might be stale (offline, GPS off,
+        // background-location permission, battery saver, battery optimization, …).
+        item(key = "locationHealth") {
+            val healthLoc by viewModel.childLocation.collectAsStateWithLifecycle()
+            Box(Modifier.padding(horizontal = Spacing.lg)) {
+                DashSection("Location health") {
+                    LocationHealthCard(
+                        online = state.online,
+                        lastSeenMillis = state.lastSeenMillis,
+                        locationTimestampMillis = healthLoc?.timestampMillis ?: 0L,
+                        perms = state.permissions,
+                    )
+                }
+            }
+        }
         // Screen time today.
         item(key = "screentime") {
             Box(Modifier.padding(horizontal = Spacing.lg).dashReveal()) {
@@ -1347,6 +1362,88 @@ private fun TrackSeg(label: String, selected: Boolean, modifier: Modifier = Modi
             fontWeight = FontWeight.SemiBold,
             color = if (selected) Color.White else AppTheme.colors.secondaryLabel,
         )
+    }
+}
+
+/**
+ * Diagnoses why the child's location might not be updating, from the signals the
+ * child reports (online/last-seen, last fix age, and the device-state flags in
+ * [com.shahaabapps.core.model.DevicePermissions]). Lists concrete problems with a
+ * fix hint, or a green "all good" when nothing is wrong.
+ */
+@Composable
+private fun LocationHealthCard(
+    online: Boolean,
+    lastSeenMillis: Long,
+    locationTimestampMillis: Long,
+    perms: com.shahaabapps.core.model.DevicePermissions?,
+) {
+    val now = System.currentTimeMillis()
+    val fixAge = if (locationTimestampMillis > 0) now - locationTimestampMillis else -1L
+    val STALE_MS = 30 * 60_000L
+
+    val issues = buildList {
+        if (!online) {
+            add("Device looks offline — last seen ${healthAgo(lastSeenMillis)}. It may be powered off or without internet.")
+        } else if (fixAge > STALE_MS) {
+            add("Location hasn't refreshed in ${healthAgo(locationTimestampMillis)}, though the device is online.")
+        }
+        perms?.let { p ->
+            if (p.locationServicesOff) add("Location (GPS) is turned off on the device.")
+            if (!p.locationAlways) add("Location permission isn't set to “Allow all the time” — background updates won't work.")
+            if (p.powerSaveMode) add("Battery saver is on — it can pause background location updates.")
+            if (!p.batteryUnrestricted) add("Battery optimization isn't disabled for Shield — the system may stop it in the background.")
+            if (p.backgroundRestricted) add("Background activity is restricted for Shield — it can't run to report location.")
+        }
+    }
+
+    CupertinoCard {
+        when {
+            perms == null && issues.isEmpty() -> HealthRow(
+                ok = true,
+                text = "Waiting for the device to report its status…",
+            )
+            issues.isEmpty() -> HealthRow(ok = true, text = "Location is updating normally.")
+            else -> Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                issues.forEach { HealthRow(ok = false, text = it) }
+                Text(
+                    "Fix on the child's phone: open Shield, allow location “all the time”, turn off battery saver, and set Shield to unrestricted battery.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.secondaryLabel,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HealthRow(ok: Boolean, text: String) {
+    Row(verticalAlignment = Alignment.Top) {
+        Icon(
+            if (ok) Icons.Filled.CheckCircle else Icons.Filled.Error,
+            contentDescription = null,
+            tint = if (ok) AppTheme.colors.success else AppTheme.colors.warn,
+            modifier = Modifier.size(20.dp),
+        )
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f).padding(start = Spacing.md),
+        )
+    }
+}
+
+/** Short "Xm/Xh/Xd ago" label for the health card. */
+private fun healthAgo(millis: Long): String {
+    if (millis <= 0) return "a while ago"
+    val diff = System.currentTimeMillis() - millis
+    val mins = diff / 60_000
+    return when {
+        mins < 1 -> "just now"
+        mins < 60 -> "${mins}m ago"
+        mins < 24 * 60 -> "${mins / 60}h ago"
+        else -> "${mins / (24 * 60)}d ago"
     }
 }
 

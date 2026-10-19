@@ -9,23 +9,27 @@ import com.shahaabapps.core.model.PairingCodec
 import com.shahaabapps.core.model.PairingData
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
  * Builds the "secure code" QR the parent re-scans to verify this device's E2EE
  * key out-of-band. Same payload as the pairing QR (childId + code + public key),
- * available while the device is already linked.
+ * available while the device is already linked. Also exposes a manual "re-sync
+ * security" action that re-wraps the data key for every linked parent now.
  */
 @HiltViewModel
 class SecureCodeViewModel @Inject constructor(
     authRepository: AuthRepository,
-    childRepository: ChildRepository,
+    private val childRepository: ChildRepository,
     private val e2eeManager: E2eeManager,
 ) : ViewModel() {
 
@@ -40,4 +44,25 @@ class SecureCodeViewModel @Inject constructor(
             }
             .flowOn(Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    private val _resyncBusy = MutableStateFlow(false)
+    val resyncBusy: StateFlow<Boolean> = _resyncBusy
+
+    /**
+     * Re-share this device's encryption key with every linked parent now, so a
+     * parent stuck on "can't see location/history" recovers without re-pairing.
+     */
+    fun resyncSecurity() {
+        val id = childId ?: return
+        if (_resyncBusy.value) return
+        viewModelScope.launch {
+            _resyncBusy.value = true
+            runCatching {
+                val parents = childRepository.observeChild(id).first()?.linkedParents ?: emptyList()
+                e2eeManager.reconcileAsChild(id, parents)
+            }
+            kotlinx.coroutines.delay(1_500)
+            _resyncBusy.value = false
+        }
+    }
 }

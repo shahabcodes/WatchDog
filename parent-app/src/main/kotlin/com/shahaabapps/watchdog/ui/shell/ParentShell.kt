@@ -651,6 +651,42 @@ private fun VerifyConnectionScreen(
             ) {
                 Text("Scan QR from gallery", color = navy, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
+
+            // Recovery path: if encrypted data (location/history) won't load — e.g.
+            // after this phone was reinstalled and its key rotated — re-request the
+            // child to re-wrap the key, without needing a QR scan.
+            val reconcileBusy by viewModel.reconcileBusy.collectAsStateWithLifecycle()
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Location or history stuck on “unknown”?",
+                color = AppTheme.colors.secondaryLabel,
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center,
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .border(BorderStroke(1.5.dp, Color(0xFF3A5AA8)), RoundedCornerShape(16.dp))
+                    .clickable(enabled = !reconcileBusy) { viewModel.reconcileSecureLink(childId) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    if (reconcileBusy) "Reconnecting…" else "Reconcile secure link",
+                    color = navy,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            if (reconcileBusy) {
+                Text(
+                    "Asked the child device to re-share its key. If it's online, location should return in a moment.",
+                    color = AppTheme.colors.secondaryLabel,
+                    fontSize = 12.sp,
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
     }
 }

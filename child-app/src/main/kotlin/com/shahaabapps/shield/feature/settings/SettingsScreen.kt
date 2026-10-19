@@ -10,6 +10,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.QrCode2
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,6 +46,7 @@ fun SettingsScreen(
     val mode by viewModel.themeMode.collectAsStateWithLifecycle()
     val palette by viewModel.accentPalette.collectAsStateWithLifecycle()
     val qrContent by secureCodeViewModel.qrContent.collectAsStateWithLifecycle()
+    val resyncBusy by secureCodeViewModel.resyncBusy.collectAsStateWithLifecycle()
     var showCode by remember { mutableStateOf(false) }
 
     Column(
@@ -67,8 +69,16 @@ fun SettingsScreen(
                 title = "Show secure code",
                 subtitle = "Let a parent scan this to verify the encrypted connection",
                 leadingIcon = Icons.Filled.QrCode2,
-                showDivider = false,
+                showDivider = true,
                 onClick = { showCode = true },
+            )
+            CupertinoListRow(
+                title = "Re-sync security",
+                subtitle = if (resyncBusy) "Re-sharing your key with the parent…"
+                else "Fixes a parent stuck on “can't see location”",
+                leadingIcon = Icons.Filled.Sync,
+                showDivider = false,
+                onClick = { if (!resyncBusy) secureCodeViewModel.resyncSecurity() },
             )
         }
         AboutSection(

@@ -400,6 +400,31 @@ class E2eeManager @Inject constructor(
     }
 
     /**
+     * Parent: manually reconcile the secure link for [childId] — drop the cached
+     * key-ring and ask the child to re-wrap its data key for this device now. Used
+     * by the "Reconcile" button when encrypted data (location/history) won't open,
+     * e.g. after a reinstall rotated this device's key. The child must be online to
+     * honour it; the next read picks up the fresh wrap.
+     */
+    suspend fun reconcileAsParent(childId: String, parentUid: String) {
+        parentRingCache.remove(childId)
+        lastResyncRequest.remove("$childId/$parentUid")
+        runCatching { keys.requestResync(childId, parentUid) }
+        runCatching { warmDataKey(childId, parentUid) }
+    }
+
+    /**
+     * Child: manually re-publish this device's public key and re-wrap the data key
+     * for all [linkedParents] immediately, bypassing the periodic TTL. Used by the
+     * child's "Re-sync security" button to unstick a parent that can't decrypt.
+     */
+    suspend fun reconcileAsChild(childId: String, linkedParents: List<String>) {
+        verifiedParents.clear()
+        childKeyPublished = false
+        syncChildKeys(childId, linkedParents)
+    }
+
+    /**
      * Drop in-memory session key material on sign-out, so a different account
      * signing in on the same device starts clean. The device identity keypair
      * (per-device, not per-account) is intentionally kept.

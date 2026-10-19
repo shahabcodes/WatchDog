@@ -154,6 +154,25 @@ class DashboardViewModel @Inject constructor(
 
     fun clearVerifyState() { _verifyState.value = VerifyState.Idle }
 
+    private val _reconcileBusy = MutableStateFlow(false)
+    val reconcileBusy: StateFlow<Boolean> = _reconcileBusy.asStateFlow()
+
+    /**
+     * Manually reconcile the E2EE secure link for [childId]: drop the cached key
+     * and ask the child to re-wrap its data key for this device now. Fixes a
+     * "can't see location/history" stall after this device's key rotated.
+     */
+    fun reconcileSecureLink(childId: String) {
+        val parentId = authRepository.currentUserIdOrNull() ?: return
+        if (_reconcileBusy.value) return
+        viewModelScope.launch {
+            _reconcileBusy.value = true
+            runCatching { e2eeManager.reconcileAsParent(childId, parentId) }
+            kotlinx.coroutines.delay(1_500)
+            _reconcileBusy.value = false
+        }
+    }
+
     fun clearLinkState() {
         _linkState.value = LinkState.Idle
     }

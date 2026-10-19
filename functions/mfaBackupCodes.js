@@ -95,7 +95,8 @@ function totpFactor(userRecord) {
 function codesValidFor(data, factor) {
   if (!data || !Array.isArray(data.codes) || !data.generatedAt || !factor) return false;
   const enrolledAt = Date.parse(factor.enrollmentTime || "");
-  return Number.isNaN(enrolledAt) || data.generatedAt.toMillis() >= enrolledAt;
+  // Fail closed: if the enrollment time can't be read, treat the codes as void.
+  return !Number.isNaN(enrolledAt) && data.generatedAt.toMillis() >= enrolledAt;
 }
 
 exports.generateMfaBackupCodes = onCall(async (request) => {

@@ -173,6 +173,9 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
+    /** True once after a 2FA backup-code sign-in (which turned 2FA off). */
+    fun consumeBackupCodeSignInNotice(): Boolean = authRepository.consumeBackupCodeSignInNotice()
+
     fun clearLinkState() {
         _linkState.value = LinkState.Idle
     }

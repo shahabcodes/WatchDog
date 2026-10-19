@@ -15,3 +15,9 @@ data class TotpEnrollment(
     val otpauthUrl: String,
     val sharedKey: String,
 )
+
+/** Backup codes left for the signed-in user ([remaining] of [total]; 0/0 when none). */
+data class BackupCodeStatus(
+    val remaining: Int,
+    val total: Int,
+)

@@ -45,8 +45,11 @@ interface AuthRepository {
     /** Reloads the user so a just-verified email is reflected in [isEmailVerified]. */
     suspend fun reloadUser(): AppResult<Unit>
 
-    /** Re-authenticates the current user with their password (for recent-login-required ops). */
-    suspend fun reauthenticate(password: String): AppResult<Unit>
+    /**
+     * Re-authenticates the current user with their password (for recent-login-required
+     * ops). With 2FA on this returns [SignInOutcome.MfaRequired]; finish with [resolveMfa].
+     */
+    suspend fun reauthenticate(password: String): AppResult<SignInOutcome>
 
     /** Begins TOTP enrollment: returns the QR/shared-key to add to an authenticator app. */
     suspend fun beginTotpEnrollment(): AppResult<TotpEnrollment>
@@ -56,6 +59,27 @@ interface AuthRepository {
 
     /** Removes all enrolled second factors (turns MFA off). */
     suspend fun disableMfa(): AppResult<Unit>
+
+    // --- 2FA backup codes (server-side, Cloud Functions) ---
+
+    /** Issues 10 new single-use backup codes (voiding older ones). Needs a recent re-auth. */
+    suspend fun generateBackupCodes(): AppResult<List<String>>
+
+    /** How many unused backup codes the signed-in user has. */
+    suspend fun backupCodeStatus(): AppResult<BackupCodeStatus>
+
+    /**
+     * Lost authenticator: removes 2FA using [email]/[password] and one backup [code],
+     * then signs in with the password. Returns the uid. The caller should prompt the
+     * user to set 2FA up again.
+     */
+    suspend fun signInWithBackupCode(email: String, password: String, code: String): AppResult<String>
+
+    /** Signed-in variant of [signInWithBackupCode]: turns 2FA off for the current user. */
+    suspend fun disableMfaWithBackupCode(password: String, code: String): AppResult<Unit>
+
+    /** True once after [signInWithBackupCode] succeeded (so the app can nudge re-enrolment). */
+    fun consumeBackupCodeSignInNotice(): Boolean
 
     /** Sends a password-reset email to [email]. */
     suspend fun sendPasswordReset(email: String): AppResult<Unit>

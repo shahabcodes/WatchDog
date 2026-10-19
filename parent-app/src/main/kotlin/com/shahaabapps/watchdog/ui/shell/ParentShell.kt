@@ -121,6 +121,9 @@ fun ParentShell(
     val loading by viewModel.loading.collectAsStateWithLifecycle()
     val linkState by viewModel.linkState.collectAsStateWithLifecycle()
 
+    // After signing in with a 2FA backup code, 2FA is off: prompt once to set it up again.
+    var showMfaOffNotice by rememberSaveable { mutableStateOf(viewModel.consumeBackupCodeSignInNotice()) }
+
     // Show a one-time "connected" screen after the first child is paired during
     // onboarding (we only arrived here from the empty/first-run state).
     var justConnected by rememberSaveable { mutableStateOf(false) }
@@ -219,6 +222,28 @@ fun ParentShell(
                 restoreState = true
             }
         }
+    }
+
+    if (showMfaOffNotice) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showMfaOffNotice = false },
+            title = { Text("Two-factor is off") },
+            text = {
+                Text(
+                    "You signed in with a backup code, so two-factor authentication was turned off. " +
+                        "Set it up again with your new authenticator to keep your account protected.",
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    showMfaOffNotice = false
+                    navController.navigate("security") { launchSingleTop = true }
+                }) { Text("Set up now") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showMfaOffNotice = false }) { Text("Later") }
+            },
+        )
     }
 
     Scaffold(

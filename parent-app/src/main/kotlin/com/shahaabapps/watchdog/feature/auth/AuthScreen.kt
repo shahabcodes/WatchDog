@@ -299,25 +299,49 @@ fun AuthScreen(
             // Two-factor step: shown after a correct password when the account has an
             // authenticator app enrolled.
             if (state.mfaRequired) {
-                FieldLabel("Verification code")
-                Text(
-                    "Enter the 6-digit code from your authenticator app.",
-                    color = LABEL,
-                    fontSize = 14.sp,
-                )
-                com.shahaabapps.watchdog.ui.OtpInput(
-                    value = state.mfaCode,
-                    onValueChange = viewModel::onMfaCodeChange,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                if (state.useBackupCode) {
+                    FieldLabel("Backup code")
+                    Text(
+                        "Lost your authenticator? Enter one of the backup codes you saved. Two-factor will be turned off so you can set it up again.",
+                        color = LABEL,
+                        fontSize = 14.sp,
+                    )
+                    LhField(
+                        value = state.backupCode,
+                        onValueChange = viewModel::onBackupCodeChange,
+                        placeholder = "XXXXX-XXXXX",
+                        keyboardType = KeyboardType.Ascii,
+                    )
+                } else {
+                    FieldLabel("Verification code")
+                    Text(
+                        "Enter the 6-digit code from your authenticator app.",
+                        color = LABEL,
+                        fontSize = 14.sp,
+                    )
+                    com.shahaabapps.watchdog.ui.OtpInput(
+                        value = state.mfaCode,
+                        onValueChange = viewModel::onMfaCodeChange,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 state.errorMessage?.let {
                     Text(it, color = Color(0xFFC1362B), fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
                 }
                 GoldButton(
-                    text = "Verify",
-                    enabled = state.mfaCode.length == 6 && !state.isSubmitting,
+                    text = if (state.useBackupCode) "Sign in with backup code" else "Verify",
+                    enabled = !state.isSubmitting &&
+                        (if (state.useBackupCode) state.backupCode.isNotBlank() else state.mfaCode.length == 6),
                     loading = state.isSubmitting,
                     onClick = viewModel::submitMfa,
+                )
+                Text(
+                    if (state.useBackupCode) "Use my authenticator instead" else "Lost your authenticator? Use a backup code",
+                    color = NAVY,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.align(Alignment.CenterHorizontally).clickable { viewModel.toggleBackupCode() },
                 )
                 Text(
                     "Use a different account",

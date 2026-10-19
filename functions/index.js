@@ -490,3 +490,9 @@ exports.notifyChildRequest = onDocumentCreated(
     await Promise.all(deletions);
   }
 );
+
+// Two-factor backup codes (generate / status / redeem). See mfaBackupCodes.js.
+const mfaBackupCodes = require("./mfaBackupCodes");
+exports.generateMfaBackupCodes = mfaBackupCodes.generateMfaBackupCodes;
+exports.getMfaBackupCodeStatus = mfaBackupCodes.getMfaBackupCodeStatus;
+exports.redeemMfaBackupCode = mfaBackupCodes.redeemMfaBackupCode;

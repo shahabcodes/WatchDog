@@ -10,6 +10,7 @@ import com.google.firebase.auth.FirebaseAuthMultiFactorException
 import com.google.firebase.auth.MultiFactorResolver
 import com.google.firebase.auth.TotpMultiFactorGenerator
 import com.google.firebase.auth.TotpSecret
+import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -27,6 +28,10 @@ class FirebaseAuthRepository @Inject constructor(
     // beginning TOTP enrollment and confirming it. Singleton repo → single user.
     @Volatile private var pendingResolver: MultiFactorResolver? = null
     @Volatile private var pendingTotpSecret: TotpSecret? = null
+    // Set by a backup-code sign-in (which turns 2FA off); read once by the app.
+    @Volatile private var backupCodeSignInNotice = false
+
+    private val functions get() = FirebaseFunctions.getInstance()
 
     override val currentUserId: Flow<String?> = callbackFlow {
         val listener = FirebaseAuth.AuthStateListener { trySend(it.currentUser?.uid) }
@@ -92,12 +97,18 @@ class FirebaseAuthRepository @Inject constructor(
     override suspend fun reloadUser(): AppResult<Unit> =
         runCatchingResult { auth.currentUser?.reload()?.await(); Unit }
 
-    override suspend fun reauthenticate(password: String): AppResult<Unit> =
+    override suspend fun reauthenticate(password: String): AppResult<SignInOutcome> =
         runCatchingResult {
             val user = requireNotNull(auth.currentUser) { "Not signed in" }
             val email = requireNotNull(user.email) { "No email on this account" }
-            user.reauthenticate(EmailAuthProvider.getCredential(email, password)).await()
-            Unit
+            try {
+                user.reauthenticate(EmailAuthProvider.getCredential(email, password)).await()
+                SignInOutcome.Success(user.uid)
+            } catch (e: FirebaseAuthMultiFactorException) {
+                // 2FA on: the re-auth also needs the authenticator code (resolveMfa).
+                pendingResolver = e.resolver
+                SignInOutcome.MfaRequired
+            }
         }
 
     override suspend fun beginTotpEnrollment(): AppResult<TotpEnrollment> =
@@ -131,6 +142,52 @@ class FirebaseAuthRepository @Inject constructor(
             }
             Unit
         }
+
+    override suspend fun generateBackupCodes(): AppResult<List<String>> =
+        runCatchingResult {
+            val result = functions.getHttpsCallable("generateMfaBackupCodes").call().await()
+            val codes = (result.getData() as? Map<*, *>)?.get("codes") as? List<*>
+            requireNotNull(codes) { "No codes returned" }.map { it.toString() }
+        }
+
+    override suspend fun backupCodeStatus(): AppResult<BackupCodeStatus> =
+        runCatchingResult {
+            val result = functions.getHttpsCallable("getMfaBackupCodeStatus").call().await()
+            val data = result.getData() as? Map<*, *> ?: emptyMap<Any, Any>()
+            BackupCodeStatus(
+                remaining = (data["remaining"] as? Number)?.toInt() ?: 0,
+                total = (data["total"] as? Number)?.toInt() ?: 0,
+            )
+        }
+
+    override suspend fun signInWithBackupCode(email: String, password: String, code: String): AppResult<String> =
+        runCatchingResult {
+            redeemBackupCode(email, password, code)
+            // 2FA is now off server-side, so a plain password sign-in completes.
+            pendingResolver = null
+            val result = auth.signInWithEmailAndPassword(email, password).await()
+            backupCodeSignInNotice = true
+            requireNotNull(result.user?.uid) { "Sign-in succeeded but uid was null" }
+        }
+
+    override suspend fun disableMfaWithBackupCode(password: String, code: String): AppResult<Unit> =
+        runCatchingResult {
+            val user = requireNotNull(auth.currentUser) { "Not signed in" }
+            val email = requireNotNull(user.email) { "No email on this account" }
+            redeemBackupCode(email, password, code)
+            pendingResolver = null
+            user.reload().await()
+            Unit
+        }
+
+    override fun consumeBackupCodeSignInNotice(): Boolean =
+        backupCodeSignInNotice.also { backupCodeSignInNotice = false }
+
+    private suspend fun redeemBackupCode(email: String, password: String, code: String) {
+        functions.getHttpsCallable("redeemMfaBackupCode")
+            .call(hashMapOf("email" to email.trim(), "password" to password, "code" to code.trim()))
+            .await()
+    }
 
     override suspend fun signOut() {
         // Detach this device's FCM token from the signed-in account BEFORE signing

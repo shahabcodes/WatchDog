@@ -1,5 +1,7 @@
 package com.shahaabapps.core.firebase.child
 
+import com.shahaabapps.core.firebase.callSafely
+
 import com.shahaabapps.core.common.AppResult
 import com.shahaabapps.core.common.runCatchingResult
 import com.shahaabapps.core.model.BatterySample
@@ -64,7 +66,7 @@ class FirebaseChildRepository @Inject constructor(
     override suspend fun startPairing(childId: String?): AppResult<PairingCode> = runCatchingResult {
         val args = hashMapOf<String, Any>()
         if (childId != null) args["childId"] = childId
-        val data = functions.getHttpsCallable("startPairing").call(args).await().getData() as? Map<*, *>
+        val data = functions.getHttpsCallable("startPairing").callSafely(args).getData() as? Map<*, *>
         PairingCode(
             code = requireNotNull(data?.get("code") as? String) { "No pairing code returned" },
             expiresAtMillis = (data?.get("expiresAtMillis") as? Number)?.toLong() ?: 0L,
@@ -94,8 +96,8 @@ class FirebaseChildRepository @Inject constructor(
     override suspend fun respondToParentRequest(parentId: String, approve: Boolean): AppResult<Unit> =
         runCatchingResult {
             functions.getHttpsCallable("respondToParentRequest")
-                .call(hashMapOf("parentId" to parentId, "approve" to approve))
-                .await()
+                .callSafely(hashMapOf("parentId" to parentId, "approve" to approve))
+                
             Unit
         }
 
@@ -121,8 +123,7 @@ class FirebaseChildRepository @Inject constructor(
         // The linkChild Cloud Function redeems the single-use code and asks the
         // child's phone to approve this parent; nothing is linked until it does.
         val data = functions.getHttpsCallable("linkChild")
-            .call(hashMapOf("code" to code.trim()))
-            .await()
+            .callSafely(hashMapOf("code" to code.trim()))
             .getData() as? Map<*, *>
         val childId = requireNotNull(data?.get("childId") as? String) { "No child returned" }
         if (data?.get("status") == "linked") LinkOutcome.Linked(childId) else LinkOutcome.AwaitingApproval(childId)
@@ -130,7 +131,7 @@ class FirebaseChildRepository @Inject constructor(
 
     override suspend fun unlinkChild(childId: String): AppResult<Unit> =
         runCatchingResult {
-            functions.getHttpsCallable("unlinkChild").call(hashMapOf("childId" to childId)).await()
+            functions.getHttpsCallable("unlinkChild").callSafely(hashMapOf("childId" to childId))
             Unit
         }
 

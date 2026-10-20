@@ -1,5 +1,7 @@
 package com.shahaabapps.watchdog.feature.dashboard
 
+import com.shahaabapps.core.firebase.callSafely
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.shahaabapps.core.common.AppResult
@@ -238,7 +240,7 @@ class DashboardViewModel @Inject constructor(
                 "code" to pairing.code,
             )
             _reconnectState.value = runCatching {
-                FirebaseFunctions.getInstance().getHttpsCallable("reconnectChild").call(data).await()
+                FirebaseFunctions.getInstance().getHttpsCallable("reconnectChild").callSafely(data)
             }.fold(
                 onSuccess = {
                     // The reinstalled device has a new identity key; pin it from the QR.

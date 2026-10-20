@@ -1,5 +1,7 @@
 package com.shahaabapps.core.firebase.protection
 
+import com.shahaabapps.core.firebase.callSafely
+
 import com.shahaabapps.core.common.AppResult
 import com.shahaabapps.core.common.runCatchingResult
 import com.shahaabapps.core.model.ProtectionSettings
@@ -125,20 +127,20 @@ class FirebaseProtectionRepository @Inject constructor(
             // The PIN is hashed and stored server-side, out of the child's reach.
             if (newPin != null) {
                 functions.getHttpsCallable("setRemovalPin")
-                    .call(hashMapOf("childId" to childId, "pin" to newPin))
-                    .await()
+                    .callSafely(hashMapOf("childId" to childId, "pin" to newPin))
+                    
             }
             Unit
         }
 
     override suspend fun migratePin(childId: String): AppResult<Unit> = runCatchingResult {
-        functions.getHttpsCallable("migratePin").call(hashMapOf("childId" to childId)).await()
+        functions.getHttpsCallable("migratePin").callSafely(hashMapOf("childId" to childId))
         Unit
     }
 
     override suspend fun verifyRemovalPin(pin: String): AppResult<Long> = runCatchingResult {
         val data = functions.getHttpsCallable("verifyRemovalPin")
-            .call(hashMapOf("pin" to pin)).await().getData() as? Map<*, *>
+            .callSafely(hashMapOf("pin" to pin)).getData() as? Map<*, *>
         (data?.get("unlockUntilMillis") as? Number)?.toLong() ?: error("No unlock returned")
     }
 

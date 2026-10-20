@@ -1,5 +1,7 @@
 package com.shahaabapps.core.firebase.auth
 
+import com.shahaabapps.core.firebase.callSafely
+
 import com.shahaabapps.core.common.AppResult
 import com.shahaabapps.core.common.runCatchingResult
 import com.shahaabapps.core.firebase.e2ee.E2eeManager
@@ -146,14 +148,14 @@ class FirebaseAuthRepository @Inject constructor(
 
     override suspend fun generateBackupCodes(): AppResult<List<String>> =
         runCatchingResult {
-            val result = functions.getHttpsCallable("generateMfaBackupCodes").call().await()
+            val result = functions.getHttpsCallable("generateMfaBackupCodes").callSafely()
             val codes = (result.getData() as? Map<*, *>)?.get("codes") as? List<*>
             requireNotNull(codes) { "No codes returned" }.map { it.toString() }
         }
 
     override suspend fun backupCodeStatus(): AppResult<BackupCodeStatus> =
         runCatchingResult {
-            val result = functions.getHttpsCallable("getMfaBackupCodeStatus").call().await()
+            val result = functions.getHttpsCallable("getMfaBackupCodeStatus").callSafely()
             val data = result.getData() as? Map<*, *> ?: emptyMap<Any, Any>()
             BackupCodeStatus(
                 remaining = (data["remaining"] as? Number)?.toInt() ?: 0,
@@ -186,8 +188,7 @@ class FirebaseAuthRepository @Inject constructor(
 
     private suspend fun redeemBackupCode(email: String, password: String, code: String) {
         functions.getHttpsCallable("redeemMfaBackupCode")
-            .call(hashMapOf("email" to email.trim(), "password" to password, "code" to code.trim()))
-            .await()
+            .callSafely(hashMapOf("email" to email.trim(), "password" to password, "code" to code.trim()))
     }
 
     override suspend fun signOut() {

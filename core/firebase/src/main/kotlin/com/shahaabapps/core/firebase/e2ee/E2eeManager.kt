@@ -66,6 +66,45 @@ class E2eeManager @Inject constructor(
     private val verifiedParents = java.util.concurrent.ConcurrentHashMap<String, Long>()
     @Volatile private var childKeyPublished = false
 
+    // ---- child side: pinned parent keys ----
+    // Shield remembers each parent's public-key fingerprint (pinned when the child
+    // approves the parent, or on first sight for parents linked before pinning).
+    // If a parent's key later changes — a new phone, or someone with a stolen
+    // parent login swapping it — Shield stops sharing its data key with that
+    // parent until the child's phone approves the change.
+    private val parentPins = appContext.getSharedPreferences(PARENT_PINS_PREFS, Context.MODE_PRIVATE)
+    private val _parentKeyChanges = kotlinx.coroutines.flow.MutableStateFlow(loadPendingChanges())
+
+    /** Parents whose key changed and awaits approval on this phone: uid -> new fingerprint. */
+    val parentKeyChanges: kotlinx.coroutines.flow.StateFlow<Map<String, String>> = _parentKeyChanges
+
+    private fun loadPendingChanges(): Map<String, String> =
+        parentPins.all.mapNotNull { (k, v) ->
+            if (k.startsWith(PENDING_PREFIX) && v is String) k.removePrefix(PENDING_PREFIX) to v else null
+        }.toMap()
+
+    /** The email shown when this parent was approved ("" if pinned on first sight). */
+    fun parentEmail(parentUid: String): String = parentPins.getString(EMAIL_PREFIX + parentUid, "") ?: ""
+
+    /** Pin [parentUid]'s current key now (called when the child approves the parent). */
+    suspend fun pinParentKey(parentUid: String, email: String) = withContext(Dispatchers.Default) {
+        val pub = keys.getParentPublicKey(parentUid) ?: return@withContext
+        parentPins.edit()
+            .putString(PIN_PREFIX + parentUid, E2ee.fingerprint(unb64(pub)))
+            .putString(EMAIL_PREFIX + parentUid, email)
+            .remove(PENDING_PREFIX + parentUid)
+            .apply()
+        _parentKeyChanges.value = _parentKeyChanges.value - parentUid
+    }
+
+    /** The child's phone approved [parentUid]'s new key: pin it and share again. */
+    fun approveParentKeyChange(parentUid: String) {
+        val fp = _parentKeyChanges.value[parentUid] ?: return
+        parentPins.edit().putString(PIN_PREFIX + parentUid, fp).remove(PENDING_PREFIX + parentUid).apply()
+        _parentKeyChanges.value = _parentKeyChanges.value - parentUid
+        verifiedParents.keys.removeAll { it.endsWith("/$parentUid") }
+    }
+
     fun myPublicKeyB64(): String = b64(deviceKeyStore.publicKey())
     fun myFingerprint(): String = deviceKeyStore.publicKeyFingerprint()
 
@@ -138,6 +177,45 @@ class E2eeManager @Inject constructor(
     private fun aadFor(childId: String): ByteArray = childId.toByteArray(Charsets.UTF_8)
 
     /**
+     * Per-document binding ("slot", e.g. "geofences/<id>"): a payload sealed for one
+     * document won't open in another, so a writer can't paste one encrypted value
+     * into a different document. Older payloads (child-only or no AAD) still open.
+     */
+    private fun aadFor(childId: String, slot: String?): ByteArray =
+        if (slot == null) aadFor(childId) else "$childId|$slot".toByteArray(Charsets.UTF_8)
+
+    /** Opens with the slot binding first, then the older child-only binding (and none). */
+    private fun tryOpenSlot(ring: List<ByteArray>?, blob: ByteArray, childId: String, slot: String?): ByteArray? {
+        if (slot != null) {
+            ring ?: return null
+            for (key in ring) runCatching { return E2ee.openPayload(key, blob, aadFor(childId, slot)) }
+        }
+        return tryOpen(ring, blob, aadFor(childId))
+    }
+
+    // Writers only switch to slot binding once the readers on the other side can
+    // open it — so a phone that updates later never sees undecryptable data.
+    /** Parent side: children whose Shield reads slot-bound payloads. */
+    private val childReadsSlots = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+    /** Child side: linked parents whose Watch Dog reads slot-bound payloads. */
+    private val parentReadsSlots = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+    @Volatile private var currentParents: Set<String> = emptySet()
+
+    /** Parent side: record a child's capability (from its plaintext status flags). */
+    fun noteChildReadsSlots(childId: String, reads: Boolean) { childReadsSlots[childId] = reads }
+
+    private fun childWritesSlots(): Boolean {
+        val parents = currentParents
+        return parents.isNotEmpty() && parents.all { parentReadsSlots[it] == true }
+    }
+
+    /** The binding a writer uses now: slot-bound once the readers support it. */
+    private fun writerAad(childId: String, writerIsChild: Boolean, slot: String?): ByteArray {
+        val v2 = slot != null && if (writerIsChild) childWritesSlots() else childReadsSlots[childId] == true
+        return if (v2) aadFor(childId, slot) else aadFor(childId)
+    }
+
+    /**
      * Per-child "encryption cutover" high-water mark. Set once the one-time
      * migration has re-encrypted all pre-E2EE plaintext for a child (see
      * [E2eeMigrator]); from then on readers MUST refuse to fall back to a
@@ -184,12 +262,21 @@ class E2eeManager @Inject constructor(
             if (removed.isNotEmpty()) {
                 rotateKeyring()
                 verifiedParents.clear()
-                for (gone in removed) keys.deleteWrappedKey(childId, gone)
+                for (gone in removed) {
+                    keys.deleteWrappedKey(childId, gone)
+                    parentPins.edit().remove(PIN_PREFIX + gone).remove(EMAIL_PREFIX + gone)
+                        .remove(PENDING_PREFIX + gone).apply()
+                    _parentKeyChanges.value = _parentKeyChanges.value - gone
+                }
             }
             lastLinkedParents = current
+            currentParents = current
             var allWrapped = linkedParents.isNotEmpty()
             for (parentUid in linkedParents) {
-                if (!ensureWrappedFor(childId, parentUid)) allWrapped = false
+                val wrapped = ensureWrappedFor(childId, parentUid)
+                // A parent whose key changed is held back until approved, but must
+                // not make the child fall back to unencrypted uploads.
+                if (!wrapped && parentUid !in _parentKeyChanges.value) allWrapped = false
             }
             childEncryptionReady = allWrapped
             // Defense-in-depth: once this child has been fully ready, its own
@@ -217,20 +304,20 @@ class E2eeManager @Inject constructor(
      * Child: seal a coordinate pair into a base64 blob, or null if it isn't safe
      * to encrypt yet (caller then stores plaintext). Coordinates pack to 16 bytes.
      */
-    fun sealCoords(childId: String, lat: Double, lng: Double): String? {
+    fun sealCoords(childId: String, lat: Double, lng: Double, slot: String? = null): String? {
         val key = encryptionKeyIfReady() ?: return null
         val packed = java.nio.ByteBuffer.allocate(16).putDouble(lat).putDouble(lng).array()
-        return b64(E2ee.sealPayload(key, packed, aadFor(childId)))
+        return b64(E2ee.sealPayload(key, packed, writerAad(childId, writerIsChild = true, slot)))
     }
 
     /** Child: seal raw bytes (e.g. a screenshot) under the current key, or null if not ready. */
-    fun sealBytesIfReady(childId: String, bytes: ByteArray): ByteArray? =
-        encryptionKeyIfReady()?.let { E2ee.sealPayload(it, bytes, aadFor(childId)) }
+    fun sealBytesIfReady(childId: String, bytes: ByteArray, slot: String? = null): ByteArray? =
+        encryptionKeyIfReady()?.let { E2ee.sealPayload(it, bytes, writerAad(childId, writerIsChild = true, slot)) }
 
     /** Parent: decrypt raw bytes, warming + trying the child's key-ring; null if unavailable. */
-    suspend fun openBytes(childId: String, viewerUid: String?, blob: ByteArray): ByteArray? {
+    suspend fun openBytes(childId: String, viewerUid: String?, blob: ByteArray, slot: String? = null): ByteArray? {
         warmReaderKey(childId, viewerUid)
-        return tryOpen(readerRing(childId, viewerUid), blob, aadFor(childId)).also {
+        return tryOpenSlot(readerRing(childId, viewerUid), blob, childId, slot).also {
             if (it == null) {
                 diagnostics.info("e2ee", "bytes decrypt miss (no key) child=$childId viewer=$viewerUid")
                 maybeRequestResync(childId, viewerUid)
@@ -264,8 +351,8 @@ class E2eeManager @Inject constructor(
     }
 
     /** Parent: decrypt a coordinate blob using the already-cached key-ring; null if unavailable. */
-    fun openCoordsCached(childId: String, sealedB64: String): Pair<Double, Double>? {
-        val raw = tryOpen(parentRingCache[childId], unb64(sealedB64), aadFor(childId)) ?: return null
+    fun openCoordsCached(childId: String, sealedB64: String, slot: String? = null): Pair<Double, Double>? {
+        val raw = tryOpenSlot(parentRingCache[childId], unb64(sealedB64), childId, slot) ?: return null
         return runCatching {
             val bb = java.nio.ByteBuffer.wrap(raw)
             bb.double to bb.double
@@ -284,13 +371,15 @@ class E2eeManager @Inject constructor(
      * the child uses its own (ready-gated) data key; a parent uses its unwrapped
      * copy. Returns null when encryption isn't possible yet (store plaintext).
      */
-    suspend fun sealString(childId: String, writerUid: String?, plaintext: String): String? =
+    suspend fun sealString(childId: String, writerUid: String?, plaintext: String, slot: String? = null): String? =
         withContext(Dispatchers.Default) {
             // Encrypt with the newest key (ring[0]); the child uses its ready-gated
             // key, a parent its unwrapped ring's newest entry.
             val key: ByteArray? = if (writerUid == childId) encryptionKeyIfReady()
             else writerUid?.let { dataKeyForChild(childId, it, null)?.firstOrNull() }
-            key?.let { b64(E2ee.sealPayload(it, plaintext.toByteArray(Charsets.UTF_8), aadFor(childId))) }
+            key?.let {
+                b64(E2ee.sealPayload(it, plaintext.toByteArray(Charsets.UTF_8), writerAad(childId, writerUid == childId, slot)))
+            }
         }
 
     /** Ensure the key-ring for reading [childId] is cached, whichever side this device is. */
@@ -302,8 +391,8 @@ class E2eeManager @Inject constructor(
     }
 
     /** Decrypt a string sealed for [childId], using the already-cached key-ring; null if unavailable. */
-    fun openStringCached(childId: String, viewerUid: String?, sealedB64: String): String? {
-        val raw = tryOpen(readerRing(childId, viewerUid), unb64(sealedB64), aadFor(childId))
+    fun openStringCached(childId: String, viewerUid: String?, sealedB64: String, slot: String? = null): String? {
+        val raw = tryOpenSlot(readerRing(childId, viewerUid), unb64(sealedB64), childId, slot)
         if (raw == null) {
             diagnostics.info("e2ee", "string decrypt miss (no key) child=$childId viewer=$viewerUid")
             maybeRequestResync(childId, viewerUid)
@@ -318,7 +407,20 @@ class E2eeManager @Inject constructor(
         val lastVerified = verifiedParents[tag]
         if (lastVerified != null && now - lastVerified < VERIFY_TTL_MS) return true
         val parentPubB64 = keys.getParentPublicKey(parentUid) ?: return false
+        parentReadsSlots[parentUid] = keys.supportsSlotAad(parentUid)
         val parentFp = E2ee.fingerprint(unb64(parentPubB64))
+        val pinned = parentPins.getString(PIN_PREFIX + parentUid, null)
+        if (pinned == null) {
+            // Linked before pinning existed: trust what we see now (first sight).
+            parentPins.edit().putString(PIN_PREFIX + parentUid, parentFp).apply()
+        } else if (pinned != parentFp) {
+            if (_parentKeyChanges.value[parentUid] != parentFp) {
+                parentPins.edit().putString(PENDING_PREFIX + parentUid, parentFp).apply()
+                _parentKeyChanges.value = _parentKeyChanges.value + (parentUid to parentFp)
+                diagnostics.warn("e2ee", "parent key changed parent=$parentUid; waiting for approval")
+            }
+            return false
+        }
         val ringBytes = encodeRing(childKeyring())
         val ringFp = E2ee.fingerprint(ringBytes)
         // Re-wrap when the existing wrap is missing, was sealed for a different
@@ -441,6 +543,10 @@ class E2eeManager @Inject constructor(
     private fun unb64(s: String): ByteArray = Base64.decode(s, Base64.NO_WRAP)
 
     companion object {
+        const val PARENT_PINS_PREFS = "e2ee_parent_pins"
+        const val PENDING_PREFIX = "pending:"
+        private const val PIN_PREFIX = "pin:"
+        private const val EMAIL_PREFIX = "email:"
         /**
          * P6 encrypt-only cutover. Keep false until every active device has
          * completed key exchange (verified on real hardware); flipping it true

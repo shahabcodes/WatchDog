@@ -8,6 +8,7 @@ import com.shahaabapps.core.model.ProtectionSettings
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -22,6 +23,16 @@ class ProtectionViewModel @Inject constructor(
 
     val settings: StateFlow<ProtectionSettings> = protectionRepository.observe(childId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ProtectionSettings())
+
+    init {
+        // Move an old PIN hash out of the child-readable doc to the server-only
+        // store, once, so the parent doesn't have to re-enter the PIN.
+        viewModelScope.launch {
+            protectionRepository.observe(childId)
+                .first { it.needsPinMigration }
+            protectionRepository.migratePin(childId)
+        }
+    }
 
     /** Which alerts parents get for this child. */
     val alerts: StateFlow<com.shahaabapps.core.model.AlertSettings> = protectionRepository.observeAlerts(childId)

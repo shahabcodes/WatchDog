@@ -21,6 +21,11 @@ object GeofenceNameCache {
 
     private fun key(childId: String, geofenceId: String) = "$childId/$geofenceId"
 
+    /** Forget all cached names (on sign-out, so the next account starts clean). */
+    fun clear(context: Context) {
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+    }
+
     fun put(context: Context, childId: String, geofenceId: String, name: String) {
         if (geofenceId.isBlank() || name.isBlank()) return
         runCatching {

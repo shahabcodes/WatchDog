@@ -68,7 +68,7 @@ class FirebaseAppRulesRepository @Inject constructor(
                     },
                 )
                 .toString()
-            val sealed = e2ee.sealString(childId, uid, json)
+            val sealed = e2ee.sealString(childId, uid, json, slot = "appRules/${ruleDocId(rule.packageName)}")
             if (sealed != null) {
                 appRulesCollection(childId).document(ruleDocId(rule.packageName)).set(
                     mapOf("e" to sealed, "enc" to true, "updatedAtMillis" to System.currentTimeMillis()),
@@ -143,7 +143,7 @@ class FirebaseAppRulesRepository @Inject constructor(
                 )
             }
         }.toString()
-        val sealed = e2ee.sealString(childId, uid, json)
+        val sealed = e2ee.sealString(childId, uid, json, slot = "inventory/installed")
         val data: Map<String, Any> = if (sealed != null) {
             mapOf("e" to sealed, "enc" to true, "updatedAtMillis" to System.currentTimeMillis())
         } else {
@@ -188,7 +188,7 @@ class FirebaseAppRulesRepository @Inject constructor(
     private fun DocumentSnapshot.toInstalledApps(childId: String, viewerUid: String?): List<InstalledApp> {
         val sealed = getString("e")
         if (getBoolean("enc") == true && sealed != null) {
-            val json = e2ee.openStringCached(childId, viewerUid, sealed)?.let { JSONArray(it) } ?: return emptyList()
+            val json = e2ee.openStringCached(childId, viewerUid, sealed, slot = "inventory/$id")?.let { JSONArray(it) } ?: return emptyList()
             return (0 until json.length()).map { i ->
                 val o = json.getJSONObject(i)
                 InstalledApp(
@@ -217,7 +217,7 @@ class FirebaseAppRulesRepository @Inject constructor(
         val updatedAt = (get("updatedAtMillis") as? Long) ?: 0L
         val sealed = getString("e")
         if (getBoolean("enc") == true && sealed != null) {
-            val json = e2ee.openStringCached(childId, viewerUid, sealed)?.let { JSONObject(it) } ?: return null
+            val json = e2ee.openStringCached(childId, viewerUid, sealed, slot = "appRules/$id")?.let { JSONObject(it) } ?: return null
             val schArr = json.optJSONArray("sch")
             val schedule = if (schArr == null) emptyList() else (0 until schArr.length()).map { i ->
                 val w = schArr.getJSONObject(i)

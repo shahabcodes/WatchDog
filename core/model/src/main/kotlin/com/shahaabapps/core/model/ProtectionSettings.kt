@@ -29,9 +29,14 @@ data class ProtectionSettings(
      * [uninstallBlocked]; if a parent never chose, it follows [uninstallBlocked].
      */
     val lockSettings: Boolean = false,
+    /** A PIN is set on the server (its hash is never readable by the apps). */
+    val pinSet: Boolean = false,
 ) {
-    /** Whether a removal PIN has been set (hashed, or a legacy plaintext one). */
-    val hasPin: Boolean get() = pinHash.isNotEmpty() || legacyPin.isNotEmpty()
+    /** Whether a removal PIN has been set (server-side, or a not-yet-migrated hash). */
+    val hasPin: Boolean get() = pinSet || pinHash.isNotEmpty() || legacyPin.isNotEmpty()
+
+    /** An old-style hash is still in the child-readable doc and should be migrated. */
+    val needsPinMigration: Boolean get() = pinHash.isNotEmpty() || legacyPin.isNotEmpty()
 }
 
 /** An app installed on the child device that was auto-blocked, awaiting parent review. */

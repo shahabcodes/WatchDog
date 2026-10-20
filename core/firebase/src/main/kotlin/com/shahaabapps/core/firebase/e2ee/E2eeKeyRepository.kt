@@ -27,6 +27,9 @@ interface E2eeKeyRepository {
 
     suspend fun getChildPublicKey(childId: String): String?
     suspend fun getParentPublicKey(parentUid: String): String?
+
+    /** Whether [uid]'s app reads slot-bound (per-document) payloads. */
+    suspend fun supportsSlotAad(uid: String): Boolean
     fun observeParentPublicKey(parentUid: String): Flow<String?>
 
     suspend fun putWrappedKey(
@@ -78,12 +81,17 @@ class FirebaseE2eeKeyRepository @Inject constructor(
     private suspend fun publishPublicKey(uid: String, publicKeyB64: String): AppResult<Unit> =
         runCatchingResult {
             firestore.collection(PUBLIC_KEYS).document(uid)
-                .set(mapOf(FIELD_PUBLIC_KEY to publicKeyB64), SetOptions.merge()).await()
+                // aad2: this app reads payloads bound to their document (slot).
+                .set(mapOf(FIELD_PUBLIC_KEY to publicKeyB64, FIELD_AAD2 to true), SetOptions.merge()).await()
         }
 
     override suspend fun getChildPublicKey(childId: String): String? = getPublicKey(childId)
 
     override suspend fun getParentPublicKey(parentUid: String): String? = getPublicKey(parentUid)
+
+    override suspend fun supportsSlotAad(uid: String): Boolean = runCatching {
+        firestore.collection(PUBLIC_KEYS).document(uid).get().await().getBoolean(FIELD_AAD2) == true
+    }.getOrDefault(false)
 
     private suspend fun getPublicKey(uid: String): String? = runCatching {
         firestore.collection(PUBLIC_KEYS).document(uid).get().await().getString(FIELD_PUBLIC_KEY)
@@ -167,5 +175,6 @@ class FirebaseE2eeKeyRepository @Inject constructor(
         const val E2EE_KEYS = "e2eeKeys"
         const val KEY_RESYNC = "keyResync"
         const val FIELD_PUBLIC_KEY = "e2ePublicKey"
+        const val FIELD_AAD2 = "aad2"
     }
 }

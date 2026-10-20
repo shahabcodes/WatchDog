@@ -28,7 +28,7 @@ class FirebaseDeviceRepository @Inject constructor(
 
     override suspend fun updateLocation(childId: String, location: ChildLocation): AppResult<Unit> =
         runCatchingResult {
-            val sealed = e2ee.sealCoords(childId, location.latitude, location.longitude)
+            val sealed = e2ee.sealCoords(childId, location.latitude, location.longitude, slot = "live/location")
             val data = if (sealed != null) {
                 mapOf(
                     "e" to sealed,
@@ -88,7 +88,7 @@ class FirebaseDeviceRepository @Inject constructor(
 
     override suspend fun addTravelStop(childId: String, stop: TravelStop): AppResult<Unit> =
         runCatchingResult {
-            val sealed = e2ee.sealCoords(childId, stop.latitude, stop.longitude)
+            val sealed = e2ee.sealCoords(childId, stop.latitude, stop.longitude, slot = "travelHistory")
             val data = if (sealed != null) {
                 mapOf(
                     "e" to sealed,
@@ -127,22 +127,22 @@ class FirebaseDeviceRepository @Inject constructor(
         runCatchingResult {
             // Merge-set with arrayUnion so the day's doc is created on first point.
             trail(childId).document(date)
-                .set(mapOf("points" to FieldValue.arrayUnion(trailEntry(childId, point))), SetOptions.merge())
+                .set(mapOf("points" to FieldValue.arrayUnion(trailEntry(childId, date, point))), SetOptions.merge())
                 .await()
         }
 
     override suspend fun appendTrailPoints(childId: String, date: String, points: List<TrailPoint>): AppResult<Unit> =
         runCatchingResult {
             if (points.isEmpty()) return@runCatchingResult Unit
-            val entries = points.map { trailEntry(childId, it) }.toTypedArray()
+            val entries = points.map { trailEntry(childId, date, it) }.toTypedArray()
             trail(childId).document(date)
                 .set(mapOf("points" to FieldValue.arrayUnion(*entries)), SetOptions.merge())
                 .await()
         }
 
     /** A trail array entry: encrypted (`e` + `t`) when possible, else plaintext (`lat`/`lng`/`t`). */
-    private fun trailEntry(childId: String, point: TrailPoint): Map<String, Any> {
-        val sealed = e2ee.sealCoords(childId, point.latitude, point.longitude)
+    private fun trailEntry(childId: String, date: String, point: TrailPoint): Map<String, Any> {
+        val sealed = e2ee.sealCoords(childId, point.latitude, point.longitude, slot = "trail/$date")
         return if (sealed != null) {
             mapOf("e" to sealed, "t" to point.timestampMillis)
         } else {
@@ -164,7 +164,7 @@ class FirebaseDeviceRepository @Inject constructor(
                 if (sealed != null) {
                     // Encrypted point; skip if the key isn't available yet rather
                     // than plot a bogus (0,0) coordinate.
-                    val coords = e2ee.openCoordsCached(childId, sealed) ?: return@mapNotNull null
+                    val coords = e2ee.openCoordsCached(childId, sealed, slot = "trail/$date") ?: return@mapNotNull null
                     TrailPoint(latitude = coords.first, longitude = coords.second, timestampMillis = t)
                 } else {
                     // Trail points are child-write-only and not covered by the
@@ -263,7 +263,7 @@ class FirebaseDeviceRepository @Inject constructor(
     private fun DocumentSnapshot.toTravelStop(childId: String): TravelStop? {
         val sealed = getString("e")
         val coords = if (sealed != null) {
-            e2ee.openCoordsCached(childId, sealed) ?: return null
+            e2ee.openCoordsCached(childId, sealed, slot = "travelHistory") ?: return null
         } else {
             // Travel stops are child-write-only and not covered by the migrator, so
             // pre-E2EE plaintext history is kept.
@@ -281,7 +281,7 @@ class FirebaseDeviceRepository @Inject constructor(
     private fun DocumentSnapshot.toLocation(childId: String): ChildLocation? {
         val sealed = getString("e")
         val coords = if (sealed != null) {
-            e2ee.openCoordsCached(childId, sealed) ?: return null
+            e2ee.openCoordsCached(childId, sealed, slot = "live/location") ?: return null
         } else {
             // Accept plaintext: the child writes it whenever it isn't yet able to
             // encrypt (key exchange still settling). Availability of the child's

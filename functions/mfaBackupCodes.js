@@ -190,6 +190,14 @@ exports.redeemMfaBackupCode = onCall({ secrets: [AUTH_API_KEY] }, async (request
   if (!email || !password || !code || email.length > 320 || password.length > 4096 || code.length > 64) {
     throw new HttpsError("invalid-argument", "Enter your email, password and a backup code.");
   }
+  // Throttle by account email and by network address BEFORE checking the
+  // password, so this endpoint can't be used to guess passwords.
+  const { rateLimit } = require("./pairing")._internal;
+  const tag = (v) => crypto.createHash("sha256").update(String(v)).digest("hex").slice(0, 32);
+  await rateLimit(`redeemEmail_${tag(email.toLowerCase())}`, 10);
+  const ip = (request.rawRequest && request.rawRequest.ip) || "";
+  if (ip) await rateLimit(`redeemIp_${tag(ip)}`, 20);
+
   // A signed-in caller may only redeem for their own account.
   const user = await verifyPasswordForMfaAccount(email, password);
   if (request.auth && request.auth.uid !== user.uid) {

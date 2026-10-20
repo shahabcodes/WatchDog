@@ -20,7 +20,7 @@ service cloud.firestore {
     match /publicKeys/{uid} {
       allow get: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['e2ePublicKey']);
+        && request.resource.data.keys().hasOnly(['e2ePublicKey', 'aad2']);
     }
 
     // Hashed two-factor backup codes. Server-only: the backup-code Cloud
@@ -38,6 +38,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
     match /childMonitor/{id} {
+      allow read, write: if false;
+    }
+    // Removal-PIN hashes (pin.js): never readable by any app, so the child
+    // can't copy the hash and brute-force it offline.
+    match /pinSecrets/{id} {
       allow read, write: if false;
     }
 
@@ -162,7 +167,14 @@ service cloud.firestore {
         allow read: if canRead();
         allow delete: if isParent();
         allow create, update: if isParent()
-          && (!(docId == 'focus' || docId == 'installGuard') || encWriteOk());
+          && (!(docId == 'focus' || docId == 'installGuard') || encWriteOk())
+          && (docId != 'protection' || noPinFields());
+      }
+      // The removal PIN is set and checked only by Cloud Functions (pin.js).
+      function noPinFields() {
+        return request.method == 'create'
+          ? !request.resource.data.keys().hasAny(['pin', 'pinSalt', 'pinHash', 'hasPin'])
+          : !request.resource.data.diff(resource.data).affectedKeys().hasAny(['pin', 'pinSalt', 'pinHash', 'hasPin']);
       }
 
       // New apps awaiting review: the child adds them (and blocks them until a
@@ -170,7 +182,13 @@ service cloud.firestore {
       match /pendingApps/{pkg} {
         allow read: if canRead();
         allow delete: if isParent();
-        allow create, update: if isChild();
+        // Bounded text: the label goes into the parent's notification.
+        allow create, update: if isChild()
+          && request.resource.data.keys().hasOnly(['packageName', 'label', 'installedAtMillis'])
+          && request.resource.data.get('label', '') is string
+          && request.resource.data.get('label', '').size() <= 100
+          && request.resource.data.get('packageName', '') is string
+          && request.resource.data.get('packageName', '').size() <= 255;
       }
 
       // Child "asks" (more time, unlock an app): the child creates a PENDING ask

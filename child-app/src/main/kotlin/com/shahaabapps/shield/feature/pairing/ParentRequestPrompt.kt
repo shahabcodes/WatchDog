@@ -32,6 +32,7 @@ import javax.inject.Inject
 class ParentRequestViewModel @Inject constructor(
     private val childRepository: ChildRepository,
     authRepository: com.shahaabapps.core.firebase.auth.AuthRepository,
+    private val e2eeManager: com.shahaabapps.core.firebase.e2ee.E2eeManager,
 ) : ViewModel() {
 
     private val childId = authRepository.currentUserIdOrNull()
@@ -48,11 +49,27 @@ class ParentRequestViewModel @Inject constructor(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    /** A linked parent whose key changed (new phone?) and needs approving again. */
+    val keyChange: StateFlow<Pair<String, String>?> = e2eeManager.parentKeyChanges
+        .map { it.keys.firstOrNull()?.let { uid -> uid to e2eeManager.parentEmail(uid) } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    private val dismissedKeyChanges = MutableStateFlow<Set<String>>(emptySet())
+    val dismissed: StateFlow<Set<String>> = dismissedKeyChanges.asStateFlow()
+
+    fun approveKeyChange(parentUid: String) = e2eeManager.approveParentKeyChange(parentUid)
+
+    /** Not now: hide the prompt this session (sharing stays paused, parents stay alerted). */
+    fun dismissKeyChange(parentUid: String) { dismissedKeyChanges.value = dismissedKeyChanges.value + parentUid }
+
     fun respond(request: ParentRequest, approve: Boolean) {
         if (_busy.value) return
         _busy.value = true
         _error.value = null
         viewModelScope.launch {
+            // Pin the parent's key at the moment a person approves it, so a later
+            // key swap can't silently receive this phone's data.
+            if (approve) runCatching { e2eeManager.pinParentKey(request.parentId, request.email) }
             when (val r = childRepository.respondToParentRequest(request.parentId, approve)) {
                 is AppResult.Success -> Unit
                 is AppResult.Failure -> _error.value = r.error.message ?: "Couldn't answer. Try again."
@@ -68,6 +85,26 @@ fun ParentRequestPrompt(viewModel: ParentRequestViewModel = hiltViewModel()) {
     val request by viewModel.pending.collectAsStateWithLifecycle()
     val busy by viewModel.busy.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
+    val keyChange by viewModel.keyChange.collectAsStateWithLifecycle()
+    val dismissed by viewModel.dismissed.collectAsStateWithLifecycle()
+    val change = keyChange
+    if (request == null && change != null && change.first !in dismissed) {
+        val who = change.second.ifBlank { "One of your parents" }
+        AlertDialog(
+            onDismissRequest = { },
+            title = { Text("A parent's phone changed") },
+            text = {
+                Text(
+                    "$who is using a new phone or reinstalled Watch Dog. Until you approve, " +
+                        "they can't see this phone's location and activity.\n\n" +
+                        "Only approve if you know your parent changed phones.",
+                )
+            },
+            confirmButton = { TextButton(onClick = { viewModel.approveKeyChange(change.first) }) { Text("Approve") } },
+            dismissButton = { TextButton(onClick = { viewModel.dismissKeyChange(change.first) }) { Text("Not now") } },
+        )
+        return
+    }
     val r = request ?: return
     val who = r.email.ifBlank { "A parent account" }
     AlertDialog(

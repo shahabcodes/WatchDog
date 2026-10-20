@@ -64,7 +64,7 @@ class FirebaseGeofenceRepository @Inject constructor(
                     geofence.points.forEach { put(JSONArray().put(it.latitude).put(it.longitude)) }
                 })
                 .toString()
-            val sealed = e2ee.sealString(childId, uid, secret)
+            val sealed = e2ee.sealString(childId, uid, secret, slot = "geofences/${doc.id}")
             val data = if (sealed != null) {
                 base + mapOf("e" to sealed, "enc" to true)
             } else {
@@ -110,7 +110,7 @@ class FirebaseGeofenceRepository @Inject constructor(
                 .put("lat", event.latitude)
                 .put("lng", event.longitude)
                 .toString()
-            val sealed = e2ee.sealString(childId, uid, secret)
+            val sealed = e2ee.sealString(childId, uid, secret, slot = "geofenceEvents")
             val data = if (sealed != null) {
                 base + mapOf("e" to sealed, "enc" to true)
             } else {
@@ -191,7 +191,7 @@ class FirebaseGeofenceRepository @Inject constructor(
         if (getBoolean("enc") == true && sealed != null) {
             // Encrypted; drop the place if the key isn't available rather than
             // surface a nameless (0,0) geofence.
-            val json = e2ee.openStringCached(childId, viewerUid, sealed)?.let { JSONObject(it) }
+            val json = e2ee.openStringCached(childId, viewerUid, sealed, slot = "geofences/$id")?.let { JSONObject(it) }
                 ?: return null
             val pts = json.optJSONArray("pts")?.let { arr ->
                 (0 until arr.length()).map { i ->
@@ -220,7 +220,7 @@ class FirebaseGeofenceRepository @Inject constructor(
         } ?: GeofenceTransition.ENTER
         val sealed = getString("e")
         val (name, lat, lng) = if (getBoolean("enc") == true && sealed != null) {
-            val json = e2ee.openStringCached(childId, viewerUid, sealed)?.let { JSONObject(it) }
+            val json = e2ee.openStringCached(childId, viewerUid, sealed, slot = "geofenceEvents")?.let { JSONObject(it) }
             Triple(
                 json?.optString("name") ?: "",
                 json?.optDouble("lat", 0.0) ?: 0.0,

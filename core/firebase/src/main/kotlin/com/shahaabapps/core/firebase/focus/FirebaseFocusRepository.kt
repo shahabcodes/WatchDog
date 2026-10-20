@@ -55,7 +55,7 @@ class FirebaseFocusRepository @Inject constructor(
                 .put("bedtime", settings.bedtime.toJson())
                 .put("school", settings.school.toJson())
                 .toString()
-            val sealed = e2ee.sealString(childId, uid, json)
+            val sealed = e2ee.sealString(childId, uid, json, slot = "settings/focus")
             val data: Map<String, Any> = if (sealed != null) {
                 mapOf("e" to sealed, "enc" to true, "updatedAtMillis" to System.currentTimeMillis())
             } else {
@@ -76,7 +76,7 @@ class FirebaseFocusRepository @Inject constructor(
     private fun DocumentSnapshot.decode(childId: String, viewerUid: String?): FocusSettings {
         val sealed = getString("e")
         if (getBoolean("enc") == true && sealed != null) {
-            val json = e2ee.openStringCached(childId, viewerUid, sealed)?.let { JSONObject(it) }
+            val json = e2ee.openStringCached(childId, viewerUid, sealed, slot = "settings/focus")?.let { JSONObject(it) }
                 ?: return FocusSettings()
             return FocusSettings(
                 bedtime = json.optJSONObject("bedtime").toWindow(FocusSettings().bedtime),

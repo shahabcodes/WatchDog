@@ -56,7 +56,7 @@ class FirebaseInstallGuardRepository @Inject constructor(
     override suspend fun setGuard(childId: String, guard: InstallGuard): AppResult<Unit> =
         runCatchingResult {
             val uid = authRepository.currentUserIdOrNull()
-            val sealed = e2ee.sealString(childId, uid, JSONArray(guard.packages).toString())
+            val sealed = e2ee.sealString(childId, uid, JSONArray(guard.packages).toString(), slot = "settings/installGuard")
             val data: Map<String, Any> = buildMap {
                 put("enabled", guard.enabled)
                 put("allowlist", guard.allowlist)
@@ -76,7 +76,7 @@ class FirebaseInstallGuardRepository @Inject constructor(
     private fun DocumentSnapshot.decodePackages(childId: String, viewerUid: String?): List<String> {
         val sealed = getString("pkgsE")
         if (getBoolean("enc") == true && sealed != null) {
-            val arr = e2ee.openStringCached(childId, viewerUid, sealed)?.let { JSONArray(it) } ?: return emptyList()
+            val arr = e2ee.openStringCached(childId, viewerUid, sealed, slot = "settings/installGuard")?.let { JSONArray(it) } ?: return emptyList()
             return (0 until arr.length()).map { arr.getString(it) }
         }
         return (get("packages") as? List<String>) ?: emptyList()

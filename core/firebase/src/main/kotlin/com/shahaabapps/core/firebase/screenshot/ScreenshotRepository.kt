@@ -129,7 +129,7 @@ class FirebaseScreenshotRepository @Inject constructor(
             // complete; until then upload plaintext so the feature keeps working
             // (the parent reads both). The data key is local, so this never needs
             // the network.
-            val sealed = e2ee.sealBytesIfReady(childId, imageBytes)
+            val sealed = e2ee.sealBytesIfReady(childId, imageBytes, slot = "screenshots")
             val payload = sealed ?: imageBytes
             val enc = sealed != null
             // Inline threshold is measured on the stored payload so a sealed blob
@@ -190,7 +190,7 @@ class FirebaseScreenshotRepository @Inject constructor(
                     ?: error("Signed out; can't decrypt this screenshot.")
                 // On failure, propagate (don't delete below) so it can be retried
                 // once this device's wrapped key is available.
-                e2ee.openBytes(childId, parentUid, raw)
+                e2ee.openBytes(childId, parentUid, raw, slot = "screenshots")
                     ?: error("Encryption key not ready yet — try again shortly.")
             } else {
                 raw

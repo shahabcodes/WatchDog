@@ -29,7 +29,7 @@ class FirebaseUsageRepository @Inject constructor(
         // parent/child apps read it). Plaintext fallback when the key isn't ready.
         val uid = authRepository.currentUserIdOrNull()
         val json = JSONObject().apply { usageMinutes.forEach { (k, v) -> put(k, v) } }.toString()
-        val sealed = e2ee.sealString(childId, uid, json)
+        val sealed = e2ee.sealString(childId, uid, json, slot = "usage/$date")
         val data: Map<String, Any> = if (sealed != null) {
             mapOf("e" to sealed, "enc" to true, "updatedAtMillis" to System.currentTimeMillis())
         } else {
@@ -72,7 +72,7 @@ class FirebaseUsageRepository @Inject constructor(
     private fun DocumentSnapshot.decodeUsage(childId: String, viewerUid: String?): Map<String, Int> {
         val sealed = getString("e")
         if (getBoolean("enc") == true && sealed != null) {
-            val json = e2ee.openStringCached(childId, viewerUid, sealed)?.let { JSONObject(it) } ?: return emptyMap()
+            val json = e2ee.openStringCached(childId, viewerUid, sealed, slot = "usage/$id")?.let { JSONObject(it) } ?: return emptyMap()
             return json.keys().asSequence().associateWith { json.optInt(it) }
         }
         @Suppress("UNCHECKED_CAST")

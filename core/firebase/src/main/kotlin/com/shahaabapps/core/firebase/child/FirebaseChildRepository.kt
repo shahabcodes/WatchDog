@@ -153,7 +153,7 @@ class FirebaseChildRepository @Inject constructor(
                 .put("dr", if (drainPerHour > 0.0) drainPerHour else 0.0)
                 .put("tc", if (temperatureTenthsC > 0) temperatureTenthsC else 0)
                 .toString()
-            val sealed = e2ee.sealString(childId, childId, secret)
+            val sealed = e2ee.sealString(childId, childId, secret, slot = "device/hb")
             val device = buildMap<String, Any> {
                 put("online", true)
                 put("lastSeenMillis", System.currentTimeMillis())
@@ -201,7 +201,7 @@ class FirebaseChildRepository @Inject constructor(
                     stats.temperatureHistory.forEach { put(JSONObject().put("t", it.atMillis).put("c", it.tempTenthsC)) }
                 })
                 .toString()
-            val sealed = e2ee.sealString(childId, childId, json)
+            val sealed = e2ee.sealString(childId, childId, json, slot = "device/stats")
             val deviceMap: Map<String, Any> = if (sealed != null) {
                 mapOf("statsE" to sealed, "statsEnc" to true, "batteryStats" to FieldValue.delete())
             } else {
@@ -238,7 +238,7 @@ class FirebaseChildRepository @Inject constructor(
                 .put("backgroundRestricted", permissions.backgroundRestricted)
                 .put("reportedAtMillis", permissions.reportedAtMillis)
                 .toString()
-            val sealed = e2ee.sealString(childId, childId, json)
+            val sealed = e2ee.sealString(childId, childId, json, slot = "device/perms")
             // Plaintext on/off flags for the tamper-alert Cloud Function, which
             // can't decrypt permsE: just whether each protection is on.
             val guard = mapOf(
@@ -247,6 +247,9 @@ class FirebaseChildRepository @Inject constructor(
                 "admin" to permissions.adminActive,
                 "clockOk" to permissions.clockOk,
                 "gpsGenuine" to permissions.gpsGenuine,
+                "parentKeysOk" to permissions.parentKeysOk,
+                // This Shield reads payloads bound to their document (slot).
+                "aad2" to true,
                 "tz" to permissions.phoneZone,
                 "homeTz" to permissions.homeZone,
             )
@@ -307,7 +310,7 @@ class FirebaseChildRepository @Inject constructor(
 
         // Heartbeat (model/battery/charging/drain/temp).
         val hb = (deviceMap["hb"] as? String)?.takeIf { deviceMap["hbEnc"] == true }
-            ?.let { e2ee.openStringCached(childId, viewerUid, it) }?.let { JSONObject(it) }
+            ?.let { e2ee.openStringCached(childId, viewerUid, it, slot = "device/hb") }?.let { JSONObject(it) }
         val model = hb?.optString("m") ?: deviceMap["model"] as? String ?: ""
         val batteryPercent = hb?.optInt("bp") ?: (deviceMap["batteryPercent"] as? Long)?.toInt() ?: 0
         val charging = hb?.optBoolean("ch") ?: deviceMap["charging"] as? Boolean ?: false
@@ -316,7 +319,7 @@ class FirebaseChildRepository @Inject constructor(
 
         // Permissions.
         val permsJson = (deviceMap["permsE"] as? String)?.takeIf { deviceMap["permsEnc"] == true }
-            ?.let { e2ee.openStringCached(childId, viewerUid, it) }?.let { JSONObject(it) }
+            ?.let { e2ee.openStringCached(childId, viewerUid, it, slot = "device/perms") }?.let { JSONObject(it) }
         val permissions = when {
             permsJson != null -> DevicePermissions(
                 location = permsJson.optBoolean("location"),
@@ -352,7 +355,7 @@ class FirebaseChildRepository @Inject constructor(
 
         // Battery stats.
         val statsJson = (deviceMap["statsE"] as? String)?.takeIf { deviceMap["statsEnc"] == true }
-            ?.let { e2ee.openStringCached(childId, viewerUid, it) }?.let { JSONObject(it) }
+            ?.let { e2ee.openStringCached(childId, viewerUid, it, slot = "device/stats") }?.let { JSONObject(it) }
         val batteryStats = when {
             statsJson != null -> {
                 val h = statsJson.optJSONArray("h")
@@ -409,7 +412,9 @@ class FirebaseChildRepository @Inject constructor(
             temperatureTenthsC = temp,
             permissions = permissions,
             batteryStats = batteryStats,
-            guard = (deviceMap["guard"] as? Map<*, *>)?.let { g ->
+            guard = (deviceMap["guard"] as? Map<*, *>)?.also { g ->
+                e2ee.noteChildReadsSlots(childId, g["aad2"] == true)
+            }?.let { g ->
                 com.shahaabapps.core.model.DeviceGuard(
                     accessibility = g["accessibility"] as? Boolean ?: true,
                     usageAccess = g["usageAccess"] as? Boolean ?: true,

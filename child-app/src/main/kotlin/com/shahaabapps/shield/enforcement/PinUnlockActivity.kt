@@ -1,5 +1,7 @@
 package com.shahaabapps.shield.enforcement
 
+import kotlinx.coroutines.launch
+
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -60,7 +62,9 @@ private fun PinUnlockScreen(
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var pin by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var checking by remember { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -79,32 +83,32 @@ private fun PinUnlockScreen(
         )
         CupertinoTextField(
             value = pin,
-            onValueChange = { if (it.length <= PIN_MAX_LEN && it.all { c -> c.isDigit() }) { pin = it; error = false } },
+            onValueChange = { if (it.length <= PIN_MAX_LEN && it.all { c -> c.isDigit() }) { pin = it; error = null } },
             placeholder = "$PIN_MIN_LEN–$PIN_MAX_LEN digit PIN",
             keyboardType = KeyboardType.NumberPassword,
             isPassword = true,
             modifier = Modifier.fillMaxWidth(),
         )
-        if (error) {
-            Text("Incorrect PIN", color = AppTheme.colors.destructive, style = MaterialTheme.typography.bodySmall)
+        error?.let {
+            Text(it, color = AppTheme.colors.destructive, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
         }
         CupertinoPrimaryButton(
             text = "Allow removal",
-            enabled = pin.length in PIN_MIN_LEN..PIN_MAX_LEN,
+            enabled = pin.length in PIN_MIN_LEN..PIN_MAX_LEN && !checking,
             onClick = {
-                val ok = when {
-                    settings.pinHash.isNotEmpty() ->
-                        com.shahaabapps.core.common.crypto.PinHasher.verify(pin, settings.pinSalt, settings.pinHash)
-                    // Backward-compat: a plaintext PIN from a doc written before hashing.
-                    settings.legacyPin.isNotEmpty() -> pin == settings.legacyPin
-                    else -> false
-                }
-                if (ok) {
-                    ProtectionLocalStore.unlock(context)
-                    DeviceAdmin.remove(context)
-                    onDone()
-                } else {
-                    error = true
+                // Checked on the server (the hash is out of this phone's reach),
+                // with a lockout after repeated wrong PINs.
+                checking = true
+                scope.launch {
+                    val problem = viewModel.verifyPin(pin)
+                    checking = false
+                    if (problem == null) {
+                        ProtectionLocalStore.unlock(context)
+                        DeviceAdmin.remove(context)
+                        onDone()
+                    } else {
+                        error = problem
+                    }
                 }
             },
             modifier = Modifier.fillMaxWidth(),

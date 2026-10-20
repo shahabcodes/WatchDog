@@ -22,6 +22,7 @@ class FirebaseAuthRepository @Inject constructor(
     private val auth: FirebaseAuth,
     private val messagingTokenRepository: MessagingTokenRepository,
     private val e2eeManager: E2eeManager,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
 ) : AuthRepository {
 
     // Pending state between a sign-in that needs MFA and its resolution, and between
@@ -200,9 +201,14 @@ class FirebaseAuthRepository @Inject constructor(
                 messagingTokenRepository.removeToken(uid, token)
             }
         }
+        // Also invalidate the token itself, so a copy that couldn't be removed
+        // (e.g. offline) stops delivering the previous account's alerts.
+        runCatching { FirebaseMessaging.getInstance().deleteToken().await() }
         auth.signOut()
-        // Drop in-memory E2EE key material so a different account on this device
-        // starts clean.
+        // Drop in-memory E2EE key material and cached place names so a different
+        // account on this device starts clean.
         e2eeManager.clearSession()
+        backupCodeSignInNotice = false
+        runCatching { com.shahaabapps.core.firebase.geofence.GeofenceNameCache.clear(appContext) }
     }
 }

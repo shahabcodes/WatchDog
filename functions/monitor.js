@@ -26,6 +26,7 @@ const GUARD_LABELS = {
   admin: "uninstall protection (device admin) was turned off",
   clockOk: "the date or time was changed by hand",
   gpsGenuine: "a fake-location (mock GPS) app is being used",
+  parentKeysOk: "a parent's phone key changed and is waiting for approval on the child's phone (if that wasn't you, someone may have your Watch Dog login)",
 };
 
 // Which parent alert switch (settings/alerts) controls each guard flag.
@@ -35,6 +36,7 @@ const GUARD_SWITCH = {
   admin: "protectionOff",
   clockOk: "clockChanged",
   gpsGenuine: "fakeGps",
+  parentKeysOk: "protectionOff",
 };
 
 /** The child's alert switches (settings/alerts); every alert is on unless switched off. */

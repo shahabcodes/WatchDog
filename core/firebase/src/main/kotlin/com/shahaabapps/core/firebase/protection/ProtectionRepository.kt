@@ -1,7 +1,6 @@
 package com.shahaabapps.core.firebase.protection
 
 import com.shahaabapps.core.common.AppResult
-import com.shahaabapps.core.common.crypto.PinHasher
 import com.shahaabapps.core.common.runCatchingResult
 import com.shahaabapps.core.model.ProtectionSettings
 import com.google.firebase.firestore.FieldValue
@@ -43,6 +42,15 @@ interface ProtectionRepository {
         newPin: String?,
     ): AppResult<Unit>
 
+    /** Parent: moves an old readable PIN hash to the server-only store. */
+    suspend fun migratePin(childId: String): AppResult<Unit>
+
+    /**
+     * Child: checks a typed removal PIN on the server (rate limited). Returns the
+     * unlock deadline in server time. Needs a network connection.
+     */
+    suspend fun verifyRemovalPin(pin: String): AppResult<Long>
+
     /** Which alerts parents get for this child (all on by default). */
     fun observeAlerts(childId: String): Flow<com.shahaabapps.core.model.AlertSettings>
 
@@ -68,6 +76,7 @@ class FirebaseProtectionRepository @Inject constructor(
                     blockNewApps = snapshot?.getBoolean("blockNewApps") ?: false,
                     lockSettings = snapshot?.getBoolean("lockSettings")
                         ?: (snapshot?.getBoolean("uninstallBlocked") ?: false),
+                    pinSet = snapshot?.getBoolean("hasPin") ?: false,
                 ),
             )
         }
@@ -90,6 +99,7 @@ class FirebaseProtectionRepository @Inject constructor(
                     blockNewApps = snapshot.getBoolean("blockNewApps") ?: false,
                     lockSettings = snapshot.getBoolean("lockSettings")
                         ?: (snapshot.getBoolean("uninstallBlocked") ?: false),
+                    pinSet = snapshot.getBoolean("hasPin") ?: false,
                 ),
             )
         }
@@ -110,18 +120,29 @@ class FirebaseProtectionRepository @Inject constructor(
                 "lockSettings" to lockSettings,
                 "updatedAtMillis" to System.currentTimeMillis(),
             )
-            if (newPin != null) {
-                // Set (or replace) the PIN: store only a salted hash, and purge any
-                // legacy plaintext field from older documents.
-                val (salt, hash) = PinHasher.hash(newPin)
-                base["pinSalt"] = salt
-                base["pinHash"] = hash
-                base["pin"] = FieldValue.delete()
-            }
-            // merge so a null newPin leaves the existing pinSalt/pinHash untouched.
+            // merge: the PIN fields are server-managed and left untouched here.
             doc(childId).set(base, SetOptions.merge()).await()
+            // The PIN is hashed and stored server-side, out of the child's reach.
+            if (newPin != null) {
+                functions.getHttpsCallable("setRemovalPin")
+                    .call(hashMapOf("childId" to childId, "pin" to newPin))
+                    .await()
+            }
             Unit
         }
+
+    override suspend fun migratePin(childId: String): AppResult<Unit> = runCatchingResult {
+        functions.getHttpsCallable("migratePin").call(hashMapOf("childId" to childId)).await()
+        Unit
+    }
+
+    override suspend fun verifyRemovalPin(pin: String): AppResult<Long> = runCatchingResult {
+        val data = functions.getHttpsCallable("verifyRemovalPin")
+            .call(hashMapOf("pin" to pin)).await().getData() as? Map<*, *>
+        (data?.get("unlockUntilMillis") as? Number)?.toLong() ?: error("No unlock returned")
+    }
+
+    private val functions get() = com.google.firebase.functions.FirebaseFunctions.getInstance()
 
     override fun observeAlerts(childId: String): Flow<com.shahaabapps.core.model.AlertSettings> = callbackFlow {
         val registration = alertsDoc(childId).addSnapshotListener { snapshot, _ ->

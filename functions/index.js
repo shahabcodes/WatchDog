@@ -12,6 +12,13 @@ setGlobalOptions({ region: "us-central1", maxInstances: 10 });
 const db = getFirestore();
 const pairing = require("./pairing");
 const pairingInternal = pairing._internal;
+
+/** Child-supplied text going into a push: one line, at most [max] characters. */
+function clip(value, max, fallback) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!text) return fallback;
+  return text.length > max ? text.slice(0, max - 1) + "…" : text;
+}
 const STORAGE_BUCKET = "watch-dog-13d09.firebasestorage.app";
 // Events older than this (e.g. recorded offline, synced late) are recorded in
 // history but don't trigger a push — the alert would be stale/misleading.
@@ -156,7 +163,7 @@ exports.notifyGeofenceEvent = onDocumentCreated(
     const parents = Array.isArray(child.linkedParents) ? child.linkedParents : [];
     if (parents.length === 0) return;
     const childName =
-      (child.profile && child.profile.name) ? child.profile.name : "Your child";
+      clip(child.profile && child.profile.name, 60, "Your child");
 
     // Geofence → honour its trigger (ENTER / EXIT / ENTER_EXIT) and active flag.
     // These stay plaintext; the place name/coordinates are E2E-encrypted, so this
@@ -338,7 +345,7 @@ exports.notifyNewApp = onDocumentCreated(
     if (!snap) return;
     const data = snap.data() || {};
     const childId = event.params.childId;
-    const label = data.label || "An app";
+    const label = clip(data.label, 60, "An app");
 
     const childSnap = await db.doc(`children/${childId}`).get();
     if (!childSnap.exists) return;
@@ -346,7 +353,7 @@ exports.notifyNewApp = onDocumentCreated(
     const parents = Array.isArray(child.linkedParents) ? child.linkedParents : [];
     if (parents.length === 0) return;
     const childName =
-      (child.profile && child.profile.name) ? child.profile.name : "your child";
+      clip(child.profile && child.profile.name, 60, "your child");
 
     const title = `New app on ${childName}'s phone`;
     const body = `${label} was just installed and we've blocked it. Tap to allow it or keep it blocked.`;
@@ -397,7 +404,7 @@ exports.notifyChildRequest = onDocumentCreated(
     const data = snap.data() || {};
     if ((data.status || "PENDING") !== "PENDING") return;
     const childId = event.params.childId;
-    const appLabel = data.appLabel || "an app";
+    const appLabel = clip(data.appLabel, 60, "an app");
     const minutes = Number(data.minutes) || 0;
 
     const childSnap = await db.doc(`children/${childId}`).get();
@@ -405,7 +412,7 @@ exports.notifyChildRequest = onDocumentCreated(
     const child = childSnap.data() || {};
     const parents = Array.isArray(child.linkedParents) ? child.linkedParents : [];
     if (parents.length === 0) return;
-    const childName = (child.profile && child.profile.name) ? child.profile.name : "Your child";
+    const childName = clip(child.profile && child.profile.name, 60, "Your child");
 
     let title;
     switch (data.kind) {
@@ -480,3 +487,9 @@ exports.unlinkChild = pairing.unlinkChild;
 const monitor = require("./monitor");
 exports.watchChildGuard = monitor.watchChildGuard;
 exports.checkStaleChildren = monitor.checkStaleChildren;
+
+// Removal PIN checked on the server (hash in server-only pinSecrets).
+const pin = require("./pin");
+exports.setRemovalPin = pin.setRemovalPin;
+exports.migratePin = pin.migratePin;
+exports.verifyRemovalPin = pin.verifyRemovalPin;

@@ -50,7 +50,9 @@ fun MfaScreen(
     viewModel: MfaViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+    // QR codes, setup keys and backup codes: keep them out of screenshots/Recents.
+    com.shahaabapps.watchdog.util.SecureScreen()
 
     Column(
         modifier = Modifier
@@ -207,7 +209,6 @@ fun MfaScreen(
                 }
 
                 MfaStep.CODES -> {
-                    val context = LocalContext.current
                     val allCodes = state.backupCodes.joinToString("\n")
                     Text("Save your backup codes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(
@@ -237,7 +238,7 @@ fun MfaScreen(
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
                         TextLink("Copy all") {
-                            clipboard.setText(AnnotatedString(allCodes))
+                            com.shahaabapps.watchdog.util.copySensitive(context, "Backup codes", allCodes)
                             Toast.makeText(context, "Backup codes copied", Toast.LENGTH_SHORT).show()
                         }
                         TextLink("Share / save") {
@@ -272,7 +273,7 @@ fun MfaScreen(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(10.dp))
                                         .background(AppTheme.colors.groupedBackground)
-                                        .clickable { clipboard.setText(AnnotatedString(enr.sharedKey)) }
+                                        .clickable { com.shahaabapps.watchdog.util.copySensitive(context, "2FA key", enr.sharedKey) }
                                         .padding(horizontal = Spacing.md, vertical = Spacing.sm),
                                 ) {
                                     Text(

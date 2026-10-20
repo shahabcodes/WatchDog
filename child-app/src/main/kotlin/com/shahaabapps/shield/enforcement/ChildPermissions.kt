@@ -73,6 +73,10 @@ object ChildPermissions {
             adminActive = runCatching { DeviceAdmin.isActive(context) }.getOrDefault(false),
             clockOk = !TrustedClock.clockLooksChanged(),
             gpsGenuine = com.shahaabapps.shield.location.MockLocationGuard.gpsGenuine(context),
+            parentKeysOk = context.getSharedPreferences(
+                com.shahaabapps.core.firebase.e2ee.E2eeManager.PARENT_PINS_PREFS,
+                android.content.Context.MODE_PRIVATE,
+            ).all.keys.none { it.startsWith(com.shahaabapps.core.firebase.e2ee.E2eeManager.PENDING_PREFIX) },
             phoneZone = java.time.ZoneId.systemDefault().id,
             homeZone = ChildZone.zone().id,
             notifications = notifications,

@@ -121,6 +121,8 @@ data class DevicePermissions(
     val clockOk: Boolean = true,
     /** No fake (mock) GPS fixes in the last 30 minutes. */
     val gpsGenuine: Boolean = true,
+    /** No linked parent's key changed without being re-approved on the phone. */
+    val parentKeysOk: Boolean = true,
     /** The time zone the phone is set to (IANA id), e.g. "Asia/Dubai". */
     val phoneZone: String = "",
     /** The child's home zone schedules follow. */

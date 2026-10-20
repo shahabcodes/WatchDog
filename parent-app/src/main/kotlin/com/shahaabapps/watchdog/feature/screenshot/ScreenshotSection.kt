@@ -260,7 +260,14 @@ private fun ScreenshotViewer(
     // 0 = normal, 1 = at the dismiss threshold; fades the backdrop as you drag down.
     var dismissProgress by remember { mutableStateOf(0f) }
 
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    // The child's screen can be private: keep it out of screenshots and Recents.
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            securePolicy = androidx.compose.ui.window.SecureFlagPolicy.SecureOn,
+        ),
+    ) {
         Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 1f - dismissProgress * 0.75f))) {
             HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
                 ZoomableImage(

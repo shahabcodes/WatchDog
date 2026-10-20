@@ -61,6 +61,40 @@ jobs:
       - name: Build debug APKs
         run: gradle :parent-app:assembleDebug :child-app:assembleDebug --no-daemon --stacktrace
 
+      # Release signing (key rotation). Gradle signs with the public shared debug
+      # key; here the APKs are re-signed so Android 9+ sees the PRIVATE release
+      # key, vouched for by the old key in keystore/signing-lineage.bin — phones
+      # update normally, and an update signed only with the public key is refused.
+      # Android 8 (minSdk 26) still checks the old key. The release keystore and
+      # its password live only in repo secrets.
+      - name: Sign APKs with the release key (rotation)
+        env:
+          RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          IS_RELEASE: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' }}
+        run: |
+          set -euo pipefail
+          if [ ! -f keystore/signing-lineage.bin ]; then
+            echo "No signing lineage committed; APKs stay signed with the shared debug key."
+            exit 0
+          fi
+          if [ -z "${RELEASE_KEYSTORE_B64:-}" ] || [ -z "${RELEASE_KEYSTORE_PASSWORD:-}" ]; then
+            if [ "$IS_RELEASE" = "true" ]; then
+              echo "::error::Release key secrets are missing. Phones already on the release key can't install a debug-key-only build, so this release is stopped."
+              exit 1
+            fi
+            echo "Release key secrets unavailable (e.g. a pull request); skipping release signing."
+            exit 0
+          fi
+          echo "$RELEASE_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.p12"
+          trap 'rm -f "$RUNNER_TEMP/release.p12"' EXIT
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          for apk in parent-app/build/outputs/apk/debug/*.apk child-app/build/outputs/apk/debug/*.apk; do
+            "$BT/apksigner" sign               --ks keystore/debug.keystore --ks-pass pass:android --ks-key-alias androiddebugkey               --next-signer --ks "$RUNNER_TEMP/release.p12" --ks-pass env:RELEASE_KEYSTORE_PASSWORD --ks-key-alias watchdog               --lineage keystore/signing-lineage.bin --rotation-min-sdk-version 28               --out "$apk.signed" "$apk"
+            mv "$apk.signed" "$apk"
+            echo "$(basename "$apk") on Android 9+: $("$BT/apksigner" verify --min-sdk-version 28 --print-certs "$apk" | grep -m1 'SHA-256')"
+          done
+
       # APKs are delivered via Releases (below), not Actions artifacts — avoids
       # the Actions artifact storage quota.
 

@@ -16,6 +16,8 @@ local.properties
 # Keystores / signing
 *.jks
 *.keystore
+*.p12
+*.pfx
 keystore.properties
 # ...except the shared DEBUG keystore, committed so all builds share one signature.
 # (Standard debug credentials — never used for release/production signing.)

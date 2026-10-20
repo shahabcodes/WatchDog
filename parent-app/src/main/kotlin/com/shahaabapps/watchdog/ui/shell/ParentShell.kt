@@ -28,6 +28,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
@@ -260,10 +262,11 @@ fun ParentShell(
             }
         },
     ) { padding ->
+      Box(Modifier.fillMaxSize().padding(padding)) {
         NavHost(
             navController = navController,
             startDestination = "${Tab.OVERVIEW.route}/$initialChild",
-            modifier = Modifier.padding(padding),
+            modifier = Modifier.fillMaxSize(),
             // Instant tab switches — no crossfade that would overlap two heavy
             // screens (the Map tab's live map) mid-transition.
             enterTransition = { androidx.compose.animation.EnterTransition.None },
@@ -342,6 +345,79 @@ fun ParentShell(
                     AddChildScreen(profile = profile, linkState = linkState, viewModel = viewModel, onBack = { navController.popBackStack() })
                 }
             }
+        }
+        val syncPending by viewModel.syncPending.collectAsStateWithLifecycle()
+        val online by viewModel.online.collectAsStateWithLifecycle()
+        SyncPill(
+            pending = syncPending,
+            online = online,
+            childName = selectedChild.profile.name,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = Spacing.md),
+        )
+      }
+    }
+}
+
+/**
+ * Tells the parent when changes haven't reached the child's phone yet: right after
+ * an offline save, "Saved – will reach Emma's phone when you're back online",
+ * then a small "Waiting to sync"; "Syncing…" once back online, then "Synced".
+ */
+@Composable
+private fun SyncPill(pending: Boolean, online: Boolean, childName: String, modifier: Modifier = Modifier) {
+    var justSaved by remember { mutableStateOf(false) }
+    var justSynced by remember { mutableStateOf(false) }
+    var wasPending by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(pending) {
+        if (pending && !wasPending) {
+            justSynced = false
+            justSaved = true
+            wasPending = true
+            kotlinx.coroutines.delay(5_000)
+            justSaved = false
+        } else if (!pending && wasPending) {
+            wasPending = false
+            justSaved = false
+            justSynced = true
+            kotlinx.coroutines.delay(2_500)
+            justSynced = false
+        }
+    }
+    val who = childName.ifBlank { "your child" }
+    val text = when {
+        pending && justSaved && !online -> "Saved – will reach $who's phone when you're back online"
+        pending && online -> "Syncing…"
+        pending -> "Waiting to sync"
+        justSynced -> "Synced"
+        else -> null
+    }
+    androidx.compose.animation.AnimatedVisibility(
+        visible = text != null,
+        enter = androidx.compose.animation.fadeIn(),
+        exit = androidx.compose.animation.fadeOut(),
+        modifier = modifier,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .padding(horizontal = Spacing.lg)
+                .clip(RoundedCornerShape(50))
+                .background(if (pending) Color(0xFF00133F) else AppTheme.colors.success)
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+        ) {
+            androidx.compose.material3.Icon(
+                if (pending) Icons.Filled.CloudOff else Icons.Filled.CloudDone,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(16.dp),
+            )
+            Text(
+                text ?: "",
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 8.dp),
+            )
         }
     }
 }

@@ -56,7 +56,12 @@ class DashboardViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val childRepository: ChildRepository,
     private val e2eeManager: E2eeManager,
+    syncStatus: com.shahaabapps.core.firebase.SyncStatus,
 ) : ViewModel() {
+
+    /** Saved changes not yet sent to the server (e.g. made while offline). */
+    val syncPending: StateFlow<Boolean> = syncStatus.pending
+    val online: StateFlow<Boolean> = syncStatus.online
 
     init {
         // Publish this parent's E2EE public key so linked children can wrap their

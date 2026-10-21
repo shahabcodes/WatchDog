@@ -9,6 +9,7 @@ import dagger.hilt.android.HiltAndroidApp
 class ChildApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        com.shahaabapps.core.firebase.AppCheckSetup.install(this)
         com.shahaabapps.shield.enforcement.TrustedClock.init(this)
         com.shahaabapps.shield.enforcement.ChildZone.init(this)
         // Keep the location backstop + flush scheduled on every process start,

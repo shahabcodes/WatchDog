@@ -84,25 +84,48 @@ class E2eeManager @Inject constructor(
         }.toMap()
 
     /** The email shown when this parent was approved ("" if pinned on first sight). */
-    fun parentEmail(parentUid: String): String = parentPins.getString(EMAIL_PREFIX + parentUid, "") ?: ""
+    fun parentEmail(parentUid: String): String =
+        parentPins.getString(EMAIL_PREFIX + parentUid.substringBefore('/'), "") ?: ""
+
+    /** The phone model of a pending device key ("" for the legacy single key). */
+    fun pendingDeviceModel(changeKey: String): String = parentPins.getString(MODEL_PREFIX + changeKey, "") ?: ""
 
     /** Pin [parentUid]'s current key now (called when the child approves the parent). */
     suspend fun pinParentKey(parentUid: String, email: String) = withContext(Dispatchers.Default) {
-        val pub = keys.getParentPublicKey(parentUid) ?: return@withContext
-        parentPins.edit()
-            .putString(PIN_PREFIX + parentUid, E2ee.fingerprint(unb64(pub)))
-            .putString(EMAIL_PREFIX + parentUid, email)
-            .remove(PENDING_PREFIX + parentUid)
-            .apply()
-        _parentKeyChanges.value = _parentKeyChanges.value - parentUid
+        val edit = parentPins.edit().putString(EMAIL_PREFIX + parentUid, email)
+        keys.getParentPublicKey(parentUid)?.let {
+            edit.putString(PIN_PREFIX + parentUid, E2ee.fingerprint(unb64(it))).remove(PENDING_PREFIX + parentUid)
+        }
+        // Every device the parent has signed in on so far is approved with them.
+        keys.listParentDevicesFresh(parentUid)?.forEach { d ->
+            val key = "$parentUid/${d.deviceId}"
+            edit.putString(PIN_PREFIX + key, E2ee.fingerprint(unb64(d.publicKeyB64))).remove(PENDING_PREFIX + key)
+        }
+        edit.apply()
+        _parentKeyChanges.value = _parentKeyChanges.value.filterKeys { it.substringBefore('/') != parentUid }
     }
 
     /** The child's phone approved [parentUid]'s new key: pin it and share again. */
-    fun approveParentKeyChange(parentUid: String) {
-        val fp = _parentKeyChanges.value[parentUid] ?: return
-        parentPins.edit().putString(PIN_PREFIX + parentUid, fp).remove(PENDING_PREFIX + parentUid).apply()
-        _parentKeyChanges.value = _parentKeyChanges.value - parentUid
-        verifiedParents.keys.removeAll { it.endsWith("/$parentUid") }
+    fun approveParentKeyChange(changeKey: String) {
+        val fp = _parentKeyChanges.value[changeKey] ?: return
+        parentPins.edit().putString(PIN_PREFIX + changeKey, fp).remove(PENDING_PREFIX + changeKey)
+            .remove(MODEL_PREFIX + changeKey).apply()
+        _parentKeyChanges.value = _parentKeyChanges.value - changeKey
+        val uid = changeKey.substringBefore('/')
+        verifiedParents.keys.removeAll { it.endsWith("/$uid") }
+    }
+
+    private fun markPending(changeKey: String, fp: String, model: String = "") {
+        if (_parentKeyChanges.value[changeKey] == fp) return
+        parentPins.edit().putString(PENDING_PREFIX + changeKey, fp).putString(MODEL_PREFIX + changeKey, model).apply()
+        _parentKeyChanges.value = _parentKeyChanges.value + (changeKey to fp)
+        diagnostics.warn("e2ee", "parent key needs approval key=$changeKey")
+    }
+
+    private fun clearPending(changeKey: String) {
+        if (changeKey !in _parentKeyChanges.value && !parentPins.contains(PENDING_PREFIX + changeKey)) return
+        parentPins.edit().remove(PENDING_PREFIX + changeKey).remove(MODEL_PREFIX + changeKey).apply()
+        _parentKeyChanges.value = _parentKeyChanges.value - changeKey
     }
 
     fun myPublicKeyB64(): String = b64(deviceKeyStore.publicKey())
@@ -264,9 +287,13 @@ class E2eeManager @Inject constructor(
                 verifiedParents.clear()
                 for (gone in removed) {
                     keys.deleteWrappedKey(childId, gone)
-                    parentPins.edit().remove(PIN_PREFIX + gone).remove(EMAIL_PREFIX + gone)
-                        .remove(PENDING_PREFIX + gone).apply()
-                    _parentKeyChanges.value = _parentKeyChanges.value - gone
+                    keys.listDeviceWrapIds(childId, gone).forEach { keys.deleteDeviceWrap(childId, gone, it) }
+                    val edit = parentPins.edit()
+                    parentPins.all.keys
+                        .filter { k -> listOf(PIN_PREFIX, PENDING_PREFIX, EMAIL_PREFIX, MODEL_PREFIX).any { pfx -> k == pfx + gone || k.startsWith("$pfx$gone/") } }
+                        .forEach { edit.remove(it) }
+                    edit.apply()
+                    _parentKeyChanges.value = _parentKeyChanges.value.filterKeys { it.substringBefore('/') != gone }
                 }
             }
             lastLinkedParents = current
@@ -276,7 +303,7 @@ class E2eeManager @Inject constructor(
                 val wrapped = ensureWrappedFor(childId, parentUid)
                 // A parent whose key changed is held back until approved, but must
                 // not make the child fall back to unencrypted uploads.
-                if (!wrapped && parentUid !in _parentKeyChanges.value) allWrapped = false
+                if (!wrapped && _parentKeyChanges.value.keys.none { it.substringBefore('/') == parentUid }) allWrapped = false
             }
             childEncryptionReady = allWrapped
             // Defense-in-depth: once this child has been fully ready, its own
@@ -406,6 +433,72 @@ class E2eeManager @Inject constructor(
         val now = System.currentTimeMillis()
         val lastVerified = verifiedParents[tag]
         if (lastVerified != null && now - lastVerified < VERIFY_TTL_MS) return true
+        // Old Watch Dog versions read the single per-account wrap; current ones read
+        // their own per-device wrap. Keep both up to date.
+        val legacy = ensureLegacyWrap(childId, parentUid)
+        val devices = ensureDeviceWraps(childId, parentUid)
+        if (legacy || devices) verifiedParents[tag] = now
+        return legacy || devices
+    }
+
+    /**
+     * One wrap per Watch Dog device (publicKeys/{uid}/devices/{deviceId}). A device
+     * is trusted when it's the parent's first key, has the same key as the one
+     * already trusted, or this phone already shared with it; any other new device
+     * or changed key waits for approval on this phone. Devices the parent signed
+     * out of lose their wrap, and the key-ring rotates so they can't read new data.
+     */
+    private suspend fun ensureDeviceWraps(childId: String, parentUid: String): Boolean {
+        val devices = keys.listParentDevicesFresh(parentUid) ?: return false
+        if (devices.isNotEmpty()) {
+            parentReadsSlots[parentUid] = (parentReadsSlots[parentUid] ?: true) && devices.all { it.aad2 }
+        }
+        val hasAnyPin = parentPins.all.keys.any { it == PIN_PREFIX + parentUid || it.startsWith("$PIN_PREFIX$parentUid/") }
+        val legacyPin = parentPins.getString(PIN_PREFIX + parentUid, null)
+        var ringBytes = encodeRing(childKeyring())
+        var ringFp = E2ee.fingerprint(ringBytes)
+        var any = false
+        for (d in devices) {
+            val key = "$parentUid/${d.deviceId}"
+            val fp = E2ee.fingerprint(unb64(d.publicKeyB64))
+            val pinned = parentPins.getString(PIN_PREFIX + key, null)
+            val trusted = when {
+                pinned == fp -> true
+                pinned == null && (!hasAnyPin || legacyPin == fp) -> true
+                else -> keys.getDeviceWrap(childId, parentUid, d.deviceId, fresh = true)?.parentKeyFp == fp
+            }
+            if (!trusted) {
+                markPending(key, fp, d.model)
+                continue
+            }
+            if (pinned != fp) parentPins.edit().putString(PIN_PREFIX + key, fp).apply()
+            clearPending(key)
+            val existing = keys.getDeviceWrap(childId, parentUid, d.deviceId)
+            if (existing == null || existing.parentKeyFp != fp || existing.ringFp != ringFp) {
+                val wrapped = deviceKeyStore.wrapDataKeyFor(unb64(d.publicKeyB64), ringBytes)
+                keys.putDeviceWrap(childId, parentUid, d.deviceId, b64(wrapped), ringFp, fp)
+            }
+            any = true
+        }
+        // Signed-out / removed devices: drop their wrap and rotate the ring.
+        val current = devices.map { it.deviceId }.toSet()
+        val gone = keys.listDeviceWrapIds(childId, parentUid).filter { it !in current }
+        _parentKeyChanges.value.keys
+            .filter { it.substringBefore('/') == parentUid && it.contains('/') && it.substringAfter('/') !in current }
+            .forEach { clearPending(it) }
+        if (gone.isNotEmpty()) {
+            gone.forEach { id ->
+                keys.deleteDeviceWrap(childId, parentUid, id)
+                parentPins.edit().remove("$PIN_PREFIX$parentUid/$id").apply()
+            }
+            rotateKeyring()
+            verifiedParents.clear()
+            diagnostics.info("e2ee", "parent devices removed parent=$parentUid count=${gone.size}; key-ring rotated")
+        }
+        return any
+    }
+
+    private suspend fun ensureLegacyWrap(childId: String, parentUid: String): Boolean {
         // Key checks use the SERVER's copy: a stale offline-cache read once pinned an
         // out-of-date key and raised a false "parent's phone changed". Offline, fall
         // back to the cached key for wrapping (so encryption never stalls) but make
@@ -426,21 +519,21 @@ class E2eeManager @Inject constructor(
             // swapped in by someone else has no such wrap, so it still asks.
             val existingWrap = keys.getWrappedKeyFresh(childId, parentUid)
             if (existingWrap != null && existingWrap.parentKeyFp == parentFp) {
-                parentPins.edit().putString(PIN_PREFIX + parentUid, parentFp).remove(PENDING_PREFIX + parentUid).apply()
-                _parentKeyChanges.value = _parentKeyChanges.value - parentUid
+                parentPins.edit().putString(PIN_PREFIX + parentUid, parentFp).apply()
+                clearPending(parentUid)
                 diagnostics.info("e2ee", "parent key pin refreshed (already shared with it) parent=$parentUid")
+            } else if (keys.listParentDevicesFresh(parentUid)?.any { E2ee.fingerprint(unb64(it.publicKeyB64)) == pinned } == true) {
+                // The shared per-account key was overwritten by another of the parent's
+                // devices; the trusted device is still listed, so this isn't a change.
+                // The per-device wraps cover each device; leave the legacy wrap as is.
+                return false
             } else {
-                if (_parentKeyChanges.value[parentUid] != parentFp) {
-                    parentPins.edit().putString(PENDING_PREFIX + parentUid, parentFp).apply()
-                    _parentKeyChanges.value = _parentKeyChanges.value + (parentUid to parentFp)
-                    diagnostics.warn("e2ee", "parent key changed parent=$parentUid; waiting for approval")
-                }
+                markPending(parentUid, parentFp)
                 return false
             }
-        } else if (parentUid in _parentKeyChanges.value) {
+        } else {
             // The published key went back to the trusted one: nothing to approve.
-            parentPins.edit().remove(PENDING_PREFIX + parentUid).apply()
-            _parentKeyChanges.value = _parentKeyChanges.value - parentUid
+            clearPending(parentUid)
         }
         val ringBytes = encodeRing(childKeyring())
         val ringFp = E2ee.fingerprint(ringBytes)
@@ -451,7 +544,6 @@ class E2eeManager @Inject constructor(
             val wrapped = deviceKeyStore.wrapDataKeyFor(unb64(parentPubB64), ringBytes)
             keys.putWrappedKey(childId, parentUid, b64(wrapped), ringFp, parentFp)
         }
-        verifiedParents[tag] = now
         return true
     }
 
@@ -459,8 +551,25 @@ class E2eeManager @Inject constructor(
 
     /** Publish this parent's public key so children can wrap their data key for it. */
     suspend fun publishParentKey(parentUid: String) = withContext(Dispatchers.Default) {
-        keys.publishParentPublicKey(parentUid, myPublicKeyB64())
+        val pub = myPublicKeyB64()
+        // The per-account key is still read by older Shield versions.
+        keys.publishParentPublicKey(parentUid, pub)
+        keys.publishParentDevice(parentUid, deviceId(), pub, android.os.Build.MODEL ?: "")
         Unit
+    }
+
+    /** Parent signing out: remove this device's key so children stop sharing with it. */
+    suspend fun unpublishDevice(parentUid: String) {
+        keys.deleteParentDevice(parentUid, deviceId())
+    }
+
+    /** This install's stable device id (one Watch Dog install = one device key). */
+    fun deviceId(): String {
+        val prefs = appContext.getSharedPreferences(DEVICE_PREFS, Context.MODE_PRIVATE)
+        prefs.getString(DEVICE_ID, null)?.let { return it }
+        val id = java.util.UUID.randomUUID().toString().replace("-", "").take(20)
+        prefs.edit().putString(DEVICE_ID, id).apply()
+        return id
     }
 
     /**
@@ -505,7 +614,12 @@ class E2eeManager @Inject constructor(
     ): List<ByteArray>? {
         parentRingCache[childId]?.let { return it }
         return withContext(Dispatchers.Default) {
-            val wrapped = keys.getWrappedKey(childId, parentUid) ?: return@withContext null
+            // This device's own wrap first; the per-account wrap for older Shields.
+            val candidates = listOfNotNull(
+                keys.getDeviceWrap(childId, parentUid, deviceId()),
+                keys.getWrappedKey(childId, parentUid),
+            )
+            if (candidates.isEmpty()) return@withContext null
             // Trust-on-first-use: record the first backend key seen and alert if it
             // later changes under us (possible key substitution / unverified rotation).
             val backendPub = keys.getChildPublicKey(childId)
@@ -516,9 +630,11 @@ class E2eeManager @Inject constructor(
                 ?: childPublicKeyB64
                 ?: backendPub
                 ?: return@withContext null
-            runCatching {
-                decodeRing(deviceKeyStore.unwrapDataKeyFrom(unb64(childPub), unb64(wrapped.wrappedB64)))
-            }.getOrNull()?.also { parentRingCache[childId] = it }
+            candidates.firstNotNullOfOrNull { wrapped ->
+                runCatching {
+                    decodeRing(deviceKeyStore.unwrapDataKeyFrom(unb64(childPub), unb64(wrapped.wrappedB64)))
+                }.getOrNull()
+            }?.also { parentRingCache[childId] = it }
         }
     }
 
@@ -566,6 +682,9 @@ class E2eeManager @Inject constructor(
     companion object {
         const val PARENT_PINS_PREFS = "e2ee_parent_pins"
         const val PENDING_PREFIX = "pending:"
+        private const val MODEL_PREFIX = "model:"
+        private const val DEVICE_PREFS = "e2ee_device"
+        private const val DEVICE_ID = "id"
         private const val PIN_PREFIX = "pin:"
         private const val EMAIL_PREFIX = "email:"
         /**

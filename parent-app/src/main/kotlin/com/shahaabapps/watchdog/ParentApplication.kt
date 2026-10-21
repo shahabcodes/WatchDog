@@ -8,6 +8,7 @@ import dagger.hilt.android.HiltAndroidApp
 class ParentApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        com.shahaabapps.core.firebase.AppCheckSetup.install(this)
         // Create the geofence-alerts channel up front so background push
         // notifications (which reference it) are shown on Android O+.
         WatchdogMessagingService.ensureChannel(this)

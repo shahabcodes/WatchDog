@@ -202,6 +202,8 @@ class FirebaseAuthRepository @Inject constructor(
                 messagingTokenRepository.removeToken(uid, token)
             }
         }
+        // Remove this device's encryption key so children stop sharing with it.
+        if (uid != null) runCatching { e2eeManager.unpublishDevice(uid) }
         // Also invalidate the token itself, so a copy that couldn't be removed
         // (e.g. offline) stops delivering the previous account's alerts.
         runCatching { FirebaseMessaging.getInstance().deleteToken().await() }

@@ -20,6 +20,10 @@ import javax.inject.Inject
  *    both children and parents; a key directory readable by any signed-in user
  *    (public keys aren't secret) and writable only by its owner.
  *  - `children/{childId}/e2eeKeys/{parentUid}`   — { wrapped, ringFp, parentKeyFp, updatedAt }
+ *  - `publicKeys/{uid}/devices/{deviceId}`       — one key per Watch Dog install, so a
+ *    parent signed in on several devices doesn't overwrite one shared key.
+ *  - `children/{childId}/e2eeKeys/{parentUid}/devices/{deviceId}` — the data key
+ *    wrapped for that one device.
  */
 interface E2eeKeyRepository {
     suspend fun publishChildPublicKey(childId: String, publicKeyB64: String): AppResult<Unit>
@@ -61,7 +65,28 @@ interface E2eeKeyRepository {
     fun observeResyncRequests(childId: String): Flow<List<String>>
     /** Child: clear a request once it has been honoured. */
     suspend fun clearResync(childId: String, parentUid: String): AppResult<Unit>
+
+    // ---- per-device keys ----
+    suspend fun publishParentDevice(parentUid: String, deviceId: String, publicKeyB64: String, model: String): AppResult<Unit>
+    suspend fun deleteParentDevice(parentUid: String, deviceId: String): AppResult<Unit>
+    /** The parent's devices, from the server; null when the server can't be reached. */
+    suspend fun listParentDevicesFresh(parentUid: String): List<ParentDevice>?
+    fun observeParentDevices(parentUid: String): Flow<List<ParentDevice>>
+    suspend fun putDeviceWrap(childId: String, parentUid: String, deviceId: String, wrappedB64: String, ringFp: String, parentKeyFp: String): AppResult<Unit>
+    suspend fun getDeviceWrap(childId: String, parentUid: String, deviceId: String, fresh: Boolean = false): WrappedKey?
+    suspend fun deleteDeviceWrap(childId: String, parentUid: String, deviceId: String): AppResult<Unit>
+    /** Device ids that currently have a wrap under this parent (for clean-up). */
+    suspend fun listDeviceWrapIds(childId: String, parentUid: String): List<String>
 }
+
+/** One Watch Dog install's published key. */
+data class ParentDevice(
+    val deviceId: String,
+    val publicKeyB64: String,
+    val aad2: Boolean,
+    val model: String,
+    val updatedAt: Long,
+)
 
 /**
  * A child's key-ring encrypted (wrapped) for one parent. [ringFp] fingerprints
@@ -194,5 +219,71 @@ class FirebaseE2eeKeyRepository @Inject constructor(
         const val KEY_RESYNC = "keyResync"
         const val FIELD_PUBLIC_KEY = "e2ePublicKey"
         const val FIELD_AAD2 = "aad2"
+        const val DEVICES = "devices"
     }
+
+    // ---- per-device keys ----
+
+    private fun deviceDoc(parentUid: String, deviceId: String) =
+        firestore.collection(PUBLIC_KEYS).document(parentUid).collection(DEVICES).document(deviceId)
+
+    private fun deviceWrapDoc(childId: String, parentUid: String, deviceId: String) =
+        wrappedDoc(childId, parentUid).collection(DEVICES).document(deviceId)
+
+    override suspend fun publishParentDevice(parentUid: String, deviceId: String, publicKeyB64: String, model: String): AppResult<Unit> =
+        runCatchingResult {
+            deviceDoc(parentUid, deviceId).set(
+                mapOf(
+                    FIELD_PUBLIC_KEY to publicKeyB64,
+                    FIELD_AAD2 to true,
+                    "model" to model.take(60),
+                    "updatedAt" to System.currentTimeMillis(),
+                ),
+            ).await()
+        }
+
+    override suspend fun deleteParentDevice(parentUid: String, deviceId: String): AppResult<Unit> =
+        runCatchingResult { deviceDoc(parentUid, deviceId).delete().await() }
+
+    private fun com.google.firebase.firestore.DocumentSnapshot.toParentDevice(): ParentDevice? {
+        val key = getString(FIELD_PUBLIC_KEY)?.ifBlank { null } ?: return null
+        return ParentDevice(id, key, getBoolean(FIELD_AAD2) == true, getString("model").orEmpty(), getLong("updatedAt") ?: 0L)
+    }
+
+    override suspend fun listParentDevicesFresh(parentUid: String): List<ParentDevice>? = runCatching {
+        firestore.collection(PUBLIC_KEYS).document(parentUid).collection(DEVICES)
+            .get(com.google.firebase.firestore.Source.SERVER).await()
+            .documents.mapNotNull { it.toParentDevice() }
+    }.getOrNull()
+
+    override fun observeParentDevices(parentUid: String): Flow<List<ParentDevice>> = callbackFlow {
+        val reg = firestore.collection(PUBLIC_KEYS).document(parentUid).collection(DEVICES)
+            .addSnapshotListener { snap, err ->
+                if (err != null || snap == null) return@addSnapshotListener
+                trySend(snap.documents.mapNotNull { it.toParentDevice() })
+            }
+        awaitClose { reg.remove() }
+    }
+
+    override suspend fun putDeviceWrap(
+        childId: String, parentUid: String, deviceId: String, wrappedB64: String, ringFp: String, parentKeyFp: String,
+    ): AppResult<Unit> = runCatchingResult {
+        deviceWrapDoc(childId, parentUid, deviceId).set(
+            mapOf("wrapped" to wrappedB64, "ringFp" to ringFp, "parentKeyFp" to parentKeyFp, "updatedAt" to System.currentTimeMillis()),
+        ).await()
+    }
+
+    override suspend fun getDeviceWrap(childId: String, parentUid: String, deviceId: String, fresh: Boolean): WrappedKey? = runCatching {
+        val ref = deviceWrapDoc(childId, parentUid, deviceId)
+        val doc = if (fresh) ref.get(com.google.firebase.firestore.Source.SERVER).await() else ref.get().await()
+        val wrapped = doc.getString("wrapped") ?: return@runCatching null
+        WrappedKey(wrapped, doc.getString("ringFp") ?: "", doc.getString("parentKeyFp") ?: "")
+    }.getOrNull()
+
+    override suspend fun deleteDeviceWrap(childId: String, parentUid: String, deviceId: String): AppResult<Unit> =
+        runCatchingResult { deviceWrapDoc(childId, parentUid, deviceId).delete().await() }
+
+    override suspend fun listDeviceWrapIds(childId: String, parentUid: String): List<String> = runCatching {
+        wrappedDoc(childId, parentUid).collection(DEVICES).get().await().documents.map { it.id }
+    }.getOrDefault(emptyList())
 }

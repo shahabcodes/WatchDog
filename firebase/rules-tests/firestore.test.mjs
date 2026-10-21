@@ -113,6 +113,12 @@ describe("attacks are refused", () => {
       packageName: "com.extra", label: "ok", installedAtMillis: 1, body: "phishing text",
     }));
   });
+  it("nobody can publish a device key for someone else, or wrap keys as a parent", async () => {
+    await assertFails(setDoc(doc(stranger(), `publicKeys/${PARENT}/devices/evil`), { e2ePublicKey: "attacker", aad2: true }));
+    await assertFails(setDoc(doc(child(), `publicKeys/${PARENT}/devices/evil`), { e2ePublicKey: "attacker" }));
+    await assertFails(setDoc(doc(parent(), `children/${CHILD}/e2eeKeys/${PARENT}/devices/dev1`), { wrapped: "w" }));
+    await assertFails(getDoc(doc(stranger(), `children/${CHILD}/e2eeKeys/${PARENT}/devices/dev1`)));
+  });
   it("child cannot change its home time zone (schedules follow it)", async () => {
     await assertFails(setDoc(doc(child(), `children/${CHILD}/settings/timezone`), { zoneId: "Pacific/Kiritimati" }));
   });
@@ -223,6 +229,13 @@ describe("legitimate app writes still work", () => {
     await assertSucceeds(setDoc(doc(child(), `publicKeys/${CHILD}`), { e2ePublicKey: "ck" }, { merge: true }));
     await assertSucceeds(setDoc(doc(parent(), `publicKeys/${PARENT}`), { e2ePublicKey: "pk", aad2: true }, { merge: true }));
     await assertFails(setDoc(doc(parent(), `publicKeys/${PARENT}`), { e2ePublicKey: "pk", other: 1 }, { merge: true }));
+  });
+  it("per-device keys: owner publishes/removes, child wraps per device", async () => {
+    await assertSucceeds(setDoc(doc(parent(), `publicKeys/${PARENT}/devices/dev1`), { e2ePublicKey: "pk", aad2: true, model: "Pixel 8", updatedAt: 1 }));
+    await assertSucceeds(getDocs(collection(child(), `publicKeys/${PARENT}/devices`)));
+    await assertSucceeds(setDoc(doc(child(), `children/${CHILD}/e2eeKeys/${PARENT}/devices/dev1`), { wrapped: "w", ringFp: "r", parentKeyFp: "f", updatedAt: 1 }));
+    await assertSucceeds(getDoc(doc(parent(), `children/${CHILD}/e2eeKeys/${PARENT}/devices/dev1`)));
+    await assertSucceeds(deleteDoc(doc(parent(), `publicKeys/${PARENT}/devices/dev1`)));
   });
   it("key resync request and clear", async () => {
     await assertSucceeds(setDoc(doc(parent(), `children/${CHILD}/keyResync/${PARENT}`), { at: 1 }));

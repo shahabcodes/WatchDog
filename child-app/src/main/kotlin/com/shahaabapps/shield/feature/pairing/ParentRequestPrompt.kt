@@ -52,13 +52,18 @@ class ParentRequestViewModel @Inject constructor(
     /** Linked parents' emails from the server, for naming accounts pinned without one. */
     private val serverEmails = MutableStateFlow<Map<String, String>>(emptyMap())
 
-    /** A linked parent whose key changed (new phone?) and needs approving again. */
+    /**
+     * A parent device waiting for approval: (change key, "email · phone model").
+     * The key is "uid" (older Watch Dog) or "uid/deviceId" (one per device).
+     */
     val keyChange: StateFlow<Pair<String, String>?> =
         kotlinx.coroutines.flow.combine(e2eeManager.parentKeyChanges, serverEmails) { changes, emails ->
-            changes.keys.firstOrNull()?.let { uid ->
+            changes.keys.firstOrNull()?.let { key ->
+                val uid = key.substringBefore('/')
                 val email = e2eeManager.parentEmail(uid).ifBlank { emails[uid].orEmpty() }
                 if (email.isBlank()) loadServerEmails()
-                uid to email
+                val model = e2eeManager.pendingDeviceModel(key)
+                key to listOf(email, model).filter { it.isNotBlank() }.joinToString(" · ")
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
@@ -111,12 +116,12 @@ fun ParentRequestPrompt(viewModel: ParentRequestViewModel = hiltViewModel()) {
         val who = change.second.ifBlank { "One of your parents" }
         AlertDialog(
             onDismissRequest = { },
-            title = { Text("A parent's phone changed") },
+            title = { Text("Approve a parent's phone?") },
             text = {
                 Text(
-                    "$who is using a new phone or reinstalled Watch Dog. Until you approve, " +
-                        "they can't see this phone's location and activity.\n\n" +
-                        "Only approve if you know your parent changed phones.",
+                    "$who signed in to Watch Dog on a new phone (or reinstalled it). Until you approve, " +
+                        "that phone can't see this phone's location and activity.\n\n" +
+                        "Only approve if you know your parent is using that phone.",
                 )
             },
             confirmButton = { TextButton(onClick = { viewModel.approveKeyChange(change.first) }) { Text("Approve") } },

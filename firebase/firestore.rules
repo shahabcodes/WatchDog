@@ -21,6 +21,19 @@ service cloud.firestore {
       allow get: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == uid
         && request.resource.data.keys().hasOnly(['e2ePublicKey', 'aad2']);
+
+      // One key per Watch Dog install. A child lists a linked parent's devices
+      // (the uid must already be known; this doesn't enumerate accounts).
+      match /devices/{deviceId} {
+        allow read: if request.auth != null;
+        allow delete: if request.auth != null && request.auth.uid == uid;
+        allow create, update: if request.auth != null && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['e2ePublicKey', 'aad2', 'model', 'updatedAt'])
+          && request.resource.data.e2ePublicKey is string
+          && request.resource.data.e2ePublicKey.size() < 400
+          && request.resource.data.get('model', '') is string
+          && request.resource.data.get('model', '').size() <= 60;
+      }
     }
 
     // Hashed two-factor backup codes. Server-only: the backup-code Cloud
@@ -228,6 +241,12 @@ service cloud.firestore {
       match /e2eeKeys/{recipientUid} {
         allow read: if canRead();
         allow write: if isChild();
+
+        // The data key wrapped for one of that parent's devices.
+        match /devices/{deviceId} {
+          allow read: if canRead();
+          allow write: if isChild();
+        }
       }
 
       // A parent that can't decrypt asks the child to re-wrap the data key for it

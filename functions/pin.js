@@ -29,16 +29,19 @@ const db = () => getFirestore();
 const secretRef = (childId) => db().doc(`pinSecrets/${childId}`);
 const protectionRef = (childId) => db().doc(`children/${childId}/settings/protection`);
 
-function hashPin(pin) {
+// Async, so a burst of PIN checks doesn't block the function's event loop.
+const pbkdf2 = require("util").promisify(crypto.pbkdf2);
+
+async function hashPin(pin) {
   const salt = crypto.randomBytes(16);
-  const hash = crypto.pbkdf2Sync(pin, salt, ITERATIONS, 32, "sha256");
+  const hash = await pbkdf2(pin, salt, ITERATIONS, 32, "sha256");
   return { salt: salt.toString("base64"), hash: hash.toString("base64") };
 }
 
-function verifyHash(pin, saltB64, hashB64) {
+async function verifyHash(pin, saltB64, hashB64) {
   if (!saltB64 || !hashB64) return false;
   const expected = Buffer.from(hashB64, "base64");
-  const actual = crypto.pbkdf2Sync(pin, Buffer.from(saltB64, "base64"), ITERATIONS, expected.length || 32, "sha256");
+  const actual = await pbkdf2(pin, Buffer.from(saltB64, "base64"), ITERATIONS, expected.length || 32, "sha256");
   return expected.length > 0 && expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 }
 
@@ -66,7 +69,7 @@ async function migrateIfNeeded(childId) {
   let secret = secretSnap.exists ? secretSnap.data() : null;
   if (!secret && hasReadable) {
     if (prot.pinHash && prot.pinSalt) secret = { salt: prot.pinSalt, hash: prot.pinHash };
-    else if (typeof prot.pin === "string" && prot.pin) secret = hashPin(prot.pin);
+    else if (typeof prot.pin === "string" && prot.pin) secret = await hashPin(prot.pin);
     if (secret) {
       await secretRef(childId).set({ ...secret, failures: 0, lockouts: 0, lockedUntil: null, updatedAt: Timestamp.now() });
     }
@@ -85,7 +88,7 @@ exports.setRemovalPin = onCall(async (request) => {
   await requireLinkedParent(request, childId);
   const pin = typeof data.pin === "string" ? data.pin : "";
   if (!PIN_RE.test(pin)) throw new HttpsError("invalid-argument", "The PIN must be 15 to 20 digits.");
-  const { salt, hash } = hashPin(pin);
+  const { salt, hash } = await hashPin(pin);
   await secretRef(childId).set({ salt, hash, failures: 0, lockouts: 0, lockedUntil: null, updatedAt: Timestamp.now() });
   await protectionRef(childId).set({
     hasPin: true, pinSalt: FieldValue.delete(), pinHash: FieldValue.delete(), pin: FieldValue.delete(),
@@ -114,37 +117,36 @@ exports.verifyRemovalPin = onCall(async (request) => {
 
   const ref = secretRef(childId);
   const now = Date.now();
-  // Check the lock before the (slow) hash, then record the outcome atomically.
-  const before = (await ref.get()).data() || {};
-  if (before.lockedUntil && before.lockedUntil.toMillis() > now) {
-    const mins = Math.ceil((before.lockedUntil.toMillis() - now) / 60000);
-    throw new HttpsError("resource-exhausted", `Too many wrong PINs. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`);
-  }
-  const ok = verifyHash(pin, secret.salt, secret.hash);
-  const result = await db().runTransaction(async (tx) => {
+  // Every attempt is counted as a failure BEFORE the (slow) hash, inside one
+  // transaction with the lock check, so parallel guesses can't all slip in
+  // before the lock lands. A correct PIN then clears the count.
+  const attempt = await db().runTransaction(async (tx) => {
     const d = (await tx.get(ref)).data() || {};
-    if (ok) {
-      tx.update(ref, { failures: 0, lockedUntil: null });
-      return { ok: true };
+    if (d.lockedUntil && d.lockedUntil.toMillis() > now) {
+      return { lockedMinutes: Math.ceil((d.lockedUntil.toMillis() - now) / 60000) };
     }
     const failures = (d.failures || 0) + 1;
     if (failures >= MAX_FAILURES) {
       const lockouts = (d.lockouts || 0) + 1;
       const lockMs = Math.min(BASE_LOCK_MS * 2 ** (lockouts - 1), MAX_LOCK_MS);
       tx.update(ref, { failures: 0, lockouts, lockedUntil: Timestamp.fromMillis(now + lockMs) });
-      return { ok: false, lockedMinutes: Math.round(lockMs / 60000) };
+      return { left: 0, lockMinutes: Math.round(lockMs / 60000) };
     }
     tx.update(ref, { failures });
-    return { ok: false, left: MAX_FAILURES - failures };
+    return { left: MAX_FAILURES - failures };
   });
-  if (!result.ok) {
-    if (result.lockedMinutes) {
-      throw new HttpsError("resource-exhausted", `Too many wrong PINs. Try again in ${result.lockedMinutes} minutes.`);
-    }
-    throw new HttpsError("permission-denied", `Incorrect PIN. ${result.left} tr${result.left === 1 ? "y" : "ies"} left.`);
+  if (attempt.lockedMinutes) {
+    const mins = attempt.lockedMinutes;
+    throw new HttpsError("resource-exhausted", `Too many wrong PINs. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`);
   }
-  // Clear the lockout history on success.
-  await ref.update({ lockouts: 0 }).catch(() => {});
+  if (!(await verifyHash(pin, secret.salt, secret.hash))) {
+    if (attempt.lockMinutes) {
+      throw new HttpsError("resource-exhausted", `Too many wrong PINs. Try again in ${attempt.lockMinutes} minutes.`);
+    }
+    throw new HttpsError("permission-denied", `Incorrect PIN. ${attempt.left} tr${attempt.left === 1 ? "y" : "ies"} left.`);
+  }
+  // Correct: clear the count, any lock this attempt set, and the lockout history.
+  await ref.update({ failures: 0, lockouts: 0, lockedUntil: null }).catch(() => {});
   return { ok: true, unlockUntilMillis: now + UNLOCK_WINDOW_MS };
 });
 

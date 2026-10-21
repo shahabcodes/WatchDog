@@ -113,6 +113,33 @@ describe("attacks are refused", () => {
       packageName: "com.extra", label: "ok", installedAtMillis: 1, body: "phishing text",
     }));
   });
+  it("child-written collections only take the expected ids and recipients", async () => {
+    await assertFails(setDoc(doc(child(), `children/${CHILD}/usage/junk-1`), { e: "x", enc: true }));
+    await assertFails(setDoc(doc(child(), `children/${CHILD}/trail/anything`), { points: [] }));
+    await assertFails(setDoc(doc(child(), `children/${CHILD}/inventory/other`), { e: "x" }));
+    await assertFails(setDoc(doc(child(), `children/${CHILD}/e2eeKeys/${STRANGER}`), { wrapped: "w" }));
+    await assertFails(setDoc(doc(child(), `children/${CHILD}/e2eeKeys/${STRANGER}/devices/d1`), { wrapped: "w" }));
+    await assertSucceeds(deleteDoc(doc(child(), `children/${CHILD}/e2eeKeys/${STRANGER}`)));
+  });
+  it("user profile is a small fixed shape", async () => {
+    await assertSucceeds(setDoc(doc(parent(), `users/${PARENT}`), { name: "Dad", photoUrl: null, dateOfBirthMillis: null, role: "PARENT" }));
+    await assertFails(setDoc(doc(parent(), `users/${PARENT}`), { name: "Dad", blob: "x".repeat(1000) }));
+    await assertFails(setDoc(doc(parent(), `users/${PARENT}`), { name: "x".repeat(101) }));
+  });
+  it("a co-parent can't read another parent's link request or resync; removals are visible to the family", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, `children/${CHILD}/parentRequests/${STRANGER}`), { email: "x@y" });
+      await setDoc(doc(db, `children/${CHILD}/keyResync/${STRANGER}`), { at: 1 });
+      await setDoc(doc(db, `children/${CHILD}/parentRemovals/${STRANGER}`), { email: "x@y" });
+    });
+    await assertFails(getDoc(doc(parent(), `children/${CHILD}/parentRequests/${STRANGER}`)));
+    await assertFails(getDoc(doc(parent(), `children/${CHILD}/keyResync/${STRANGER}`)));
+    await assertSucceeds(getDoc(doc(parent(), `children/${CHILD}/parentRemovals/${STRANGER}`)));
+    await assertSucceeds(getDoc(doc(child(), `children/${CHILD}/parentRemovals/${STRANGER}`)));
+    await assertFails(getDoc(doc(stranger(), `children/${CHILD}/parentRemovals/${STRANGER}`)));
+    await assertFails(setDoc(doc(parent(), `children/${CHILD}/parentRemovals/${STRANGER}`), { email: "x" }));
+  });
   it("only the owner can delete their shared key", async () => {
     await assertSucceeds(setDoc(doc(parent(), `publicKeys/${PARENT}`), { e2ePublicKey: "pk", aad2: true }));
     await assertFails(deleteDoc(doc(stranger(), `publicKeys/${PARENT}`)));

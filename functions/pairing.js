@@ -24,6 +24,7 @@ const ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"; // no 0/O/1/I
 const CODE_LENGTH = 8; // 40 bits; with 10-min expiry, single use and rate limits
 const INVITE_TTL_MS = 10 * 60 * 1000;
 const REQUEST_TTL_MS = 15 * 60 * 1000;
+const REMOVAL_TTL_MS = 24 * 60 * 60 * 1000;
 const LINK_ATTEMPTS_PER_HOUR = 10;
 const ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 
@@ -154,6 +155,15 @@ exports.linkChild = onCall(async (request) => {
   if (isAnonymous(request.auth)) {
     throw new HttpsError("permission-denied", "Sign in to Watch Dog with your parent account.");
   }
+  // The child's phone is shown this email when asked to approve, so it must be
+  // one the parent really owns.
+  if (request.auth.token.email_verified !== true) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Verify your email first. We've sent you a link: tap it, then scan the code again.",
+      { reason: "EMAIL_NOT_VERIFIED" },
+    );
+  }
   const normalized = normalizeCode((request.data || {}).code);
   if (normalized.length !== CODE_LENGTH) {
     throw new HttpsError("invalid-argument", "Enter the 8-character code shown on your child's phone.");
@@ -282,6 +292,93 @@ async function consumeInviteFor(childId, code) {
     return invite.expiresAt.toMillis() >= Date.now();
   });
 }
+
+/**
+ * A linked parent asks to remove ANOTHER linked parent (e.g. an ex-partner, or an
+ * account that shouldn't be there). Nothing changes until the child's phone
+ * approves, the same way adding a parent works, so one parent can't silently
+ * lock another out. Every parent, including the one named, is told.
+ * Data: { childId, parentId }. Returns { ok }.
+ */
+exports.requestParentRemoval = onCall(async (request) => {
+  const callerId = request.auth && request.auth.uid;
+  if (!callerId) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (isAnonymous(request.auth)) throw new HttpsError("permission-denied", "Sign in with your parent account.");
+  const childId = requireId((request.data || {}).childId, "child");
+  const targetId = requireId((request.data || {}).parentId, "parent");
+  if (targetId === callerId) {
+    throw new HttpsError("invalid-argument", "To stop supervising yourself, remove the child instead.");
+  }
+  await rateLimit(`removeParent_${callerId}`, 10);
+  const childSnap = await db().doc(`children/${childId}`).get();
+  const parents = (childSnap.exists && childSnap.get("linkedParents")) || [];
+  if (!parents.includes(callerId)) throw new HttpsError("permission-denied", "You are not linked to this child.");
+  if (!parents.includes(targetId)) throw new HttpsError("not-found", "That account isn't a parent of this child.");
+
+  const { getAuth } = require("firebase-admin/auth");
+  const target = await getAuth().getUser(targetId).catch(() => null);
+  const targetEmail = (target && target.email) || "A parent account";
+  const callerEmail = request.auth.token.email || "Another parent";
+  await db().doc(`children/${childId}/parentRemovals/${targetId}`).set({
+    parentId: targetId,
+    email: targetEmail,
+    requestedBy: callerId,
+    requestedByEmail: callerEmail,
+    requestedAt: Timestamp.now(),
+    expiresAt: Timestamp.fromMillis(Date.now() + REMOVAL_TTL_MS),
+  });
+  const childName = (childSnap.get("profile") || {}).name || "your child";
+  await notifyParents(
+    parents,
+    `Request to remove a parent from ${childName}`,
+    `${callerEmail} asked to remove ${targetEmail} as a parent of ${childName}. ` +
+      `It happens only if it's approved on ${childName}'s phone.`,
+  ).catch((e) => console.error("removal notify", e));
+  return { ok: true };
+});
+
+/**
+ * The child's phone approves or denies a parent-removal request. Only the child
+ * itself may call this. Data: { parentId, approve }. Returns { ok }.
+ */
+exports.respondToParentRemoval = onCall(async (request) => {
+  const childId = request.auth && request.auth.uid;
+  if (!childId) throw new HttpsError("unauthenticated", "Sign in required.");
+  const targetId = requireId((request.data || {}).parentId, "parent");
+  const approve = (request.data || {}).approve === true;
+  const childRef = db().doc(`children/${childId}`);
+  const reqRef = childRef.collection("parentRemovals").doc(targetId);
+  const result = await db().runTransaction(async (tx) => {
+    const [childSnap, reqSnap] = await Promise.all([tx.get(childRef), tx.get(reqRef)]);
+    if (!childSnap.exists || !reqSnap.exists) return { ok: false };
+    tx.delete(reqRef);
+    const parents = childSnap.get("linkedParents") || [];
+    const info = {
+      parents,
+      childName: (childSnap.get("profile") || {}).name || "your child",
+      email: reqSnap.get("email") || "A parent account",
+    };
+    if (!approve) return { ok: true, approved: false, ...info };
+    if (reqSnap.get("expiresAt").toMillis() < Date.now()) return { ok: false, expired: true };
+    const remaining = parents.filter((p) => p !== targetId);
+    tx.update(childRef, { linkedParents: remaining, pairingActive: remaining.length === 0 });
+    return { ok: true, approved: true, ...info };
+  });
+  if (!result.ok) {
+    throw new HttpsError(
+      "failed-precondition",
+      result.expired ? "That request expired." : "That request is no longer pending.",
+    );
+  }
+  await notifyParents(
+    result.parents,
+    result.approved ? `A parent was removed from ${result.childName}` : `Parent removal declined on ${result.childName}'s phone`,
+    result.approved ?
+      `${result.email} no longer supervises ${result.childName} (approved on ${result.childName}'s phone).` :
+      `${result.email} stays a parent of ${result.childName}.`,
+  ).catch((e) => console.error("removal result notify", e));
+  return { ok: true };
+});
 
 exports._internal = { consumeInviteFor, requireId, rateLimit, isAnonymous, notifyParents, CODE_LENGTH };
 exports._test = { normalizeCode, newCode };

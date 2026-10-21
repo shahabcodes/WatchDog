@@ -19,10 +19,15 @@ service firebase.storage {
     // parent may read; the parent (or child) may delete after the parent has
     // downloaded it locally (screenshots are not kept server-side).
     match /screenshots/{childId}/{file} {
+      // Only a supervised child (at least one linked parent), with a plain
+      // "<millis>.jpg" name, so an unlinked or made-up account can't use the
+      // bucket as free storage. A lifecycle rule also deletes leftovers.
       allow create: if request.auth != null
                     && request.auth.uid == childId
+                    && file.matches('^[0-9]{1,15}[.](jpg|png)$')
                     && request.resource.size < 10 * 1024 * 1024
-                    && request.resource.contentType.matches('image/.*');
+                    && request.resource.contentType.matches('image/.*')
+                    && firestore.get(/databases/(default)/documents/children/$(childId)).data.linkedParents.size() > 0;
       allow read, delete: if request.auth != null && (
         request.auth.uid == childId ||
         request.auth.uid in firestore.get(/databases/(default)/documents/children/$(childId)).data.linkedParents

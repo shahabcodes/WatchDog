@@ -15,7 +15,9 @@ internal fun Project.configureKotlinAndroid(
         compileSdk = 35
 
         defaultConfig {
-            minSdk = 26
+            // 28: Android 8 trusts the v2 signature, made with the public debug key;
+            // 9+ checks the v3 rotation lineage, which the debug key can't sign for.
+            minSdk = 28
         }
 
         compileOptions {

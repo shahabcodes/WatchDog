@@ -268,8 +268,10 @@ class GeofenceSyncService : Service() {
                 val perms = com.shahaabapps.shield.enforcement.ChildPermissions.snapshot(this@GeofenceSyncService)
                 com.shahaabapps.shield.enforcement.ProtectionReminder.update(
                     this@GeofenceSyncService,
+                    // Quiet while protection is off, or during a parent's PIN removal window.
                     adminActive = perms.adminActive ||
-                        !com.shahaabapps.shield.enforcement.ProtectionLocalStore.isBlocked(this@GeofenceSyncService),
+                        !com.shahaabapps.shield.enforcement.ProtectionLocalStore.isBlocked(this@GeofenceSyncService) ||
+                        com.shahaabapps.shield.enforcement.ProtectionLocalStore.isUnlocked(this@GeofenceSyncService),
                 )
                 val drain = drainPerHour
                 // Fire-and-forget the network writes so the sampling loop keeps its

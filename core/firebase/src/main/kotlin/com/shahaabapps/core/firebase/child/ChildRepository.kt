@@ -39,6 +39,15 @@ interface ChildRepository {
     /** The child device approves or denies a waiting parent. */
     suspend fun respondToParentRequest(parentId: String, approve: Boolean): AppResult<Unit>
 
+    /** A linked parent asks to remove another parent; the child's phone must approve. */
+    suspend fun requestParentRemoval(childId: String, parentId: String): AppResult<Unit>
+
+    /** Parent-removal requests waiting on the child's phone (child and parents can see them). */
+    fun observeParentRemovals(childId: String): Flow<List<ParentRemoval>>
+
+    /** The child device approves or denies removing a parent. */
+    suspend fun respondToParentRemoval(parentId: String, approve: Boolean): AppResult<Unit>
+
     /** All children linked to the given parent (multi-child dashboard). */
     fun observeLinkedChildren(parentId: String): Flow<List<ChildAccount>>
 
@@ -80,6 +89,14 @@ data class ParentInfo(val uid: String, val email: String)
 
 /** A parent who redeemed this child's code and awaits approval on the child's phone. */
 data class ParentRequest(val parentId: String, val email: String, val expiresAtMillis: Long)
+
+/** A request to remove parent [parentId] ([email]), asked by [requestedByEmail]. */
+data class ParentRemoval(
+    val parentId: String,
+    val email: String,
+    val requestedByEmail: String,
+    val expiresAtMillis: Long,
+)
 
 /** Result of redeeming a pairing code. */
 sealed interface LinkOutcome {

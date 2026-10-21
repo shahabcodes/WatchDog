@@ -111,6 +111,42 @@ class FirebaseChildRepository @Inject constructor(
             Unit
         }
 
+    override suspend fun requestParentRemoval(childId: String, parentId: String): AppResult<Unit> =
+        runCatchingResult {
+            functions.getHttpsCallable("requestParentRemoval")
+                .callSafely(hashMapOf("childId" to childId, "parentId" to parentId))
+            Unit
+        }
+
+    override fun observeParentRemovals(childId: String): Flow<List<ParentRemoval>> = callbackFlow {
+        val registration = childrenCollection.document(childId).collection("parentRemovals")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+                val now = System.currentTimeMillis()
+                trySend(
+                    snapshot?.documents.orEmpty().map { d ->
+                        ParentRemoval(
+                            parentId = d.id,
+                            email = d.getString("email").orEmpty(),
+                            requestedByEmail = d.getString("requestedByEmail").orEmpty(),
+                            expiresAtMillis = d.getTimestamp("expiresAt")?.toDate()?.time ?: 0L,
+                        )
+                    }.filter { it.expiresAtMillis > now },
+                )
+            }
+        awaitClose { registration.remove() }
+    }
+
+    override suspend fun respondToParentRemoval(parentId: String, approve: Boolean): AppResult<Unit> =
+        runCatchingResult {
+            functions.getHttpsCallable("respondToParentRemoval")
+                .callSafely(hashMapOf("parentId" to parentId, "approve" to approve))
+            Unit
+        }
+
     override fun observeLinkedChildren(parentId: String): Flow<List<ChildAccount>> = callbackFlow {
         val registration = childrenCollection
             .whereArrayContains(FIELD_LINKED_PARENTS, parentId)
@@ -130,6 +166,14 @@ class FirebaseChildRepository @Inject constructor(
     }
 
     override suspend fun linkChild(code: String): AppResult<LinkOutcome> = runCatchingResult {
+        // Linking needs a verified email. If it was verified since sign-in, the
+        // token still says otherwise until it is refreshed.
+        com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.let { user ->
+            if (!user.isEmailVerified) {
+                runCatching { user.reload().await() }
+                if (user.isEmailVerified) runCatching { user.getIdToken(true).await() }
+            }
+        }
         // The linkChild Cloud Function redeems the single-use code and asks the
         // child's phone to approve this parent; nothing is linked until it does.
         val data = functions.getHttpsCallable("linkChild")
@@ -259,6 +303,7 @@ class FirebaseChildRepository @Inject constructor(
                 "clockOk" to permissions.clockOk,
                 "gpsGenuine" to permissions.gpsGenuine,
                 "parentKeysOk" to permissions.parentKeysOk,
+                "adbOff" to permissions.adbOff,
                 // This Shield reads payloads bound to their document (slot).
                 "aad2" to true,
                 "tz" to permissions.phoneZone,
@@ -430,6 +475,7 @@ class FirebaseChildRepository @Inject constructor(
                     clockOk = g["clockOk"] as? Boolean ?: p.clockOk,
                     gpsGenuine = g["gpsGenuine"] as? Boolean ?: p.gpsGenuine,
                     parentKeysOk = g["parentKeysOk"] as? Boolean ?: p.parentKeysOk,
+                    adbOff = g["adbOff"] as? Boolean ?: p.adbOff,
                 )
             },
             batteryStats = batteryStats,

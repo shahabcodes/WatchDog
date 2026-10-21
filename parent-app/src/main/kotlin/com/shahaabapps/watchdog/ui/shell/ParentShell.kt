@@ -70,6 +70,7 @@ import androidx.compose.ui.res.painterResource
 import com.shahaabapps.watchdog.R
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material.icons.filled.People
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -944,6 +945,67 @@ private fun SimpleHeader(title: String, onBack: () -> Unit) {
     }
 }
 
+/** Who supervises a child, with a way to ask its phone to remove another parent. */
+@Composable
+private fun ParentsDialog(
+    state: DashboardViewModel.ParentsDialog,
+    myUid: String?,
+    onRemove: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var confirm by remember { mutableStateOf<com.shahaabapps.core.firebase.child.ParentInfo?>(null) }
+    confirm?.let { p ->
+        com.shahaabapps.core.ui.components.ConfirmDialog(
+            title = "Remove ${p.email.ifBlank { "this parent" }}?",
+            message = "${state.childName}'s phone will be asked to approve. Only then does this account stop " +
+                "seeing ${state.childName}'s location and activity. Every parent is told.",
+            confirmText = "Ask to remove",
+            onConfirm = { onRemove(p.uid); confirm = null },
+            onDismiss = { confirm = null },
+        )
+    }
+    com.shahaabapps.core.ui.components.AppDialog(
+        onDismiss = onDismiss,
+        title = "Parents of ${state.childName}",
+        icon = Icons.Filled.People,
+        dismissText = "Close",
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            val parents = state.parents
+            if (parents == null) {
+                com.shahaabapps.core.ui.components.AppLoader(size = 22.dp)
+            } else {
+                parents.forEach { p ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                p.email.ifBlank { "A parent account" } + if (p.uid == myUid) " (you)" else "",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            if (p.uid in state.pendingRemovals) {
+                                Text(
+                                    "Removal waiting for approval on ${state.childName}'s phone",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = AppTheme.colors.secondaryLabel,
+                                )
+                            }
+                        }
+                        if (p.uid != myUid && p.uid !in state.pendingRemovals) {
+                            androidx.compose.material3.TextButton(enabled = !state.busy, onClick = { confirm = p }) {
+                                Text("Remove", color = AppTheme.colors.destructive)
+                            }
+                        }
+                    }
+                }
+            }
+            state.message?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
+            }
+        }
+    }
+}
+
 @Composable
 private fun ManageChildrenScreen(
     children: List<ChildAccount>,
@@ -955,6 +1017,7 @@ private fun ManageChildrenScreen(
     var confirm by remember { mutableStateOf<ChildAccount?>(null) }
     var pendingReconnectId by remember { mutableStateOf<String?>(null) }
     val reconnectState by viewModel.reconnectState.collectAsStateWithLifecycle()
+    val parentsDialog by viewModel.parentsDialog.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -996,6 +1059,10 @@ private fun ManageChildrenScreen(
             onConfirm = { onRemove(child.childId); confirm = null },
             onDismiss = { confirm = null },
         )
+    }
+
+    parentsDialog?.let { pd ->
+        ParentsDialog(pd, myUid = viewModel.myUid, onRemove = viewModel::requestRemoval, onDismiss = viewModel::closeParents)
     }
 
     when (val rs = reconnectState) {
@@ -1061,6 +1128,14 @@ private fun ManageChildrenScreen(
                                 )
                             }
                             androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text("Parents") },
+                                    onClick = {
+                                        menu = false
+                                        viewModel.openParents(child.childId, child.profile.name.ifBlank { "your child" })
+                                    },
+                                    leadingIcon = { androidx.compose.material3.Icon(Icons.Filled.People, contentDescription = null, tint = AppTheme.colors.accent) },
+                                )
                                 androidx.compose.material3.DropdownMenuItem(
                                     text = { Text("Reconnect · scan code") },
                                     onClick = { menu = false; launchReconnectScan(child.childId) },

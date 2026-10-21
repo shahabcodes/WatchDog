@@ -77,6 +77,9 @@ object ChildPermissions {
                 com.shahaabapps.core.firebase.e2ee.E2eeManager.PARENT_PINS_PREFS,
                 android.content.Context.MODE_PRIVATE,
             ).all.keys.none { it.startsWith(com.shahaabapps.core.firebase.e2ee.E2eeManager.PENDING_PREFIX) },
+            adbOff = runCatching {
+                android.provider.Settings.Global.getInt(context.contentResolver, android.provider.Settings.Global.ADB_ENABLED, 0) == 0
+            }.getOrDefault(true),
             phoneZone = java.time.ZoneId.systemDefault().id,
             homeZone = ChildZone.zone().id,
             notifications = notifications,

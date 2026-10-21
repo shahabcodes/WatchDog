@@ -123,6 +123,8 @@ data class DevicePermissions(
     val gpsGenuine: Boolean = true,
     /** No linked parent's key changed without being re-approved on the phone. */
     val parentKeysOk: Boolean = true,
+    /** USB debugging is off (with it on, a computer can switch Shield's protections off). */
+    val adbOff: Boolean = true,
     /** The time zone the phone is set to (IANA id), e.g. "Asia/Dubai". */
     val phoneZone: String = "",
     /** The child's home zone schedules follow. */

@@ -1526,6 +1526,7 @@ private fun missingProtections(
     if (!perms.usageAccess) add("Screen-time tracking (usage access) is off.")
     if (!perms.clockOk) add("The date or time was changed by hand.")
     if (!perms.gpsGenuine) add("A fake-location app is being used.")
+    if (!perms.adbOff) add("USB debugging is on, so a computer can switch Shield's protections off.")
 }
 
 @Composable

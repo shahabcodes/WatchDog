@@ -13,13 +13,33 @@ const db = getFirestore();
 const pairing = require("./pairing");
 const pairingInternal = pairing._internal;
 
-/** Child-supplied text going into a push: one line, at most [max] characters. */
+// Links and web addresses in child-supplied text: a push that says "sign in at
+// <link>" would look like it came from Watch Dog.
+const LINK_RE = /(https?:\/\/|www\.)\S+|\S+\.(com|net|org|io|app|link|xyz|me|co|info|site|online|ly|gl|page|dev|example)(\/\S*)?(?=\s|$)/gi;
+
+/** Child-supplied text going into a push: one line, no links, at most [max] characters. */
 function clip(value, max, fallback) {
-  const text = String(value || "").replace(/\s+/g, " ").trim();
+  const text = String(value || "").replace(LINK_RE, "").replace(/\s+/g, " ").trim();
   if (!text) return fallback;
   return text.length > max ? text.slice(0, max - 1) + "…" : text;
 }
+/**
+ * Whether one more push of [kind] for [childId] fits this hour's budget. Pushes
+ * are caused by the child's own writes, so a tampered phone can't flood parents.
+ */
+async function pushAllowed(kind, childId, max) {
+  try {
+    await pairingInternal.rateLimit(`push_${kind}_${childId}`, max);
+    return true;
+  } catch (e) {
+    console.warn(`push budget used up: ${kind} ${childId}`);
+    return false;
+  }
+}
 const STORAGE_BUCKET = "watch-dog-13d09.firebasestorage.app";
+// Reconnect is for a phone where Shield was reinstalled, so the old install must
+// have gone quiet: a phone that checked in this recently is still running Shield.
+const RECONNECT_QUIET_MS = 10 * 60 * 1000;
 // Events older than this (e.g. recorded offline, synced late) are recorded in
 // history but don't trigger a push — the alert would be stale/misleading.
 const STALE_EVENT_MS = 3 * 60 * 1000;
@@ -90,6 +110,17 @@ exports.reconnectChild = onCall(async (request) => {
       "That device is already set up with an account and can't be reconnected.",
     );
   }
+  // The old phone must have stopped checking in (Shield was removed from it); a
+  // live phone can't be moved away from under its family.
+  const monitor = await db.doc(`childMonitor/${oldChildId}`).get();
+  const lastBeat = monitor.exists && monitor.get("lastHeartbeatAt");
+  if (lastBeat && Date.now() - lastBeat.toMillis() < RECONNECT_QUIET_MS) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Shield is still running on the original phone. Reconnect is only for a phone where Shield was " +
+        "reinstalled. If you just reinstalled it, wait 10 minutes and try again.",
+    );
+  }
   // ...and the caller must hold the fresh code currently shown on that device.
   if (!(await pairingInternal.consumeInviteFor(newChildId, data.code))) {
     throw new HttpsError(
@@ -114,20 +145,45 @@ exports.reconnectChild = onCall(async (request) => {
     if (n > 0) await batch.commit();
   }
 
-  // Carry over the old profile + parent links onto the new child record.
-  await newRef.set(
-    {
+  // The removal PIN (server-only) moves too, or "Allow removal" stops working.
+  const pinSnap = await db.doc(`pinSecrets/${oldChildId}`).get();
+  if (pinSnap.exists) await db.doc(`pinSecrets/${newChildId}`).set(pinSnap.data());
+
+  // Carry over the old profile + parent links onto the new child record. Checked
+  // again inside the transaction: the caller must still be linked to the old
+  // child, and the new one must still be unsupervised.
+  const moved = await db.runTransaction(async (tx) => {
+    const [o, n] = await Promise.all([tx.get(oldRef), tx.get(newRef)]);
+    const nowParents = (o.exists && o.get("linkedParents")) || [];
+    const newParents = (n.exists && n.get("linkedParents")) || [];
+    if (!nowParents.includes(parentId) || newParents.length > 0) return null;
+    tx.set(newRef, {
       profile: oldData.profile || newData.profile || {},
-      linkedParents: parents,
+      linkedParents: nowParents,
       pairingActive: false,
       pairingCode: FieldValue.delete(),
       role: "CHILD",
-    },
-    { merge: true },
-  );
+    }, { merge: true });
+    return nowParents;
+  });
+  if (!moved) {
+    throw new HttpsError("failed-precondition", "The family for this child changed. Try again.");
+  }
 
   // Remove the old child and all of its data.
   await db.recursiveDelete(oldRef);
+  await db.doc(`pinSecrets/${oldChildId}`).delete().catch(() => {});
+  await db.doc(`childMonitor/${oldChildId}`).delete().catch(() => {});
+
+  // Every parent hears about it, so a move nobody expected is noticed.
+  const childName = (oldData.profile && oldData.profile.name) || "your child";
+  const email = request.auth.token.email || "A parent";
+  await pairingInternal.notifyParents(
+    moved,
+    `${childName}'s Shield moved to a reinstalled phone`,
+    `${email} reconnected ${childName} to a phone where Shield was reinstalled. ` +
+      "If you didn't expect this, open Watch Dog and check the family.",
+  ).catch((e) => console.error("reconnect notify", e));
 
   return { ok: true };
 });
@@ -155,6 +211,7 @@ exports.notifyGeofenceEvent = onDocumentCreated(
     // just don't send a late, misleading "arrived/left" notification now.
     const occurredMs = Number(data.timestampMillis) || 0;
     if (occurredMs && Date.now() - occurredMs > STALE_EVENT_MS) return;
+    if (!(await pushAllowed("geofence", childId, 60))) return;
 
     // Child doc → linked parents + child name.
     const childSnap = await db.doc(`children/${childId}`).get();
@@ -347,6 +404,7 @@ exports.notifyNewApp = onDocumentCreated(
     const data = snap.data() || {};
     const childId = event.params.childId;
     const label = clip(data.label, 60, "An app");
+    if (!(await pushAllowed("newApp", childId, 30))) return;
 
     const childSnap = await db.doc(`children/${childId}`).get();
     if (!childSnap.exists) return;
@@ -407,6 +465,7 @@ exports.notifyChildRequest = onDocumentCreated(
     const childId = event.params.childId;
     const appLabel = clip(data.appLabel, 60, "an app");
     const minutes = Number(data.minutes) || 0;
+    if (!(await pushAllowed("request", childId, 20))) return;
 
     const childSnap = await db.doc(`children/${childId}`).get();
     if (!childSnap.exists) return;
@@ -495,3 +554,5 @@ exports.setRemovalPin = pin.setRemovalPin;
 exports.migratePin = pin.migratePin;
 exports.verifyRemovalPin = pin.verifyRemovalPin;
 exports.linkedParentInfo = pairing.linkedParentInfo;
+exports.requestParentRemoval = pairing.requestParentRemoval;
+exports.respondToParentRemoval = pairing.respondToParentRemoval;

@@ -134,7 +134,12 @@ class DashboardViewModel @Inject constructor(
                         }
                     }
                 }
-                is AppResult.Failure -> LinkState.Error(result.error.message ?: "Couldn't link this device.")
+                is AppResult.Failure -> {
+                    val message = result.error.message ?: "Couldn't link this device."
+                    // Unverified email: send the link so the parent can verify and retry.
+                    if (message.startsWith("Verify your email")) runCatching { authRepository.sendEmailVerification() }
+                    LinkState.Error(message)
+                }
             }
         }
     }
@@ -221,6 +226,58 @@ class DashboardViewModel @Inject constructor(
     /** Unlinks (removes) a child from this parent. */
     fun removeChild(childId: String) {
         viewModelScope.launch { childRepository.unlinkChild(childId) }
+    }
+
+    /** The "Parents" dialog for one child: who supervises it, and removals waiting on its phone. */
+    data class ParentsDialog(
+        val childId: String,
+        val childName: String,
+        val parents: List<com.shahaabapps.core.firebase.child.ParentInfo>? = null,
+        val pendingRemovals: Set<String> = emptySet(),
+        val message: String? = null,
+        val busy: Boolean = false,
+    )
+
+    private val _parentsDialog = MutableStateFlow<ParentsDialog?>(null)
+    val parentsDialog: StateFlow<ParentsDialog?> = _parentsDialog.asStateFlow()
+    private var parentsJob: kotlinx.coroutines.Job? = null
+
+    val myUid: String? get() = authRepository.currentUserIdOrNull()
+
+    fun openParents(childId: String, childName: String) {
+        _parentsDialog.value = ParentsDialog(childId, childName)
+        parentsJob?.cancel()
+        parentsJob = viewModelScope.launch {
+            when (val r = childRepository.linkedParentInfo(childId)) {
+                is AppResult.Success -> _parentsDialog.value = _parentsDialog.value?.copy(parents = r.data)
+                is AppResult.Failure -> _parentsDialog.value = _parentsDialog.value?.copy(
+                    parents = emptyList(), message = r.error.message ?: "Couldn't load the parents.",
+                )
+            }
+            childRepository.observeParentRemovals(childId).collect { list ->
+                _parentsDialog.value = _parentsDialog.value?.copy(pendingRemovals = list.map { it.parentId }.toSet())
+            }
+        }
+    }
+
+    fun closeParents() {
+        parentsJob?.cancel()
+        _parentsDialog.value = null
+    }
+
+    fun requestRemoval(parentId: String) {
+        val d = _parentsDialog.value ?: return
+        _parentsDialog.value = d.copy(busy = true, message = null)
+        viewModelScope.launch {
+            val r = childRepository.requestParentRemoval(d.childId, parentId)
+            _parentsDialog.value = _parentsDialog.value?.copy(
+                busy = false,
+                message = when (r) {
+                    is AppResult.Success -> "Asked ${d.childName}'s phone to approve. Nothing changes until it does."
+                    is AppResult.Failure -> r.error.message ?: "Couldn't send the request."
+                },
+            )
+        }
     }
 
     private val _reconnectState = MutableStateFlow<ReconnectState>(ReconnectState.Idle)

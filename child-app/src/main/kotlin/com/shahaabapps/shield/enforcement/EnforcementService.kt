@@ -557,16 +557,18 @@ class EnforcementService : AccessibilityService() {
     }
 
     /**
-     * When uninstall protection is on and device admin is active, bounce the user
-     * out of the uninstall dialog or the "deactivate device admin" screen — unless
-     * a parent has unlocked a removal window with the PIN.
+     * When uninstall protection is on, bounce the user out of Shield's uninstall
+     * dialog (and, while device admin is active, the "deactivate device admin"
+     * screen) — unless a parent has unlocked a removal window with the PIN. The
+     * uninstall bounce doesn't depend on device admin: after a PIN unlock that
+     * didn't end in an uninstall, admin stays off until it is turned on again
+     * (ProtectionReminder asks), and the uninstall dialog must stay guarded.
      */
     private fun guardUninstall(packageName: String, className: String?, text: String?) {
         if (!ProtectionLocalStore.isBlocked(this)) return
-        if (!DeviceAdmin.isActive(this)) return
         if (ProtectionLocalStore.isUnlocked(this)) return
         if (ProtectionLocalStore.isUninstallScreen(packageName, className, text, ownAppLabel) ||
-            ProtectionLocalStore.isAdminRemovalScreen(packageName, className, text)
+            (DeviceAdmin.isActive(this) && ProtectionLocalStore.isAdminRemovalScreen(packageName, className, text))
         ) {
             performGlobalAction(GLOBAL_ACTION_HOME)
         }

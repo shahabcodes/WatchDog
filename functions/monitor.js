@@ -26,6 +26,7 @@ const GUARD_LABELS = {
   admin: "uninstall protection (device admin) was turned off",
   clockOk: "the date or time was changed by hand",
   gpsGenuine: "a fake-location (mock GPS) app is being used",
+  adbOff: "USB debugging was turned on (a computer can then switch Shield off)",
   parentKeysOk: "a parent's phone key changed and is waiting for approval on the child's phone (if that wasn't you, someone may have your Watch Dog login)",
 };
 
@@ -46,6 +47,7 @@ const GUARD_SWITCH = {
   admin: "protectionOff",
   clockOk: "clockChanged",
   gpsGenuine: "fakeGps",
+  adbOff: "protectionOff",
   parentKeysOk: "protectionOff",
 };
 

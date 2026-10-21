@@ -11,6 +11,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.shahaabapps.core.common.AppResult
 import com.shahaabapps.core.firebase.child.ChildRepository
+import com.shahaabapps.core.firebase.child.ParentRemoval
 import com.shahaabapps.core.firebase.child.ParentRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,6 +41,12 @@ class ParentRequestViewModel @Inject constructor(
     /** The oldest unexpired request, or null. */
     val pending: StateFlow<ParentRequest?> =
         (if (childId == null) flowOf(emptyList()) else childRepository.observeParentRequests(childId))
+            .map { list -> list.sortedBy { it.expiresAtMillis }.firstOrNull() }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** The oldest waiting request to remove a parent, or null. */
+    val removal: StateFlow<ParentRemoval?> =
+        (if (childId == null) flowOf(emptyList()) else childRepository.observeParentRemovals(childId))
             .map { list -> list.sortedBy { it.expiresAtMillis }.firstOrNull() }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
@@ -86,6 +93,19 @@ class ParentRequestViewModel @Inject constructor(
     /** Not now: hide the prompt this session (sharing stays paused, parents stay alerted). */
     fun dismissKeyChange(parentUid: String) { dismissedKeyChanges.value = dismissedKeyChanges.value + parentUid }
 
+    fun respondRemoval(removal: ParentRemoval, approve: Boolean) {
+        if (_busy.value) return
+        _busy.value = true
+        _error.value = null
+        viewModelScope.launch {
+            when (val r = childRepository.respondToParentRemoval(removal.parentId, approve)) {
+                is AppResult.Success -> Unit
+                is AppResult.Failure -> _error.value = r.error.message ?: "Couldn't answer. Try again."
+            }
+            _busy.value = false
+        }
+    }
+
     fun respond(request: ParentRequest, approve: Boolean) {
         if (_busy.value) return
         _busy.value = true
@@ -111,6 +131,31 @@ fun ParentRequestPrompt(viewModel: ParentRequestViewModel = hiltViewModel()) {
     val error by viewModel.error.collectAsStateWithLifecycle()
     val keyChange by viewModel.keyChange.collectAsStateWithLifecycle()
     val dismissed by viewModel.dismissed.collectAsStateWithLifecycle()
+    val removal by viewModel.removal.collectAsStateWithLifecycle()
+    val rm = removal
+    if (request == null && rm != null) {
+        val who = rm.email.ifBlank { "A parent account" }
+        val by = rm.requestedByEmail.ifBlank { "Another parent" }
+        AlertDialog(
+            onDismissRequest = { },
+            title = { Text("Remove a parent?") },
+            text = {
+                Text(
+                    "$by asked to remove $who as a parent of this phone. If you approve, $who " +
+                        "will no longer see this phone's location and activity.\n\n" +
+                        "Only approve if you agree this account should stop supervising this phone." +
+                        (error?.let { "\n\n$it" } ?: ""),
+                )
+            },
+            confirmButton = {
+                TextButton(enabled = !busy, onClick = { viewModel.respondRemoval(rm, approve = true) }) { Text("Remove") }
+            },
+            dismissButton = {
+                TextButton(enabled = !busy, onClick = { viewModel.respondRemoval(rm, approve = false) }) { Text("Keep") }
+            },
+        )
+        return
+    }
     val change = keyChange
     if (request == null && change != null && change.first !in dismissed) {
         val who = change.second.ifBlank { "One of your parents" }

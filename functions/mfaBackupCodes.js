@@ -182,6 +182,15 @@ async function verifyPasswordForMfaAccount(email, password) {
   return user;
 }
 
+/** Whether the hourly counter [key] (see pairing.rateLimit) has reached [max]. */
+async function tooManyFailures(key, max) {
+  const snap = await db().doc(`rateLimits/${key}`).get();
+  if (!snap.exists) return false;
+  const d = snap.data();
+  const fresh = !d.windowStart || Date.now() - d.windowStart.toMillis() > 60 * 60 * 1000;
+  return !fresh && (d.count || 0) >= max;
+}
+
 exports.redeemMfaBackupCode = onCall({ secrets: [AUTH_API_KEY] }, async (request) => {
   const data = request.data || {};
   const email = typeof data.email === "string" ? data.email.trim() : "";
@@ -190,16 +199,28 @@ exports.redeemMfaBackupCode = onCall({ secrets: [AUTH_API_KEY] }, async (request
   if (!email || !password || !code || email.length > 320 || password.length > 4096 || code.length > 64) {
     throw new HttpsError("invalid-argument", "Enter your email, password and a backup code.");
   }
-  // Throttle by account email and by network address BEFORE checking the
-  // password, so this endpoint can't be used to guess passwords.
+  // Throttle by network address before checking the password, so this endpoint
+  // can't be used to guess passwords. Per account, only WRONG passwords count:
+  // counting every attempt let anyone block a person's recovery for an hour.
   const { rateLimit } = require("./pairing")._internal;
   const tag = (v) => crypto.createHash("sha256").update(String(v)).digest("hex").slice(0, 32);
-  await rateLimit(`redeemEmail_${tag(email.toLowerCase())}`, 10);
   const ip = (request.rawRequest && request.rawRequest.ip) || "";
   if (ip) await rateLimit(`redeemIp_${tag(ip)}`, 20);
+  const emailKey = `redeemEmailFail_${tag(email.toLowerCase())}`;
+  if (await tooManyFailures(emailKey, 10)) {
+    throw new HttpsError("resource-exhausted", "Too many attempts. Try again in an hour.");
+  }
 
   // A signed-in caller may only redeem for their own account.
-  const user = await verifyPasswordForMfaAccount(email, password);
+  let user;
+  try {
+    user = await verifyPasswordForMfaAccount(email, password);
+  } catch (e) {
+    if (e instanceof HttpsError && e.code === "permission-denied") {
+      await rateLimit(emailKey, 1000).catch(() => {});
+    }
+    throw e;
+  }
   if (request.auth && request.auth.uid !== user.uid) {
     throw new HttpsError("permission-denied", "That backup code is for a different account.");
   }

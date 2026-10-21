@@ -77,6 +77,12 @@ interface ChildRepository {
     /** Child reports detailed battery history (hourly levels + last charge). */
     suspend fun updateBatteryStats(childId: String, stats: com.shahaabapps.core.model.BatteryStats): AppResult<Unit>
 
+    /** Reinstalled phone: the one-time sign-in a parent's restore left for [installId], or null. */
+    fun observeRestoreToken(installId: String): Flow<String?>
+
+    /** After signing in as the restored child: remove the temporary install [tempChildId]. */
+    suspend fun completeRestore(tempChildId: String): AppResult<Unit>
+
     /** A linked parent removes (unlinks) themselves from a child (server-side). */
     suspend fun unlinkChild(childId: String): AppResult<Unit>
 }

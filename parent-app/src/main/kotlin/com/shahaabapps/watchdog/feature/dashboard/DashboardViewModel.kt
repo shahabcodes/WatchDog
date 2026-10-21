@@ -284,32 +284,47 @@ class DashboardViewModel @Inject constructor(
     val reconnectState: StateFlow<ReconnectState> = _reconnectState.asStateFlow()
 
     /**
-     * Reconnect a reinstalled Shield: [oldChildId] is the stale child in the list,
-     * [contents] is the QR scanned from the freshly reinstalled device. A Cloud
-     * Function migrates the old data onto the new device's id.
+     * Restore a reinstalled Shield as the same child: [oldChildId] is the child in
+     * the list, [contents] the QR scanned on the reinstalled phone. Encrypted data
+     * is bound to the child's id and key, so the reinstalled phone takes over the
+     * old record (a one-time sign-in from the server) and this phone hands it the
+     * old data key, wrapped for the new install's key from the QR.
      */
     fun reconnectChild(oldChildId: String, contents: String?) {
         val pairing = PairingCodec.decode(contents)
-        if (pairing == null) {
-            _reconnectState.value = ReconnectState.Error("That QR code isn't a valid pairing code.")
+        val newKey = pairing?.childPublicKey
+        if (pairing == null || newKey == null) {
+            _reconnectState.value = ReconnectState.Error("That QR code isn't a valid pairing code. Scan the QR (not the typed code).")
             return
         }
+        val me = authRepository.currentUserIdOrNull() ?: return
         _reconnectState.value = ReconnectState.Working
         viewModelScope.launch {
+            // Without the old key the restored phone couldn't read its places and rules.
+            val ring = e2eeManager.ringForRestore(oldChildId, me)
+            if (ring == null) {
+                _reconnectState.value = ReconnectState.Error(
+                    "Couldn't read this child's encryption key on this phone. Open the child's page once, then try again.",
+                )
+                return@launch
+            }
+            if (!e2eeManager.handRingToRestoredChild(oldChildId, me, newKey, ring)) {
+                _reconnectState.value = ReconnectState.Error("Couldn't prepare the restore. Check the internet connection.")
+                return@launch
+            }
             val data = hashMapOf(
                 "oldChildId" to oldChildId,
                 "newChildId" to pairing.childId,
                 "code" to pairing.code,
             )
             _reconnectState.value = runCatching {
-                FirebaseFunctions.getInstance().getHttpsCallable("reconnectChild").callSafely(data)
+                FirebaseFunctions.getInstance().getHttpsCallable("restoreChild").callSafely(data)
             }.fold(
-                onSuccess = {
-                    // The reinstalled device has a new identity key; pin it from the QR.
-                    pairing.childPublicKey?.let { runCatching { e2eeManager.pinChildKey(pairing.childId, it) } }
-                    ReconnectState.Success
+                onSuccess = { ReconnectState.Success },
+                onFailure = {
+                    runCatching { e2eeManager.cancelRingHandoff(oldChildId, me) }
+                    ReconnectState.Error(it.message ?: "Couldn't restore this phone.")
                 },
-                onFailure = { ReconnectState.Error(it.message ?: "Couldn't reconnect this device.") },
             )
         }
     }

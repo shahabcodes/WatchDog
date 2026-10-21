@@ -51,6 +51,15 @@ fun PairingScreen(
     val publicKey by keysViewModel.publicKeyB64.collectAsStateWithLifecycle()
     val code by keysViewModel.code.collectAsStateWithLifecycle()
     val codeError by keysViewModel.error.collectAsStateWithLifecycle()
+    val restoring by keysViewModel.restoring.collectAsStateWithLifecycle()
+    if (restoring) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { },
+            title = { Text("Restoring…") },
+            text = { Text("Your parent is restoring this phone. Shield will restart in a moment.") },
+            confirmButton = { },
+        )
+    }
     val qrBitmap = remember(child.childId, code, publicKey) {
         code?.let { QrCodeGenerator.generate(PairingCodec.encode(PairingData(child.childId, it, publicKey))) }
     }

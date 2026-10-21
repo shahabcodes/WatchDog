@@ -66,6 +66,12 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // One-time sign-in for a reinstalled Shield restoring an old child (written
+    // by restoreChild). Only that reinstalled install may read or clear it.
+    match /restoreTokens/{installId} {
+      allow read, delete: if request.auth != null && request.auth.uid == installId;
+    }
+
     // Child account documents.
     //
     // Threat model: the child device's own account must be treated as the child
@@ -261,6 +267,17 @@ service cloud.firestore {
         }
       }
 
+      // After a restore, a parent hands the old data key-ring to the reinstalled
+      // install, wrapped for that install's new key. Each parent writes only its
+      // own doc; the child reads and clears it.
+      match /ringImport/{parentUid} {
+        allow create, update: if isParent() && request.auth.uid == parentUid
+          && request.resource.data.keys().hasOnly(['wrapped', 'senderPub', 'at'])
+          && request.resource.data.wrapped is string && request.resource.data.wrapped.size() < 4096
+          && request.resource.data.senderPub is string && request.resource.data.senderPub.size() < 400;
+        allow read, delete: if isChild() || (request.auth != null && request.auth.uid == parentUid);
+      }
+
       // A parent that can't decrypt asks the child to re-wrap the data key for it
       // now. The requester may only write its own request doc; the child honours
       // and clears it (the requester may also read/clear its own).
@@ -280,7 +297,7 @@ service cloud.firestore {
       // Anything else below a child: readable by the family, written by no client.
       // Not parentRequests or keyResync: each parent may see only its own there.
       match /{sub}/{document=**} {
-        allow read: if canRead() && !(sub in ['parentRequests', 'keyResync']);
+        allow read: if canRead() && !(sub in ['parentRequests', 'keyResync', 'ringImport']);
       }
     }
   }

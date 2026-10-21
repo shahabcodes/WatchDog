@@ -183,6 +183,21 @@ class FirebaseChildRepository @Inject constructor(
         if (data?.get("status") == "linked") LinkOutcome.Linked(childId) else LinkOutcome.AwaitingApproval(childId)
     }
 
+    override fun observeRestoreToken(installId: String): Flow<String?> = callbackFlow {
+        val registration = firestore.collection("restoreTokens").document(installId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) return@addSnapshotListener
+                val expires = snapshot?.getTimestamp("expiresAt")?.toDate()?.time ?: 0L
+                trySend(snapshot?.getString("token")?.takeIf { expires > System.currentTimeMillis() })
+            }
+        awaitClose { registration.remove() }
+    }
+
+    override suspend fun completeRestore(tempChildId: String): AppResult<Unit> = runCatchingResult {
+        functions.getHttpsCallable("completeRestore").callSafely(hashMapOf("tempChildId" to tempChildId))
+        Unit
+    }
+
     override suspend fun unlinkChild(childId: String): AppResult<Unit> =
         runCatchingResult {
             functions.getHttpsCallable("unlinkChild").callSafely(hashMapOf("childId" to childId))

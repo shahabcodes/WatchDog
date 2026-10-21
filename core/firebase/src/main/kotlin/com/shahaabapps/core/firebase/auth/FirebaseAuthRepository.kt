@@ -80,6 +80,12 @@ class FirebaseAuthRepository @Inject constructor(
             requireNotNull(result.user?.uid) { "Anonymous sign-in returned null uid" }
         }
 
+    override suspend fun signInWithCustomToken(token: String): AppResult<String> =
+        runCatchingResult {
+            val result = auth.signInWithCustomToken(token).await()
+            requireNotNull(result.user?.uid) { "Sign-in returned null uid" }
+        }
+
     override suspend fun sendPasswordReset(email: String): AppResult<Unit> =
         runCatchingResult {
             auth.sendPasswordResetEmail(email).await()

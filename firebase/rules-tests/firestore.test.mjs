@@ -140,6 +140,21 @@ describe("attacks are refused", () => {
     await assertFails(getDoc(doc(stranger(), `children/${CHILD}/parentRemovals/${STRANGER}`)));
     await assertFails(setDoc(doc(parent(), `children/${CHILD}/parentRemovals/${STRANGER}`), { email: "x" }));
   });
+  it("restore: only the install reads its token; ring handoff is parent-to-own-doc, child reads", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), `restoreTokens/${STRANGER}`), { token: "t", oldChildId: CHILD });
+    });
+    await assertSucceeds(getDoc(doc(stranger(), `restoreTokens/${STRANGER}`)));
+    await assertFails(getDoc(doc(parent(), `restoreTokens/${STRANGER}`)));
+    await assertFails(getDoc(doc(child(), `restoreTokens/${STRANGER}`)));
+    await assertFails(setDoc(doc(stranger(), `restoreTokens/${STRANGER}`), { token: "forged" }));
+    await assertSucceeds(setDoc(doc(parent(), `children/${CHILD}/ringImport/${PARENT}`), { wrapped: "w", senderPub: "p", at: 1 }));
+    await assertFails(setDoc(doc(parent(), `children/${CHILD}/ringImport/${STRANGER}`), { wrapped: "w", senderPub: "p", at: 1 }));
+    await assertFails(setDoc(doc(stranger(), `children/${CHILD}/ringImport/${STRANGER}`), { wrapped: "w", senderPub: "p", at: 1 }));
+    await assertFails(setDoc(doc(child(), `children/${CHILD}/ringImport/${PARENT}`), { wrapped: "w", senderPub: "p", at: 1 }));
+    await assertSucceeds(getDoc(doc(child(), `children/${CHILD}/ringImport/${PARENT}`)));
+    await assertSucceeds(deleteDoc(doc(child(), `children/${CHILD}/ringImport/${PARENT}`)));
+  });
   it("only the owner can delete their shared key", async () => {
     await assertSucceeds(setDoc(doc(parent(), `publicKeys/${PARENT}`), { e2ePublicKey: "pk", aad2: true }));
     await assertFails(deleteDoc(doc(stranger(), `publicKeys/${PARENT}`)));

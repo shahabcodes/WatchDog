@@ -176,6 +176,51 @@ class E2eeManager @Inject constructor(
     /** The current encryption key (newest in the ring). */
     fun childDataKey(): ByteArray = childKeyring().first()
 
+    /** Syncs left in which to look for a ring handed over after a restore. */
+    @Volatile private var importChecksLeft = 30
+
+    /**
+     * Child, after a restore: merge the old key-ring a linked parent handed over
+     * (wrapped for this install's key), so the old data stays readable. Only from a
+     * linked parent, sent from one of that parent's published keys. The ring keeps
+     * this install's newest key first; old keys are added after it.
+     */
+    private suspend fun importRestoredRings(childId: String, linkedParents: Set<String>) {
+        if (importChecksLeft <= 0) return
+        importChecksLeft--
+        val imports = keys.listRingImports(childId)
+        if (imports.isEmpty()) return
+        for (imp in imports) {
+            val trusted = imp.parentUid in linkedParents && run {
+                val fp = E2ee.fingerprint(unb64(imp.senderPubB64))
+                val known = buildSet {
+                    keys.readParentKeyFresh(imp.parentUid).getOrNull()?.let { add(E2ee.fingerprint(unb64(it))) }
+                    keys.listParentDevicesFresh(imp.parentUid)?.forEach { add(E2ee.fingerprint(unb64(it.publicKeyB64))) }
+                }
+                fp in known
+            }
+            val ring = if (trusted) {
+                runCatching { decodeRing(deviceKeyStore.unwrapDataKeyFrom(unb64(imp.senderPubB64), unb64(imp.wrappedB64))) }.getOrNull()
+            } else null
+            if (ring != null) {
+                synchronized(dekLock) {
+                    val cur = childKeyring()
+                    val add = ring.filter { k -> cur.none { it.contentEquals(k) } }
+                    if (add.isNotEmpty()) {
+                        val merged = (cur + add).take(MAX_RING)
+                        persistRing(merged)
+                        cachedRing = merged
+                    }
+                }
+                verifiedParents.clear()
+                diagnostics.info("e2ee", "restored key-ring merged from parent=${imp.parentUid} keys=${ring.size}")
+            } else {
+                diagnostics.warn("e2ee", "ignored a handed-over key-ring parent=${imp.parentUid}")
+            }
+            keys.deleteRingImport(childId, imp.parentUid)
+        }
+    }
+
     /** Add a fresh key to the front of the ring (used when a parent is removed). */
     private fun rotateKeyring() {
         synchronized(dekLock) {
@@ -321,6 +366,7 @@ class E2eeManager @Inject constructor(
             }
             lastLinkedParents = current
             currentParents = current
+            importRestoredRings(childId, current)
             var allWrapped = linkedParents.isNotEmpty()
             for (parentUid in linkedParents) {
                 val wrapped = ensureWrappedFor(childId, parentUid)
@@ -388,7 +434,14 @@ class E2eeManager @Inject constructor(
         val now = System.currentTimeMillis()
         if (now - (lastResyncRequest[tag] ?: 0L) < RESYNC_THROTTLE_MS) return
         lastResyncRequest[tag] = now
-        scope.launch { runCatching { keys.requestResync(childId, viewerUid) } }
+        scope.launch {
+            runCatching { keys.requestResync(childId, viewerUid) }
+            // The child may have re-wrapped a newer key-ring (a key rotation, or a
+            // restored phone's new key): re-derive it, or this cached copy stays stale.
+            val previous = parentRingCache.remove(childId)
+            val fresh = runCatching { dataKeyForChild(childId, viewerUid, null) }.getOrNull()
+            if (fresh == null && previous != null) parentRingCache.putIfAbsent(childId, previous)
+        }
     }
 
     /** Child: reader uids currently asking for a re-wrap. */
@@ -659,6 +712,14 @@ class E2eeManager @Inject constructor(
      * legitimate reinstall rotates the key), but the verified badge is withdrawn.
      */
     private suspend fun detectChildKeyChange(childId: String, backendPubB64: String) {
+        // A restore this phone did: the reinstalled install's key (from its QR) is
+        // expected; pin it once the child has published it.
+        if (restorePins().getString(childId, null) == backendPubB64) {
+            pinnedKeys.pin(childId, backendPubB64)
+            pinnedKeys.putSeenKey(childId, backendPubB64)
+            restorePins().edit().remove(childId).apply()
+            return
+        }
         val seen = pinnedKeys.getSeenKey(childId)
         if (seen == null) {
             pinnedKeys.putSeenKey(childId, backendPubB64)
@@ -671,6 +732,37 @@ class E2eeManager @Inject constructor(
             if (pinned != null && pinned != backendPubB64) pinnedKeys.unpin(childId)
         }
     }
+
+    /**
+     * Parent, restoring a reinstalled Shield as [childId]: this phone's copy of the
+     * child's key-ring, read fresh from the server. Null if it can't be read.
+     */
+    suspend fun ringForRestore(childId: String, parentUid: String): List<ByteArray>? {
+        parentRingCache.remove(childId)
+        return dataKeyForChild(childId, parentUid, null)
+    }
+
+    /**
+     * Parent: hand [ring] (the child's old key-ring) to the reinstalled install,
+     * wrapped for its new key [newChildPubB64] from the QR, so it can keep reading
+     * and extending the old data. The new key is pinned once the child publishes it.
+     */
+    suspend fun handRingToRestoredChild(
+        childId: String, parentUid: String, newChildPubB64: String, ring: List<ByteArray>,
+    ): Boolean = withContext(Dispatchers.Default) {
+        val wrapped = deviceKeyStore.wrapDataKeyFor(unb64(newChildPubB64), encodeRing(ring))
+        val ok = keys.putRingImport(childId, parentUid, b64(wrapped), myPublicKeyB64()) is AppResult.Success
+        if (ok) restorePins().edit().putString(childId, newChildPubB64).apply()
+        ok
+    }
+
+    /** Parent: the restore didn't happen; drop the handed-over ring. */
+    suspend fun cancelRingHandoff(childId: String, parentUid: String) {
+        keys.deleteRingImport(childId, parentUid)
+        restorePins().edit().remove(childId).apply()
+    }
+
+    private fun restorePins() = appContext.getSharedPreferences(RESTORE_PINS_PREFS, Context.MODE_PRIVATE)
 
     /** Pin a child's public key captured out-of-band from its pairing QR. */
     suspend fun pinChildKey(childId: String, childPublicKeyB64: String) {
@@ -771,6 +863,9 @@ class E2eeManager @Inject constructor(
         private const val EMAIL_PREFIX = "email:"
         /** String set of the key fingerprints of a parent's phones that signed out. */
         private const val REVOKED_PREFIX = "revoked:"
+        private const val RESTORE_PINS_PREFS = "e2ee_restore_pins"
+        /** Ring size cap (the ring's encoding counts keys in one byte). */
+        private const val MAX_RING = 64
         /**
          * P6 encrypt-only cutover. Keep false until every active device has
          * completed key exchange (verified on real hardware); flipping it true

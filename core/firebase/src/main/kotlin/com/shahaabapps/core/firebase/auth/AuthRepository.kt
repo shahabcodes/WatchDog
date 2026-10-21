@@ -31,6 +31,9 @@ interface AuthRepository {
 
     suspend fun signInAnonymously(): AppResult<String>
 
+    /** Child, restoring: sign in as the old child with a one-time token from the server. */
+    suspend fun signInWithCustomToken(token: String): AppResult<String>
+
     // --- TOTP multi-factor (parent accounts, opt-in) ---
 
     /** True when the signed-in user has a second factor enrolled. */

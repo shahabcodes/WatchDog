@@ -81,7 +81,15 @@ interface E2eeKeyRepository {
     suspend fun deleteDeviceWrap(childId: String, parentUid: String, deviceId: String): AppResult<Unit>
     /** Device ids that currently have a wrap under this parent (for clean-up). */
     suspend fun listDeviceWrapIds(childId: String, parentUid: String): List<String>
+
+    // ---- restore: the old key-ring handed to a reinstalled install ----
+    suspend fun putRingImport(childId: String, parentUid: String, wrappedB64: String, senderPubB64: String): AppResult<Unit>
+    suspend fun listRingImports(childId: String): List<RingImport>
+    suspend fun deleteRingImport(childId: String, parentUid: String): AppResult<Unit>
 }
+
+/** A key-ring a parent handed to this install after a restore. */
+data class RingImport(val parentUid: String, val wrappedB64: String, val senderPubB64: String)
 
 /** One Watch Dog install's published key. */
 data class ParentDevice(
@@ -227,6 +235,7 @@ class FirebaseE2eeKeyRepository @Inject constructor(
         const val FIELD_PUBLIC_KEY = "e2ePublicKey"
         const val FIELD_AAD2 = "aad2"
         const val DEVICES = "devices"
+        const val RING_IMPORT = "ringImport"
     }
 
     // ---- per-device keys ----
@@ -293,4 +302,27 @@ class FirebaseE2eeKeyRepository @Inject constructor(
     override suspend fun listDeviceWrapIds(childId: String, parentUid: String): List<String> = runCatching {
         wrappedDoc(childId, parentUid).collection(DEVICES).get().await().documents.map { it.id }
     }.getOrDefault(emptyList())
+
+    // ---- restore ----
+
+    private fun ringImportDoc(childId: String, parentUid: String) =
+        firestore.collection("children").document(childId).collection(RING_IMPORT).document(parentUid)
+
+    override suspend fun putRingImport(
+        childId: String, parentUid: String, wrappedB64: String, senderPubB64: String,
+    ): AppResult<Unit> = runCatchingResult {
+        ringImportDoc(childId, parentUid).set(
+            mapOf("wrapped" to wrappedB64, "senderPub" to senderPubB64, "at" to System.currentTimeMillis()),
+        ).await()
+    }
+
+    override suspend fun listRingImports(childId: String): List<RingImport> = runCatching {
+        firestore.collection("children").document(childId).collection(RING_IMPORT)
+            .get(com.google.firebase.firestore.Source.SERVER).await().documents.mapNotNull { d ->
+                RingImport(d.id, d.getString("wrapped") ?: return@mapNotNull null, d.getString("senderPub") ?: return@mapNotNull null)
+            }
+    }.getOrDefault(emptyList())
+
+    override suspend fun deleteRingImport(childId: String, parentUid: String): AppResult<Unit> =
+        runCatchingResult { ringImportDoc(childId, parentUid).delete().await() }
 }

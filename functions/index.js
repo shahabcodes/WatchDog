@@ -2,7 +2,7 @@ const { onDocumentCreated, onDocumentDeleted, onDocumentWritten } = require("fir
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { initializeApp } = require("firebase-admin/app");
-const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
 const { getStorage } = require("firebase-admin/storage");
 
@@ -81,6 +81,14 @@ exports.cleanupScreenshot = onDocumentDeleted(
 exports.reconnectChild = onCall(async (request) => {
   const parentId = request.auth && request.auth.uid;
   if (!parentId) throw new HttpsError("unauthenticated", "Sign in required.");
+  // Moving encrypted data to a new child id leaves it unreadable (it is bound to
+  // the id and the old key). restoreChild replaces this; older Watch Dogs land here.
+  if (!(request.data || {}).allowLegacyMove) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Update Watch Dog to restore this phone. This older version can't move the child's encrypted data safely.",
+    );
+  }
 
   const data = request.data || {};
   const oldChildId = pairingInternal.requireId(data.oldChildId, "child");
@@ -556,3 +564,99 @@ exports.verifyRemovalPin = pin.verifyRemovalPin;
 exports.linkedParentInfo = pairing.linkedParentInfo;
 exports.requestParentRemoval = pairing.requestParentRemoval;
 exports.respondToParentRemoval = pairing.respondToParentRemoval;
+
+// ---- Restore a reinstalled Shield as the SAME child ----------------------------
+//
+// Encrypted data is bound to the child's id and key, so a reinstalled phone takes
+// over the old child record instead of moving the data: a linked parent scans the
+// new install's code, the server issues a one-time sign-in for the old child id,
+// and the parent's Watch Dog hands the old data key to the new install.
+
+const RESTORE_TTL_MS = 10 * 60 * 1000;
+
+/**
+ * Data: { oldChildId, newChildId, code }. Caller: a parent linked to oldChildId,
+ * holding the fresh code shown on the reinstalled phone (newChildId, unsupervised).
+ * Returns { ok }.
+ */
+exports.restoreChild = onCall(async (request) => {
+  const parentId = request.auth && request.auth.uid;
+  if (!parentId) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (pairingInternal.isAnonymous(request.auth)) {
+    throw new HttpsError("permission-denied", "Sign in with your parent account.");
+  }
+  const data = request.data || {};
+  const oldChildId = pairingInternal.requireId(data.oldChildId, "child");
+  const newChildId = pairingInternal.requireId(data.newChildId, "device");
+  if (oldChildId === newChildId) throw new HttpsError("invalid-argument", "This phone is already that child.");
+  await pairingInternal.rateLimit(`restore_${parentId}`, 10);
+
+  const [oldSnap, newSnap] = await Promise.all([
+    db.doc(`children/${oldChildId}`).get(), db.doc(`children/${newChildId}`).get(),
+  ]);
+  if (!oldSnap.exists) throw new HttpsError("not-found", "The original child was not found.");
+  if (!newSnap.exists) throw new HttpsError("not-found", "The reinstalled phone was not found.");
+  const parents = oldSnap.get("linkedParents") || [];
+  if (!parents.includes(parentId)) throw new HttpsError("permission-denied", "You are not linked to this child.");
+  if ((newSnap.get("linkedParents") || []).length > 0) {
+    throw new HttpsError("failed-precondition", "That phone is already set up with a family and can't be restored.");
+  }
+  // The old install must have stopped checking in (Shield was removed from it).
+  const monitor = await db.doc(`childMonitor/${oldChildId}`).get();
+  const lastBeat = monitor.exists && monitor.get("lastHeartbeatAt");
+  if (lastBeat && Date.now() - lastBeat.toMillis() < RECONNECT_QUIET_MS) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Shield is still running on the original phone. Restore is only for a phone where Shield was " +
+        "reinstalled. If you just reinstalled it, wait 10 minutes and try again.",
+    );
+  }
+  if (!(await pairingInternal.consumeInviteFor(newChildId, data.code))) {
+    throw new HttpsError("permission-denied", "That code is wrong or has expired. Scan the code on the phone again.");
+  }
+
+  const { getAuth } = require("firebase-admin/auth");
+  const token = await getAuth().createCustomToken(oldChildId, { restoredFrom: newChildId });
+  // Only the reinstalled phone (signed in as newChildId) can read this.
+  await db.doc(`restoreTokens/${newChildId}`).set({
+    token,
+    oldChildId,
+    parentId,
+    expiresAt: Timestamp.fromMillis(Date.now() + RESTORE_TTL_MS),
+  });
+
+  const childName = (oldSnap.get("profile") || {}).name || "your child";
+  const email = request.auth.token.email || "A parent";
+  await pairingInternal.notifyParents(
+    parents,
+    `${childName}'s Shield is being restored`,
+    `${email} restored ${childName} on a phone where Shield was reinstalled. ` +
+      "If you didn't expect this, open Watch Dog and check the family.",
+  ).catch((e) => console.error("restore notify", e));
+  return { ok: true };
+});
+
+/**
+ * Called by the reinstalled phone once it has signed in as the old child: removes
+ * the temporary install record and its account. Data: { tempChildId }.
+ */
+exports.completeRestore = onCall(async (request) => {
+  const childId = request.auth && request.auth.uid;
+  if (!childId) throw new HttpsError("unauthenticated", "Sign in required.");
+  const tempId = pairingInternal.requireId((request.data || {}).tempChildId, "device");
+  const ref = db.doc(`restoreTokens/${tempId}`);
+  const snap = await ref.get();
+  if (!snap.exists || snap.get("oldChildId") !== childId) {
+    throw new HttpsError("permission-denied", "Nothing to finish.");
+  }
+  await ref.delete();
+  const tempRef = db.doc(`children/${tempId}`);
+  const temp = await tempRef.get();
+  if (temp.exists && (temp.get("linkedParents") || []).length === 0) await db.recursiveDelete(tempRef);
+  await db.doc(`publicKeys/${tempId}`).delete().catch(() => {});
+  const invites = await db.collection("pairingInvites").where("childId", "==", tempId).get();
+  await Promise.all(invites.docs.map((d) => d.ref.delete()));
+  const { getAuth } = require("firebase-admin/auth");
+  await getAuth().deleteUser(tempId).catch(() => {});
+  return { ok: true };
+});

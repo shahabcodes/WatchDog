@@ -1042,7 +1042,7 @@ private fun ManageChildrenScreen(
         pendingReconnectId = childId
         scanLauncher.launch(
             ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                .setPrompt("Scan the reinstalled Shield's code").setBeepEnabled(false)
+                .setPrompt("Scan the QR on the reinstalled Shield").setBeepEnabled(false)
                 .setOrientationLocked(false),
         )
     }
@@ -1068,29 +1068,29 @@ private fun ManageChildrenScreen(
     when (val rs = reconnectState) {
         is ReconnectState.Working -> com.shahaabapps.core.ui.components.AppDialog(
             onDismiss = { },
-            title = "Reconnecting…",
+            title = "Restoring…",
             dismissText = null,
             dismissOnOutsideTouch = false,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 com.shahaabapps.core.ui.components.AppLoader(size = 22.dp)
-                Text("  Migrating this child's data.")
+                Text("  Handing this child's data back to the phone.")
             }
         }
         is ReconnectState.Success -> com.shahaabapps.core.ui.components.AppDialog(
             onDismiss = viewModel::clearReconnectState,
-            title = "Device reconnected",
+            title = "Phone restored",
             icon = Icons.Filled.CheckCircle,
             dismissText = "Done",
         ) {
             Text(
-                "The reinstalled device is linked again with all its places, rules and settings.",
+                "The reinstalled phone is becoming this child again, with all its places, rules and history. It takes a minute and Shield restarts once on that phone.",
                 textAlign = TextAlign.Center,
             )
         }
         is ReconnectState.Error -> com.shahaabapps.core.ui.components.AppDialog(
             onDismiss = viewModel::clearReconnectState,
-            title = "Couldn't reconnect",
+            title = "Couldn't restore",
             dismissText = "OK",
         ) {
             Text(rs.message, textAlign = TextAlign.Center)
@@ -1137,12 +1137,12 @@ private fun ManageChildrenScreen(
                                     leadingIcon = { androidx.compose.material3.Icon(Icons.Filled.People, contentDescription = null, tint = AppTheme.colors.accent) },
                                 )
                                 androidx.compose.material3.DropdownMenuItem(
-                                    text = { Text("Reconnect · scan code") },
+                                    text = { Text("Restore reinstalled phone · scan code") },
                                     onClick = { menu = false; launchReconnectScan(child.childId) },
                                     leadingIcon = { androidx.compose.material3.Icon(Icons.Filled.QrCodeScanner, contentDescription = null, tint = AppTheme.colors.accent) },
                                 )
                                 androidx.compose.material3.DropdownMenuItem(
-                                    text = { Text("Reconnect · from gallery") },
+                                    text = { Text("Restore reinstalled phone · from gallery") },
                                     onClick = { menu = false; launchReconnectFromGallery(child.childId) },
                                     leadingIcon = { androidx.compose.material3.Icon(Icons.Filled.Image, contentDescription = null, tint = AppTheme.colors.accent) },
                                 )
@@ -1158,7 +1158,7 @@ private fun ManageChildrenScreen(
             }
             item {
                 Text(
-                    "Reinstalled a child's phone? Use \"Reconnect device\" on that child to scan its new code — its places, rules and history move over automatically.",
+                    "Shield reinstalled on a child's phone? Don't add it as a new child: use ⋮ → \"Restore reinstalled phone\" on that child and scan its QR. Its places, rules and history stay.",
                     style = MaterialTheme.typography.bodySmall,
                     color = AppTheme.colors.secondaryLabel,
                     modifier = Modifier.padding(vertical = Spacing.sm),

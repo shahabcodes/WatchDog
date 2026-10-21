@@ -9,6 +9,7 @@ import com.shahaabapps.core.model.PendingApp
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -18,6 +19,7 @@ class PendingAppsViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val pendingAppsRepository: PendingAppsRepository,
     private val appRulesRepository: AppRulesRepository,
+    private val requestRepository: com.shahaabapps.core.firebase.request.RequestRepository,
 ) : ViewModel() {
 
     private val childId: String = checkNotNull(savedStateHandle["childId"])
@@ -30,7 +32,19 @@ class PendingAppsViewModel @Inject constructor(
         viewModelScope.launch {
             appRulesRepository.deleteAppRule(childId, packageName)
             pendingAppsRepository.remove(childId, packageName)
+            answerRequestsFor(packageName, approved = true)
         }
+    }
+
+    /**
+     * The child may also have asked to unlock this new app; answer those asks the
+     * same way, so Alerts doesn't keep showing an Approve / Not now for an app
+     * that's already been decided here.
+     */
+    private suspend fun answerRequestsFor(packageName: String, approved: Boolean) {
+        val pending = runCatching { requestRepository.observe(childId, 30).first() }.getOrDefault(emptyList())
+            .filter { it.status == com.shahaabapps.core.model.RequestStatus.PENDING && it.appPackage == packageName }
+        for (r in pending) runCatching { requestRepository.respond(childId, r.id, approved) }
     }
 
     /**
@@ -47,6 +61,7 @@ class PendingAppsViewModel @Inject constructor(
             )
             if (saved is com.shahaabapps.core.common.AppResult.Success) {
                 pendingAppsRepository.remove(childId, packageName)
+                answerRequestsFor(packageName, approved = false)
             }
         }
     }

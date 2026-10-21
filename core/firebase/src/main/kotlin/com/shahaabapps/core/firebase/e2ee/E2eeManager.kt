@@ -406,20 +406,41 @@ class E2eeManager @Inject constructor(
         val now = System.currentTimeMillis()
         val lastVerified = verifiedParents[tag]
         if (lastVerified != null && now - lastVerified < VERIFY_TTL_MS) return true
-        val parentPubB64 = keys.getParentPublicKey(parentUid) ?: return false
+        // Key checks use the SERVER's copy: a stale offline-cache read once pinned an
+        // out-of-date key and raised a false "parent's phone changed". Offline, fall
+        // back to the cached key for wrapping (so encryption never stalls) but make
+        // no pin decisions until the server can be checked.
+        val fresh = keys.getParentKeyFresh(parentUid)
+        val parentPubB64 = fresh ?: keys.getParentPublicKey(parentUid) ?: return false
         parentReadsSlots[parentUid] = keys.supportsSlotAad(parentUid)
         val parentFp = E2ee.fingerprint(unb64(parentPubB64))
         val pinned = parentPins.getString(PIN_PREFIX + parentUid, null)
-        if (pinned == null) {
+        if (fresh == null) {
+            if (pinned != null && pinned != parentFp) return false
+        } else if (pinned == null) {
             // Linked before pinning existed: trust what we see now (first sight).
             parentPins.edit().putString(PIN_PREFIX + parentUid, parentFp).apply()
         } else if (pinned != parentFp) {
-            if (_parentKeyChanges.value[parentUid] != parentFp) {
-                parentPins.edit().putString(PENDING_PREFIX + parentUid, parentFp).apply()
-                _parentKeyChanges.value = _parentKeyChanges.value + (parentUid to parentFp)
-                diagnostics.warn("e2ee", "parent key changed parent=$parentUid; waiting for approval")
+            // Not a change if this phone already shared its data with exactly this key
+            // (the existing wrap was sealed for it): the pin was out of date. A key
+            // swapped in by someone else has no such wrap, so it still asks.
+            val existingWrap = keys.getWrappedKeyFresh(childId, parentUid)
+            if (existingWrap != null && existingWrap.parentKeyFp == parentFp) {
+                parentPins.edit().putString(PIN_PREFIX + parentUid, parentFp).remove(PENDING_PREFIX + parentUid).apply()
+                _parentKeyChanges.value = _parentKeyChanges.value - parentUid
+                diagnostics.info("e2ee", "parent key pin refreshed (already shared with it) parent=$parentUid")
+            } else {
+                if (_parentKeyChanges.value[parentUid] != parentFp) {
+                    parentPins.edit().putString(PENDING_PREFIX + parentUid, parentFp).apply()
+                    _parentKeyChanges.value = _parentKeyChanges.value + (parentUid to parentFp)
+                    diagnostics.warn("e2ee", "parent key changed parent=$parentUid; waiting for approval")
+                }
+                return false
             }
-            return false
+        } else if (parentUid in _parentKeyChanges.value) {
+            // The published key went back to the trusted one: nothing to approve.
+            parentPins.edit().remove(PENDING_PREFIX + parentUid).apply()
+            _parentKeyChanges.value = _parentKeyChanges.value - parentUid
         }
         val ringBytes = encodeRing(childKeyring())
         val ringFp = E2ee.fingerprint(ringBytes)

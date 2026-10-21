@@ -93,7 +93,14 @@ class DeviceKeyStore @Inject constructor(
             sharedLocalKey?.let { return it }
             val file = File(File(context.filesDir, "e2ee"), "local.key")
             val loaded = if (file.exists()) {
-                runCatching { openLocal(file.readBytes()) }.getOrNull()?.takeIf { it.size == 32 }
+                // Same rule as the identity: retry, never overwrite an existing key.
+                var k: ByteArray? = null
+                for (attempt in 0 until IDENTITY_READ_ATTEMPTS) {
+                    k = runCatching { openLocal(file.readBytes()) }.getOrNull()?.takeIf { it.size == 32 }
+                    if (k != null) break
+                    if (attempt < IDENTITY_READ_ATTEMPTS - 1) Thread.sleep(IDENTITY_RETRY_MS)
+                }
+                k ?: throw IllegalStateException("Local key couldn't be read; keeping it unchanged")
             } else null
             val key = loaded ?: ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }.also {
                 file.parentFile?.mkdirs()
@@ -112,12 +119,24 @@ class DeviceKeyStore @Inject constructor(
             cachedPublic?.let { pub -> cachedPrivate?.let { priv -> return pub to priv } }
             val file = identityFile()
             if (file.exists()) {
-                runCatching { readIdentity(file) }.getOrNull()?.let {
-                    cachedPublic = it.first; cachedPrivate = it.second
-                    return it
+                // Never replace an existing identity because a read failed: Keystore
+                // can fail transiently (e.g. right after an update or boot), and a new
+                // identity would cut this device off from the data shared with the old
+                // one. Retry, then report the error and leave the file untouched.
+                var lastError: Throwable? = null
+                repeat(IDENTITY_READ_ATTEMPTS) { attempt ->
+                    try {
+                        val id = readIdentity(file)
+                        cachedPublic = id.first; cachedPrivate = id.second
+                        return id
+                    } catch (e: Exception) {
+                        lastError = e
+                        if (attempt < IDENTITY_READ_ATTEMPTS - 1) Thread.sleep(IDENTITY_RETRY_MS)
+                    }
                 }
+                throw IllegalStateException("Device identity couldn't be read; keeping it unchanged", lastError)
             }
-            // First run (or unreadable): generate and persist a new identity.
+            // First run: generate and persist a new identity.
             val kp = E2ee.newKeyPair()
             val pub = E2ee.publicKeyBytes(kp.public)
             val priv = E2ee.privateKeyBytes(kp.private)
@@ -155,7 +174,14 @@ class DeviceKeyStore @Inject constructor(
 
     private fun masterKey(): SecretKey {
         val ks = KeyStore.getInstance(KEYSTORE).apply { load(null) }
-        (ks.getEntry(MASTER_ALIAS, null) as? KeyStore.SecretKeyEntry)?.let { return it.secretKey }
+        // Only create a master key when none exists. If one exists but can't be
+        // loaded right now, fail (and retry later) rather than replace it: a new
+        // master key would make everything sealed with the old one unreadable.
+        if (ks.containsAlias(MASTER_ALIAS)) {
+            val entry = ks.getEntry(MASTER_ALIAS, null) as? KeyStore.SecretKeyEntry
+                ?: throw IllegalStateException("Keystore master key exists but couldn't be loaded")
+            return entry.secretKey
+        }
         return generateMasterKey(strongBox = true)
     }
 
@@ -189,6 +215,8 @@ class DeviceKeyStore @Inject constructor(
         const val TRANSFORM = "AES/GCM/NoPadding"
         const val IV_LEN = 12
         const val FORMAT_VERSION = 1
+        const val IDENTITY_READ_ATTEMPTS = 3
+        const val IDENTITY_RETRY_MS = 300L
 
         // Process-wide cache of the local data key, so a freshly constructed
         // DeviceKeyStore (the caches build one per call) still pays the keystore

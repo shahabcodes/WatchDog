@@ -41,6 +41,13 @@ interface E2eeKeyRepository {
     ): AppResult<Unit>
 
     suspend fun getWrappedKey(childId: String, parentUid: String): WrappedKey?
+
+    /**
+     * The parent's published key and the existing wrap, read from the SERVER (never
+     * the offline cache), for key-change checks. Null when the server can't be reached.
+     */
+    suspend fun getParentKeyFresh(parentUid: String): String?
+    suspend fun getWrappedKeyFresh(childId: String, parentUid: String): WrappedKey?
     fun observeWrappedKey(childId: String, parentUid: String): Flow<WrappedKey?>
     suspend fun deleteWrappedKey(childId: String, parentUid: String): AppResult<Unit>
 
@@ -122,6 +129,17 @@ class FirebaseE2eeKeyRepository @Inject constructor(
             ),
         ).await()
     }
+
+    override suspend fun getParentKeyFresh(parentUid: String): String? = runCatching {
+        firestore.collection(PUBLIC_KEYS).document(parentUid)
+            .get(com.google.firebase.firestore.Source.SERVER).await().getString(FIELD_PUBLIC_KEY)
+    }.getOrNull()?.ifBlank { null }
+
+    override suspend fun getWrappedKeyFresh(childId: String, parentUid: String): WrappedKey? = runCatching {
+        val doc = wrappedDoc(childId, parentUid).get(com.google.firebase.firestore.Source.SERVER).await()
+        val wrapped = doc.getString("wrapped") ?: return@runCatching null
+        WrappedKey(wrapped, doc.getString("ringFp") ?: "", doc.getString("parentKeyFp") ?: "")
+    }.getOrNull()
 
     override suspend fun getWrappedKey(childId: String, parentUid: String): WrappedKey? = runCatching {
         val doc = wrappedDoc(childId, parentUid).get().await()

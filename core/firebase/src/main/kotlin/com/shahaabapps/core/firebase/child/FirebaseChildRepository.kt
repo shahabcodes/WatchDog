@@ -421,7 +421,17 @@ class FirebaseChildRepository @Inject constructor(
             charging = charging,
             batteryDrainPerHour = drain,
             temperatureTenthsC = temp,
-            permissions = permissions,
+            // Shield reports these protection flags only in the plaintext guard map
+            // (the encrypted permissions leave them out), so take them from there.
+            permissions = permissions?.let { p ->
+                val g = deviceMap["guard"] as? Map<*, *> ?: return@let p
+                p.copy(
+                    adminActive = g["admin"] as? Boolean ?: p.adminActive,
+                    clockOk = g["clockOk"] as? Boolean ?: p.clockOk,
+                    gpsGenuine = g["gpsGenuine"] as? Boolean ?: p.gpsGenuine,
+                    parentKeysOk = g["parentKeysOk"] as? Boolean ?: p.parentKeysOk,
+                )
+            },
             batteryStats = batteryStats,
             guard = (deviceMap["guard"] as? Map<*, *>)?.also { g ->
                 e2ee.noteChildReadsSlots(childId, g["aad2"] == true)

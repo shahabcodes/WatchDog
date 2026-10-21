@@ -49,10 +49,29 @@ class ParentRequestViewModel @Inject constructor(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    /** Linked parents' emails from the server, for naming accounts pinned without one. */
+    private val serverEmails = MutableStateFlow<Map<String, String>>(emptyMap())
+
     /** A linked parent whose key changed (new phone?) and needs approving again. */
-    val keyChange: StateFlow<Pair<String, String>?> = e2eeManager.parentKeyChanges
-        .map { it.keys.firstOrNull()?.let { uid -> uid to e2eeManager.parentEmail(uid) } }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    val keyChange: StateFlow<Pair<String, String>?> =
+        kotlinx.coroutines.flow.combine(e2eeManager.parentKeyChanges, serverEmails) { changes, emails ->
+            changes.keys.firstOrNull()?.let { uid ->
+                val email = e2eeManager.parentEmail(uid).ifBlank { emails[uid].orEmpty() }
+                if (email.isBlank()) loadServerEmails()
+                uid to email
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    @Volatile private var loadingEmails = false
+    private fun loadServerEmails() {
+        if (loadingEmails) return
+        loadingEmails = true
+        viewModelScope.launch {
+            val r = childRepository.linkedParentInfo()
+            if (r is AppResult.Success) serverEmails.value = r.data.associate { it.uid to it.email }
+            loadingEmails = false
+        }
+    }
 
     private val dismissedKeyChanges = MutableStateFlow<Set<String>>(emptySet())
     val dismissed: StateFlow<Set<String>> = dismissedKeyChanges.asStateFlow()

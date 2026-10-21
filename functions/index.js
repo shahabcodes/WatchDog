@@ -493,3 +493,4 @@ const pin = require("./pin");
 exports.setRemovalPin = pin.setRemovalPin;
 exports.migratePin = pin.migratePin;
 exports.verifyRemovalPin = pin.verifyRemovalPin;
+exports.linkedParentInfo = pairing.linkedParentInfo;

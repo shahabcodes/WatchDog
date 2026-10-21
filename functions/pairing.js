@@ -285,3 +285,25 @@ async function consumeInviteFor(childId, code) {
 
 exports._internal = { consumeInviteFor, requireId, rateLimit, isAnonymous, notifyParents, CODE_LENGTH };
 exports._test = { normalizeCode, newCode };
+
+/**
+ * Who supervises a child: the linked parents' emails, so Shield can always show
+ * "Supervised by …". Callable by the child device itself or a linked parent.
+ * Data: { childId? }. Returns { parents: [{ uid, email }] }.
+ */
+exports.linkedParentInfo = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
+  const childId = request.data && request.data.childId ? requireId(request.data.childId, "child") : uid;
+  const snap = await db().doc(`children/${childId}`).get();
+  if (!snap.exists) return { parents: [] };
+  const parents = (snap.get("linkedParents") || []).filter((p) => typeof p === "string");
+  if (uid !== childId && !parents.includes(uid)) {
+    throw new HttpsError("permission-denied", "You are not linked to this child.");
+  }
+  if (parents.length === 0) return { parents: [] };
+  const { getAuth } = require("firebase-admin/auth");
+  const result = await getAuth().getUsers(parents.map((p) => ({ uid: p })));
+  const emails = new Map(result.users.map((u) => [u.uid, u.email || ""]));
+  return { parents: parents.map((p) => ({ uid: p, email: emails.get(p) || "" })) };
+});

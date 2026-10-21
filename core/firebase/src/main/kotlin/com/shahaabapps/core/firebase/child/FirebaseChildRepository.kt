@@ -93,6 +93,16 @@ class FirebaseChildRepository @Inject constructor(
         awaitClose { registration.remove() }
     }
 
+    override suspend fun linkedParentInfo(childId: String?): AppResult<List<ParentInfo>> = runCatchingResult {
+        val args = hashMapOf<String, Any>()
+        if (childId != null) args["childId"] = childId
+        val data = functions.getHttpsCallable("linkedParentInfo").callSafely(args).getData() as? Map<*, *>
+        (data?.get("parents") as? List<*>).orEmpty().mapNotNull { p ->
+            val m = p as? Map<*, *> ?: return@mapNotNull null
+            ParentInfo(uid = m["uid"] as? String ?: return@mapNotNull null, email = m["email"] as? String ?: "")
+        }
+    }
+
     override suspend fun respondToParentRequest(parentId: String, approve: Boolean): AppResult<Unit> =
         runCatchingResult {
             functions.getHttpsCallable("respondToParentRequest")

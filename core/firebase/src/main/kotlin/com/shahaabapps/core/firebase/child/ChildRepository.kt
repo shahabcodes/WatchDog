@@ -33,6 +33,9 @@ interface ChildRepository {
     /** Parents waiting for approval on this child's phone (child side). */
     fun observeParentRequests(childId: String): Flow<List<ParentRequest>>
 
+    /** The linked parents' accounts (uid + email), for "Supervised by …". */
+    suspend fun linkedParentInfo(childId: String? = null): AppResult<List<ParentInfo>>
+
     /** The child device approves or denies a waiting parent. */
     suspend fun respondToParentRequest(parentId: String, approve: Boolean): AppResult<Unit>
 
@@ -71,6 +74,9 @@ interface ChildRepository {
 
 /** A server-issued pairing code and when it stops working. */
 data class PairingCode(val code: String, val expiresAtMillis: Long)
+
+/** A linked parent account. */
+data class ParentInfo(val uid: String, val email: String)
 
 /** A parent who redeemed this child's code and awaits approval on the child's phone. */
 data class ParentRequest(val parentId: String, val email: String, val expiresAtMillis: Long)

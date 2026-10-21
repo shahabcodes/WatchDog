@@ -378,6 +378,7 @@ private fun KidMe(child: ChildAccount, onSettings: () -> Unit) {
                 )
             }
         }
+        SupervisedByCard(linkedParentIds = child.linkedParents, cardColor = CARD, titleColor = NAVY, mutedColor = MUTED)
         Text("WHAT YOUR PARENT CAN SEE", color = MUTED, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
         Column(
             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(CARD).padding(horizontal = 14.dp),

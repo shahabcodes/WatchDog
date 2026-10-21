@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.shahaabapps.core.common.AppResult
 import com.shahaabapps.core.firebase.auth.AuthRepository
+import com.shahaabapps.core.firebase.auth.PasswordRule
 import com.shahaabapps.core.firebase.auth.SignInOutcome
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,7 +42,8 @@ data class AuthUiState(
         get() = when {
             isSubmitting -> false
             isForgot -> email.contains("@")
-            isSignUp -> email.contains("@") && password.length >= 6 && confirmPassword == password
+            isSignUp -> email.contains("@") && PasswordRule.problem(password) == null && confirmPassword == password
+            // Sign-in still accepts passwords set before the current rule.
             else -> email.contains("@") && password.length >= 6
         }
 }
@@ -92,7 +94,11 @@ class AuthViewModel @Inject constructor(
                         when (val result = authRepository.signUpWithEmail(current.email, current.password)) {
                             is AppResult.Success -> _uiState.update { it.copy(isSubmitting = false) }
                             is AppResult.Failure -> _uiState.update {
-                                it.copy(isSubmitting = false, errorMessage = result.error.message ?: "Authentication failed")
+                                it.copy(
+                                    isSubmitting = false,
+                                    errorMessage = PasswordRule.friendlyError(result.error)
+                                        ?: result.error.message ?: "Authentication failed",
+                                )
                             }
                         }
                     } else {

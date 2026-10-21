@@ -113,6 +113,12 @@ describe("attacks are refused", () => {
       packageName: "com.extra", label: "ok", installedAtMillis: 1, body: "phishing text",
     }));
   });
+  it("only the owner can delete their shared key", async () => {
+    await assertSucceeds(setDoc(doc(parent(), `publicKeys/${PARENT}`), { e2ePublicKey: "pk", aad2: true }));
+    await assertFails(deleteDoc(doc(stranger(), `publicKeys/${PARENT}`)));
+    await assertFails(deleteDoc(doc(child(), `publicKeys/${PARENT}`)));
+    await assertSucceeds(deleteDoc(doc(parent(), `publicKeys/${PARENT}`)));
+  });
   it("nobody can publish a device key for someone else, or wrap keys as a parent", async () => {
     await assertFails(setDoc(doc(stranger(), `publicKeys/${PARENT}/devices/evil`), { e2ePublicKey: "attacker", aad2: true }));
     await assertFails(setDoc(doc(child(), `publicKeys/${PARENT}/devices/evil`), { e2ePublicKey: "attacker" }));

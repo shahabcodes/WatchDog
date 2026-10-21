@@ -29,6 +29,16 @@ const GUARD_LABELS = {
   parentKeysOk: "a parent's phone key changed and is waiting for approval on the child's phone (if that wasn't you, someone may have your Watch Dog login)",
 };
 
+// Protections that stay off until someone turns them back on (the others are
+// one-off events). While any is off, parents get a reminder once a day, also
+// when it was never on (a true -> false flip is alerted straight away).
+const PERSISTENT_GUARDS = {
+  admin: "uninstall protection (device admin)",
+  accessibility: "app blocking (accessibility)",
+  usageAccess: "screen-time tracking (usage access)",
+};
+const REMIND_MS = 24 * 60 * 60 * 1000;
+
 // Which parent alert switch (settings/alerts) controls each guard flag.
 const GUARD_SWITCH = {
   accessibility: "protectionOff",
@@ -51,6 +61,12 @@ async function alertSwitches(childId) {
     travel: on("travel"),
     noCheckIn: on("noCheckIn"),
   };
+}
+
+/** Whether the parent has uninstall protection switched on (settings/protection). */
+async function uninstallWanted(childId) {
+  const snap = await db().doc(`children/${childId}/settings/protection`).get().catch(() => null);
+  return !!(snap && snap.exists && snap.get("uninstallBlocked") === true);
 }
 
 /** Current UTC offset of an IANA zone in minutes, or null if unknown. */
@@ -84,6 +100,15 @@ exports.watchChildGuard = onDocumentUpdated("children/{childId}", async (event) 
   const beforeDevice = before.device || {};
   const afterDevice = after.device || {};
   const work = [];
+  const beforeGuard = beforeDevice.guard || {};
+  const afterGuard = afterDevice.guard || {};
+  // Protections switched off since the last report.
+  // Shield drops device admin itself when the parent switches uninstall
+  // protection off, so "admin" only counts while protection is wanted.
+  const wantAdmin = afterGuard.admin === false ? await uninstallWanted(childId) : true;
+  const flipped = Object.keys(GUARD_LABELS)
+    .filter((k) => beforeGuard[k] === true && afterGuard[k] === false)
+    .filter((k) => k !== "admin" || wantAdmin);
 
   // Liveness by server time, on every heartbeat.
   if (afterDevice.lastSeenMillis !== beforeDevice.lastSeenMillis) {
@@ -104,7 +129,28 @@ exports.watchChildGuard = onDocumentUpdated("children/{childId}", async (event) 
       const homeOff = home ? offsetMinutes(home) : null;
       const away = tzOff !== null && homeOff !== null && tzOff !== homeOff;
       const sameAway = away && p.awayZone === tz;
+      // Protections still off: remind once a day (straight away the first time).
+      // A flip in this same report is already alerted below, so it isn't repeated.
+      const missing = Object.keys(PERSISTENT_GUARDS)
+        .filter((k) => afterGuard[k] === false)
+        .filter((k) => k !== "admin" || wantAdmin);
+      let protectionRemindedAt = missing.length > 0 ? (p.protectionRemindedAt || null) : null;
+      const lastReminder = protectionRemindedAt ? protectionRemindedAt.toMillis() : 0;
+      if (missing.length > 0 && Date.now() - lastReminder >= REMIND_MS) {
+        protectionRemindedAt = Timestamp.now();
+        const alreadyAlerted = missing.every((k) => flipped.includes(k));
+        if (!alreadyAlerted && (await alertSwitches(childId)).protectionOff) {
+          await pairing.notifyParents(
+            parents,
+            `${childName}'s phone isn't fully protected`,
+            `On ${childName}'s phone, ${missing.map((k) => PERSISTENT_GUARDS[k]).join(", ")} ` +
+              `${missing.length === 1 ? "is" : "are"} off. Open Shield on that phone → Protection setup to turn ` +
+              `${missing.length === 1 ? "it" : "them"} on.`,
+          );
+        }
+      }
       await monitorRef.set({
+        protectionRemindedAt,
         lastHeartbeatAt: Timestamp.now(),
         staleAlerted: false,
         parents,
@@ -117,11 +163,6 @@ exports.watchChildGuard = onDocumentUpdated("children/{childId}", async (event) 
     })());
   }
 
-  // Protections switched off since the last report.
-  const beforeGuard = beforeDevice.guard || {};
-  const afterGuard = afterDevice.guard || {};
-  const flipped = Object.keys(GUARD_LABELS)
-    .filter((k) => beforeGuard[k] === true && afterGuard[k] === false);
   const switches = flipped.length > 0 ? await alertSwitches(childId) : null;
   const turnedOff = flipped
     .filter((k) => switches[GUARD_SWITCH[k]])

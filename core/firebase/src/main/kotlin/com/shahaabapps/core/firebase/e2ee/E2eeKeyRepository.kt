@@ -28,6 +28,8 @@ import javax.inject.Inject
 interface E2eeKeyRepository {
     suspend fun publishChildPublicKey(childId: String, publicKeyB64: String): AppResult<Unit>
     suspend fun publishParentPublicKey(parentUid: String, publicKeyB64: String): AppResult<Unit>
+    /** Parent: remove the shared key (the last of their phones signed out). */
+    suspend fun deleteParentPublicKey(parentUid: String): AppResult<Unit>
 
     suspend fun getChildPublicKey(childId: String): String?
     suspend fun getParentPublicKey(parentUid: String): String?
@@ -48,9 +50,11 @@ interface E2eeKeyRepository {
 
     /**
      * The parent's published key and the existing wrap, read from the SERVER (never
-     * the offline cache), for key-change checks. Null when the server can't be reached.
+     * the offline cache), for key-change checks. The key read fails when the server
+     * can't be reached, and succeeds with null when the parent has no key; the wrap
+     * read is null in either case.
      */
-    suspend fun getParentKeyFresh(parentUid: String): String?
+    suspend fun readParentKeyFresh(parentUid: String): Result<String?>
     suspend fun getWrappedKeyFresh(childId: String, parentUid: String): WrappedKey?
     fun observeWrappedKey(childId: String, parentUid: String): Flow<WrappedKey?>
     suspend fun deleteWrappedKey(childId: String, parentUid: String): AppResult<Unit>
@@ -110,6 +114,9 @@ class FirebaseE2eeKeyRepository @Inject constructor(
     override suspend fun publishParentPublicKey(parentUid: String, publicKeyB64: String): AppResult<Unit> =
         publishPublicKey(parentUid, publicKeyB64)
 
+    override suspend fun deleteParentPublicKey(parentUid: String): AppResult<Unit> =
+        runCatchingResult { firestore.collection(PUBLIC_KEYS).document(parentUid).delete().await() }
+
     private suspend fun publishPublicKey(uid: String, publicKeyB64: String): AppResult<Unit> =
         runCatchingResult {
             firestore.collection(PUBLIC_KEYS).document(uid)
@@ -155,10 +162,10 @@ class FirebaseE2eeKeyRepository @Inject constructor(
         ).await()
     }
 
-    override suspend fun getParentKeyFresh(parentUid: String): String? = runCatching {
+    override suspend fun readParentKeyFresh(parentUid: String): Result<String?> = runCatching {
         firestore.collection(PUBLIC_KEYS).document(parentUid)
-            .get(com.google.firebase.firestore.Source.SERVER).await().getString(FIELD_PUBLIC_KEY)
-    }.getOrNull()?.ifBlank { null }
+            .get(com.google.firebase.firestore.Source.SERVER).await().getString(FIELD_PUBLIC_KEY)?.ifBlank { null }
+    }
 
     override suspend fun getWrappedKeyFresh(childId: String, parentUid: String): WrappedKey? = runCatching {
         val doc = wrappedDoc(childId, parentUid).get(com.google.firebase.firestore.Source.SERVER).await()

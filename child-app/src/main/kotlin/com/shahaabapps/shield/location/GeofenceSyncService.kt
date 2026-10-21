@@ -266,6 +266,11 @@ class GeofenceSyncService : Service() {
                 val stats = runCatching { batteryTracker.record(pct, charging, now, batteryTempTenths()) }.getOrNull()
                 runCatching { com.shahaabapps.shield.enforcement.TrustedClock.syncIfStale() }
                 val perms = com.shahaabapps.shield.enforcement.ChildPermissions.snapshot(this@GeofenceSyncService)
+                com.shahaabapps.shield.enforcement.ProtectionReminder.update(
+                    this@GeofenceSyncService,
+                    adminActive = perms.adminActive ||
+                        !com.shahaabapps.shield.enforcement.ProtectionLocalStore.isBlocked(this@GeofenceSyncService),
+                )
                 val drain = drainPerHour
                 // Fire-and-forget the network writes so the sampling loop keeps its
                 // 2-min cadence even offline (the writes queue in Firestore's offline

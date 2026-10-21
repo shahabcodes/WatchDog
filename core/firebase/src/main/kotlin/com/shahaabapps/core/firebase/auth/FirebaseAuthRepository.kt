@@ -85,6 +85,12 @@ class FirebaseAuthRepository @Inject constructor(
             auth.sendPasswordResetEmail(email).await()
         }
 
+    override suspend fun changePassword(newPassword: String): AppResult<Unit> =
+        runCatchingResult {
+            requireNotNull(auth.currentUser) { "Not signed in" }.updatePassword(newPassword).await()
+            Unit
+        }
+
     override fun isMfaEnrolled(): Boolean =
         auth.currentUser?.multiFactor?.enrolledFactors?.isNotEmpty() == true
 

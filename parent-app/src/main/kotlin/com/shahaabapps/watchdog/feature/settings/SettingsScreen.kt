@@ -9,6 +9,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.LockReset
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.BugReport
@@ -41,6 +42,7 @@ import com.shahaabapps.watchdog.util.MapStyle
 fun SettingsScreen(
     onBack: () -> Unit,
     onOpenSecurity: () -> Unit = {},
+    onOpenChangePassword: () -> Unit = {},
     onOpenDiagnostics: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
@@ -103,6 +105,12 @@ fun SettingsScreen(
                     subtitle = "Protect sign-in with an authenticator app",
                     leadingIcon = Icons.Filled.Shield,
                     onClick = onOpenSecurity,
+                )
+                CupertinoListRow(
+                    title = "Change password",
+                    subtitle = "Choose a new password for this account",
+                    leadingIcon = Icons.Filled.Key,
+                    onClick = onOpenChangePassword,
                 )
                 CupertinoListRow(
                     title = if (sendingReset) "Sending reset link…" else "Reset password",

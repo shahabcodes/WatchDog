@@ -555,7 +555,7 @@ private fun LhPasswordField(
 @Composable
 private fun PasswordStrength(pw: String) {
     var score = 0
-    if (pw.length >= 8) score++
+    if (pw.length >= com.shahaabapps.core.firebase.auth.PasswordRule.MIN_LENGTH) score++
     if (pw.any { it.isUpperCase() } && pw.any { it.isLowerCase() }) score++
     if (pw.any { it.isDigit() }) score++
     if (pw.any { !it.isLetterOrDigit() } || pw.length >= 14) score++
@@ -574,11 +574,20 @@ private fun PasswordStrength(pw: String) {
                 )
             }
         }
+        val problem = com.shahaabapps.core.firebase.auth.PasswordRule.problem(pw)
         Text(
-            if (pw.isEmpty()) "Use 8+ characters with a number" else "${labels[score]} password",
+            when {
+                pw.isEmpty() -> com.shahaabapps.core.firebase.auth.PasswordRule.HINT
+                problem != null -> problem
+                else -> "${labels[score]} password"
+            },
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
-            color = if (pw.isEmpty()) LABEL else color,
+            color = when {
+                pw.isEmpty() -> LABEL
+                problem != null -> Color(0xFFC1362B)
+                else -> color
+            },
         )
     }
 }

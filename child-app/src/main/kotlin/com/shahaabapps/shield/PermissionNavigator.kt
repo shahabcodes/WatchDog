@@ -15,6 +15,7 @@ object PermissionNavigator {
         val pkg = context.packageName
         return when (permission) {
             "accessibility" -> Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            "admin" -> com.shahaabapps.shield.enforcement.DeviceAdmin.addIntent(context)
             "usageAccess" -> Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
             "notifications" -> Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                 .putExtra(Settings.EXTRA_APP_PACKAGE, pkg)
@@ -38,6 +39,7 @@ object PermissionNavigator {
     fun label(permission: String): String = when (permission) {
         "location" -> "Location — set to \"Allow all the time\""
         "accessibility" -> "Accessibility for Shield"
+        "admin" -> "Uninstall protection for Shield"
         "usageAccess" -> "Usage access for Shield"
         "notifications" -> "Notifications for Shield"
         "battery" -> "Unrestricted battery for Shield"

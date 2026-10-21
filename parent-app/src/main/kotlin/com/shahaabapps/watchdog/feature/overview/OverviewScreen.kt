@@ -117,6 +117,7 @@ fun OverviewScreen(
     val mapStyle by mapStyleViewModel.style.collectAsStateWithLifecycle()
     val keyVerified by viewModel.keyVerified.collectAsStateWithLifecycle()
     val installGuardEnabled by viewModel.installGuardEnabled.collectAsStateWithLifecycle()
+    val uninstallWanted by viewModel.uninstallProtectionWanted.collectAsStateWithLifecycle()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     // NOTE: childLocation / currentPlace are collected inside the hero item (not here)
     // so a GPS fix only recomposes the hero, not the whole dashboard.
@@ -185,6 +186,21 @@ fun OverviewScreen(
                     onRefresh = { viewModel.refresh() },
                     onFocus = { showFocusSheet = true },
                 )
+            }
+        }
+        // Missing protections, loudly, near the top.
+        state.permissions?.let { perms ->
+            val missing = missingProtections(perms, uninstallWanted)
+            if (missing.isNotEmpty()) {
+                item(key = "protectionIncomplete") {
+                    Box(Modifier.padding(horizontal = Spacing.lg)) {
+                        ProtectionIncompleteCard(
+                            childName = state.childName,
+                            missing = missing,
+                            onRequestAdmin = { viewModel.requestPermission("admin") }.takeIf { uninstallWanted && !perms.adminActive },
+                        )
+                    }
+                }
             }
         }
         // Location health: surfaces why location might be stale (offline, GPS off,
@@ -326,6 +342,7 @@ fun OverviewScreen(
                         PermissionsCard(
                             perms,
                             showStorage = installGuardEnabled,
+                            uninstallWanted = uninstallWanted,
                             onRequest = { viewModel.requestPermission(it) },
                         )
                     }
@@ -1499,11 +1516,66 @@ private fun healthAgo(millis: Long): String {
     }
 }
 
+/** Protections that are off on the child's phone, worst first. */
+private fun missingProtections(
+    perms: com.shahaabapps.core.model.DevicePermissions,
+    uninstallWanted: Boolean,
+): List<String> = buildList {
+    if (uninstallWanted && !perms.adminActive) add("Uninstall protection is off, so Shield can be removed.")
+    if (!perms.accessibility) add("App blocking (accessibility) is off.")
+    if (!perms.usageAccess) add("Screen-time tracking (usage access) is off.")
+    if (!perms.clockOk) add("The date or time was changed by hand.")
+    if (!perms.gpsGenuine) add("A fake-location app is being used.")
+}
+
+@Composable
+private fun ProtectionIncompleteCard(childName: String, missing: List<String>, onRequestAdmin: (() -> Unit)?) {
+    var requested by remember { mutableStateOf(false) }
+    Column(
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .background(AppTheme.colors.destructive.copy(alpha = 0.12f))
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.Error, contentDescription = null, tint = AppTheme.colors.destructive)
+            Text(
+                "Protection incomplete",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = AppTheme.colors.destructive,
+                modifier = Modifier.padding(start = Spacing.sm),
+            )
+        }
+        missing.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
+        Text(
+            "To fix: open Shield on $childName's phone → Protection setup.",
+            style = MaterialTheme.typography.bodySmall,
+            color = AppTheme.colors.secondaryLabel,
+        )
+        if (onRequestAdmin != null) {
+            Text(
+                if (requested) "Asked $childName's phone to turn on uninstall protection" else "Ask $childName's phone to turn it on",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = if (requested) AppTheme.colors.secondaryLabel else AppTheme.colors.accent,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(enabled = !requested) { requested = true; onRequestAdmin() }
+                    .padding(vertical = 4.dp),
+            )
+        }
+    }
+}
+
 /** What permissions / special access the child has granted, for the parent. */
 @Composable
 private fun PermissionsCard(
     perms: com.shahaabapps.core.model.DevicePermissions,
     showStorage: Boolean,
+    uninstallWanted: Boolean,
     onRequest: (String) -> Unit,
 ) {
     val locationLabel = when {
@@ -1514,6 +1586,18 @@ private fun PermissionsCard(
     CupertinoCard {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             PermRow(Icons.Filled.LocationOn, "Location", perms.locationAlways, locationLabel, "location", onRequest)
+            PermRow(
+                Icons.Filled.Lock,
+                "Uninstall protection",
+                ok = perms.adminActive || !uninstallWanted,
+                detail = when {
+                    perms.adminActive -> "On"
+                    !uninstallWanted -> "Switched off in Protection settings — Shield can be uninstalled"
+                    else -> "Off — Shield can be uninstalled"
+                },
+                permKey = "admin",
+                onRequest = onRequest,
+            )
             PermRow(Icons.Filled.Accessibility, "Accessibility", perms.accessibility, if (perms.accessibility) "On" else "Off — blocking & screenshots won't work", "accessibility", onRequest)
             PermRow(Icons.Filled.Schedule, "Usage access", perms.usageAccess, if (perms.usageAccess) "On" else "Off — screen time won't be tracked", "usageAccess", onRequest)
             PermRow(Icons.Filled.Notifications, "Notifications", perms.notifications, if (perms.notifications) "On" else "Off", "notifications", onRequest)

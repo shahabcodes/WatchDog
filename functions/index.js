@@ -297,6 +297,7 @@ exports.triggerPermissionRequest = onDocumentWritten(
     const labels = {
       location: "location access",
       accessibility: "the accessibility service",
+      admin: "uninstall protection",
       usageAccess: "usage access",
       notifications: "notifications",
       battery: "unrestricted battery",

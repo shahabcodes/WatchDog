@@ -84,6 +84,9 @@ interface AuthRepository {
     /** Sends a password-reset email to [email]. */
     suspend fun sendPasswordReset(email: String): AppResult<Unit>
 
+    /** Sets a new password for the signed-in user (after a recent [reauthenticate]). */
+    suspend fun changePassword(newPassword: String): AppResult<Unit>
+
     /**
      * Signs out. First removes this device's FCM token from the current user's
      * `fcmTokens` so the device stops receiving that account's push notifications

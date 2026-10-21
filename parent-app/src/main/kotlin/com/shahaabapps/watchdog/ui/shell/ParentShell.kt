@@ -322,11 +322,15 @@ fun ParentShell(
                 SettingsScreen(
                     onBack = { navController.popBackStack() },
                     onOpenSecurity = { navController.navigate("security") },
+                    onOpenChangePassword = { navController.navigate("password") },
                     onOpenDiagnostics = { navController.navigate("diagnostics") },
                 )
             }
             composable("security") {
                 com.shahaabapps.watchdog.feature.security.MfaScreen(onBack = { navController.popBackStack() })
+            }
+            composable("password") {
+                com.shahaabapps.watchdog.feature.security.ChangePasswordScreen(onBack = { navController.popBackStack() })
             }
             composable("diagnostics") {
                 com.shahaabapps.watchdog.feature.diagnostics.DiagnosticsScreen(onBack = { navController.popBackStack() })

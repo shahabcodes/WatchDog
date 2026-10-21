@@ -66,6 +66,7 @@ class OverviewViewModel @Inject constructor(
     e2eeManager: com.shahaabapps.core.firebase.e2ee.E2eeManager,
     e2eeMigrator: com.shahaabapps.core.firebase.e2ee.E2eeMigrator,
     installGuardRepository: com.shahaabapps.core.firebase.installguard.InstallGuardRepository,
+    protectionRepository: com.shahaabapps.core.firebase.protection.ProtectionRepository,
 ) : ViewModel() {
 
     private val childId: String = checkNotNull(savedStateHandle["childId"])
@@ -78,6 +79,11 @@ class OverviewViewModel @Inject constructor(
     /** Whether the parent has enabled the sideload install guard (gates the file-access permission row). */
     val installGuardEnabled: StateFlow<Boolean> = installGuardRepository.observe(childId)
         .map { it.enabled }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    /** Whether the parent has uninstall protection switched on (Shield then holds device admin). */
+    val uninstallProtectionWanted: StateFlow<Boolean> = protectionRepository.observe(childId)
+        .map { it.uninstallBlocked }
+        .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
     private val todayDate: LocalDate = LocalDate.now()
     private val today: String = todayDate.toString()

@@ -224,6 +224,9 @@ class DashboardViewModel @Inject constructor(
         _linkState.value = LinkState.Idle
     }
 
+    /** True while signing out (network clean-up), for the "Signing out…" overlay. */
+    val signingOut: StateFlow<Boolean> = authRepository.signingOut
+
     /** Signs the parent out; the app returns to the auth flow. */
     fun signOut() {
         viewModelScope.launch { authRepository.signOut() }

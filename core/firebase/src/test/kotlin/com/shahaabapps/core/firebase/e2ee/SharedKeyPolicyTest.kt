@@ -31,7 +31,10 @@ class SharedKeyPolicyTest {
         assertEquals(ChildAction.DROP, action(SharedKey.Missing))
 
     @Test fun signedOutPhoneKeyIsDroppedEvenIfPinned() =
-        assertEquals(ChildAction.DROP, action(SharedKey.Present("A"), revoked = setOf("A")))
+        assertEquals(ChildAction.DROP, action(SharedKey.Present("A"), revoked = setOf("A"), listed = emptySet()))
+
+    @Test fun signedOutPhoneThatSignedBackInIsTrustedAgain() =
+        assertEquals(ChildAction.PIN_AND_WRAP, action(SharedKey.Present("A"), revoked = setOf("A"), listed = setOf("A")))
 
     @Test fun handoverToApprovedPhoneIsAcceptedQuietly() =
         assertEquals(ChildAction.PIN_AND_WRAP, action(SharedKey.Present("B"), approved = setOf("B"), listed = setOf("B")))
@@ -66,8 +69,9 @@ class SharedKeyPolicyTest {
         assertTrue(SharedKeyPolicy.deviceTrustedOnSight("A", null, true, "A", emptySet()))
         // A new phone needs approving.
         assertFalse(SharedKeyPolicy.deviceTrustedOnSight("D", null, true, "A", emptySet()))
-        // A phone that signed out needs approving again, even with the shared key's fp.
-        assertFalse(SharedKeyPolicy.deviceTrustedOnSight("A", null, true, "A", setOf("A")))
+        // A phone that signed out and signed back in (same key) is trusted again.
+        assertTrue(SharedKeyPolicy.deviceTrustedOnSight("A", null, true, "A", setOf("A")))
+        assertTrue(SharedKeyPolicy.deviceTrustedOnSight("B", null, true, "A", setOf("B")))
     }
 
     // ---- Watch Dog: signing out ----

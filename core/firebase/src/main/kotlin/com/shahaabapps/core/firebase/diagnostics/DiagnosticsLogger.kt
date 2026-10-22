@@ -60,6 +60,7 @@ class DiagnosticsLogger @Inject constructor(
                 val anon = a.currentUser?.isAnonymous == true
                 info("auth", if (now == null) "signed out (was ${lastUid ?: "-"})" else "signed in uid=$now${if (anon) " (child)" else ""}")
                 lastUid = now
+                if (now != null) flushSignedOut()
             }
         }
         app.registerActivityLifecycleCallbacks(object : android.app.Application.ActivityLifecycleCallbacks {
@@ -155,8 +156,26 @@ class DiagnosticsLogger @Inject constructor(
     private var windowStart = 0L
     private var windowCount = 0
 
+    /**
+     * Events from while no one is signed in (the server only takes events from a
+     * signed-in app): kept here and uploaded after the next sign-in, marked.
+     */
+    private val signedOutQueue = ArrayDeque<Pair<Event, Throwable?>>()
+
+    private fun flushSignedOut() {
+        val queued = synchronized(lock) { signedOutQueue.toList().also { signedOutQueue.clear() } }
+        queued.forEach { (e, t) -> mirror(e.copy(message = "[while signed out] ${e.message}"), t) }
+    }
+
     /** Uploads one event, at most [UPLOADS_PER_HOUR] per hour from this install. */
     private fun mirror(event: Event, t: Throwable?) {
+        if (uid() == null) {
+            synchronized(lock) {
+                signedOutQueue.addLast(event to t)
+                while (signedOutQueue.size > SIGNED_OUT_CAP) signedOutQueue.removeFirst()
+            }
+            return
+        }
         synchronized(lock) {
             if (event.atMillis - windowStart > 60 * 60 * 1000L) { windowStart = event.atMillis; windowCount = 0 }
             if (windowCount >= UPLOADS_PER_HOUR) return
@@ -190,6 +209,7 @@ class DiagnosticsLogger @Inject constructor(
         const val COLLECTION = "diagEvents"
         const val UPLOADS_PER_HOUR = 300
         const val REPEAT_WINDOW_MS = 60_000L
+        const val SIGNED_OUT_CAP = 100
         const val KEEP_MS = 30L * 24 * 60 * 60 * 1000
     }
 }

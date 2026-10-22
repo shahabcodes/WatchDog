@@ -54,7 +54,9 @@ internal object SharedKeyPolicy {
         }
         SharedKey.Missing -> ChildAction.DROP
         is SharedKey.Present -> when {
-            shared.fp in revokedFps -> ChildAction.DROP
+            // A phone that signed out: refused while it's gone, trusted again once it
+            // has signed back in (it is listed again; it was approved before).
+            shared.fp in revokedFps -> if (listedDeviceFps?.contains(shared.fp) == true) ChildAction.PIN_AND_WRAP else ChildAction.DROP
             pinnedFp == shared.fp -> ChildAction.WRAP
             // Linked before pinning existed: trust what is there now (first sight).
             pinnedFp == null -> ChildAction.PIN_AND_WRAP
@@ -80,8 +82,9 @@ internal object SharedKeyPolicy {
         revokedFps: Set<String>,
     ): Boolean = when {
         pinnedFp == fp -> true
-        // A phone that signed out needs approving again when it comes back.
-        fp in revokedFps -> false
+        // A phone that was approved, signed out, and signed back in to this account:
+        // the same phone key, so no new approval (it got nothing while signed out).
+        fp in revokedFps -> true
         pinnedFp == null && (!hasAnyPin || sharedPinFp == fp) -> true
         else -> false
     }

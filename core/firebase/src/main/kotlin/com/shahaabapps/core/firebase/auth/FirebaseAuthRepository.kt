@@ -214,27 +214,59 @@ class FirebaseAuthRepository @Inject constructor(
             .callSafely(name = "redeemMfaBackupCode", data = hashMapOf("email" to email.trim(), "password" to password, "code" to code.trim()))
     }
 
+    private val _signingOut = kotlinx.coroutines.flow.MutableStateFlow(false)
+    override val signingOut: kotlinx.coroutines.flow.StateFlow<Boolean> = _signingOut
+
     override suspend fun signOut() {
-        // Detach this device's FCM token from the signed-in account BEFORE signing
-        // out (afterwards the delete would be denied). Best-effort: a failure here
-        // must not block sign-out.
-        val uid = auth.currentUser?.uid
-        if (uid != null) {
-            runCatching {
-                val token = FirebaseMessaging.getInstance().token.await()
-                messagingTokenRepository.removeToken(uid, token)
+        if (_signingOut.value) return
+        _signingOut.value = true
+        // Not tied to the screen that started it: leaving the screen must not stop
+        // a half-done sign-out. Each network step is time-limited, so a slow or
+        // missing connection delays sign-out by seconds, never forever.
+        try {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                val start = System.currentTimeMillis()
+                val uid = auth.currentUser?.uid
+                com.shahaabapps.core.common.Diag.action("auth.signOut", "uid=${uid ?: "-"}")
+                // Detach this device's FCM token from the signed-in account BEFORE
+                // signing out (afterwards the delete would be denied).
+                if (uid != null) {
+                    step("remove alert token") {
+                        val token = FirebaseMessaging.getInstance().token.await()
+                        messagingTokenRepository.removeToken(uid, token)
+                    }
+                    // Remove this device's encryption key so children stop sharing with it.
+                    step("remove device key") { e2eeManager.unpublishDevice(uid) }
+                }
+                // Also invalidate the token itself, so a copy that couldn't be removed
+                // (e.g. offline) stops delivering the previous account's alerts.
+                step("delete alert token") { FirebaseMessaging.getInstance().deleteToken().await() }
+                auth.signOut()
+                // Drop in-memory E2EE key material and cached place names so a
+                // different account on this device starts clean.
+                e2eeManager.clearSession()
+                backupCodeSignInNotice = false
+                runCatching { com.shahaabapps.core.firebase.geofence.GeofenceNameCache.clear(appContext) }
+                com.shahaabapps.core.common.Diag.info("auth", "sign-out done in ${System.currentTimeMillis() - start}ms")
             }
+        } finally {
+            _signingOut.value = false
         }
-        // Remove this device's encryption key so children stop sharing with it.
-        if (uid != null) runCatching { e2eeManager.unpublishDevice(uid) }
-        // Also invalidate the token itself, so a copy that couldn't be removed
-        // (e.g. offline) stops delivering the previous account's alerts.
-        runCatching { FirebaseMessaging.getInstance().deleteToken().await() }
-        auth.signOut()
-        // Drop in-memory E2EE key material and cached place names so a different
-        // account on this device starts clean.
-        e2eeManager.clearSession()
-        backupCodeSignInNotice = false
-        runCatching { com.shahaabapps.core.firebase.geofence.GeofenceNameCache.clear(appContext) }
+    }
+
+    /** One best-effort sign-out step, at most [SIGN_OUT_STEP_MS]; a failure or timeout is logged, not fatal. */
+    private suspend fun step(name: String, block: suspend () -> Unit) {
+        val start = System.currentTimeMillis()
+        val done = runCatching { kotlinx.coroutines.withTimeoutOrNull(SIGN_OUT_STEP_MS) { block(); true } }
+        val ms = System.currentTimeMillis() - start
+        when {
+            done.isFailure -> com.shahaabapps.core.common.Diag.warn("auth", "sign-out: $name failed after ${ms}ms", done.exceptionOrNull())
+            done.getOrNull() == null -> com.shahaabapps.core.common.Diag.warn("auth", "sign-out: $name timed out after ${ms}ms")
+            else -> com.shahaabapps.core.common.Diag.info("auth", "sign-out: $name ok ${ms}ms")
+        }
+    }
+
+    private companion object {
+        const val SIGN_OUT_STEP_MS = 6_000L
     }
 }

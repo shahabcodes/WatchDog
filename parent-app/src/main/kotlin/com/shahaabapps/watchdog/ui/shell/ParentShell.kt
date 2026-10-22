@@ -176,6 +176,20 @@ fun ParentShell(
 
     val initialChild = rememberSaveable { children.first().childId }
     val navController = rememberNavController()
+    val signingOut by viewModel.signingOut.collectAsStateWithLifecycle()
+    if (signingOut) {
+        com.shahaabapps.core.ui.components.AppDialog(
+            onDismiss = { },
+            title = "Signing out…",
+            dismissText = null,
+            dismissOnOutsideTouch = false,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                com.shahaabapps.core.ui.components.AppLoader(size = 22.dp)
+                Text("  Removing this phone from your account.")
+            }
+        }
+    }
     // Diagnostics: which screen the parent is on (route only, no ids' contents).
     androidx.compose.runtime.LaunchedEffect(navController) {
         navController.currentBackStackEntryFlow.collect { entry ->

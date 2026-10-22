@@ -558,12 +558,16 @@ class E2eeManager @Inject constructor(
             val fp = E2ee.fingerprint(unb64(d.publicKeyB64))
             val pinned = parentPins.getString(PIN_PREFIX + key, null)
             val trusted = SharedKeyPolicy.deviceTrustedOnSight(fp, pinned, hasAnyPin, legacyPin, revoked) ||
-                (fp !in revoked && keys.getDeviceWrap(childId, parentUid, d.deviceId, fresh = true)?.parentKeyFp == fp)
+                keys.getDeviceWrap(childId, parentUid, d.deviceId, fresh = true)?.parentKeyFp == fp
             if (!trusted) {
                 markPending(key, fp, d.model)
                 continue
             }
             if (pinned != fp) parentPins.edit().putString(PIN_PREFIX + key, fp).apply()
+            if (fp in revoked) {
+                setRevoked(parentUid, revokedFps(parentUid) - fp)
+                diagnostics.info("e2ee", "parent phone signed back in, trusted again parent=$parentUid device=${d.deviceId}")
+            }
             clearPending(key)
             val existing = keys.getDeviceWrap(childId, parentUid, d.deviceId)
             if (existing == null || existing.parentKeyFp != fp || existing.ringFp != ringFp) {
@@ -613,9 +617,10 @@ class E2eeManager @Inject constructor(
         }
         val pinned = parentPins.getString(PIN_PREFIX + parentUid, null)
         val revoked = revokedFps(parentUid)
-        // The extra server reads are only needed when the key differs from the pin.
-        val changed = shared is SharedKeyPolicy.SharedKey.Present && parentFp !in revoked &&
-            pinned != null && pinned != parentFp
+        // The extra server reads are only needed when the key differs from the pin,
+        // or belongs to a phone that signed out (is it back?).
+        val changed = shared is SharedKeyPolicy.SharedKey.Present &&
+            (parentFp in revoked || (pinned != null && pinned != parentFp))
         val action = SharedKeyPolicy.childAction(
             shared = shared,
             pinnedFp = pinned,

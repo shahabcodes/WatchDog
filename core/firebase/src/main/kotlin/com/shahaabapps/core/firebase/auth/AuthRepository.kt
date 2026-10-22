@@ -98,4 +98,7 @@ interface AuthRepository {
      * (the delete needs auth), so this suspends until the token is cleared.
      */
     suspend fun signOut()
+
+    /** True while [signOut] is cleaning up (network steps), so the UI can show it. */
+    val signingOut: kotlinx.coroutines.flow.StateFlow<Boolean>
 }

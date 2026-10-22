@@ -362,6 +362,7 @@ fun OverviewScreen(
                 selectedId = selectedId,
                 onSelectChild = { showChildSheet = false; onSelectChild(it) },
                 onAddChild = { showChildSheet = false; onAddChild() },
+                onManage = { showChildSheet = false; onManage() },
                 onSettings = { showChildSheet = false; onSettings() },
                 onSignOut = { showChildSheet = false; onSignOut() },
             )
@@ -635,6 +636,7 @@ private fun ChildSwitcherSheet(
     selectedId: String,
     onSelectChild: (String) -> Unit,
     onAddChild: () -> Unit,
+    onManage: () -> Unit,
     onSettings: () -> Unit,
     onSignOut: () -> Unit,
 ) {
@@ -716,6 +718,19 @@ private fun ChildSwitcherSheet(
             }
         }
         Spacer(Modifier.height(Spacing.xs))
+        // Manage children: parents, restore a reinstalled phone, remove
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .clickable(onClick = onManage)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            Icon(Icons.Filled.Group, contentDescription = null, tint = AppTheme.colors.secondaryLabel)
+            Spacer(Modifier.width(12.dp))
+            Text("Manage children", style = MaterialTheme.typography.bodyLarge, color = AppTheme.colors.secondaryLabel)
+        }
         // Settings
         Row(
             verticalAlignment = Alignment.CenterVertically,

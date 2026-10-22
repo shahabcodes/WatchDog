@@ -54,6 +54,9 @@ class E2eeManager @Inject constructor(
     @Volatile var childEncryptionReady: Boolean = false
         private set
 
+    /** The parent account reading on this phone (for re-fetching a key-ring after a miss). */
+    @Volatile private var parentViewerUid: String? = null
+
     /** Parent-side cache of unwrapped key-rings, keyed by childId. */
     private val parentRingCache = java.util.concurrent.ConcurrentHashMap<String, List<ByteArray>>()
 
@@ -457,7 +460,13 @@ class E2eeManager @Inject constructor(
 
     /** Parent: decrypt a coordinate blob using the already-cached key-ring; null if unavailable. */
     fun openCoordsCached(childId: String, sealedB64: String, slot: String? = null): Pair<Double, Double>? {
-        val raw = tryOpenSlot(parentRingCache[childId], unb64(sealedB64), childId, slot) ?: return null
+        val raw = tryOpenSlot(parentRingCache[childId], unb64(sealedB64), childId, slot)
+        if (raw == null) {
+            // Like other reads: a miss may mean the child moved to a newer key-ring
+            // (rotation, restore), so fetch it instead of showing no location forever.
+            maybeRequestResync(childId, parentViewerUid)
+            return null
+        }
         return runCatching {
             val bb = java.nio.ByteBuffer.wrap(raw)
             bb.double to bb.double
@@ -784,6 +793,7 @@ class E2eeManager @Inject constructor(
         parentUid: String,
         childPublicKeyB64: String?,
     ): List<ByteArray>? {
+        parentViewerUid = parentUid
         parentRingCache[childId]?.let { return it }
         return withContext(Dispatchers.Default) {
             // This device's own wrap first; the per-account wrap for older Shields.
@@ -841,6 +851,7 @@ class E2eeManager @Inject constructor(
      * (per-device, not per-account) is intentionally kept.
      */
     fun clearSession() {
+        parentViewerUid = null
         parentRingCache.clear()
         verifiedParents.clear()
         signedOutParents.clear()

@@ -22,8 +22,10 @@ enum class DiagLevel { INFO, WARN, ERROR }
  *
  * - Everything is forwarded to Crashlytics (log breadcrumbs + recordException).
  * - A capped in-memory ring is kept for the in-app "export / share" screen.
- * - WARN/ERROR events are also mirrored to Firestore (metadata only) so there's a
- *   backend trail.
+ * - Every event is also uploaded to `diagEvents` (write-only for apps, kept 30
+ *   days) with the date/time, app, version and phone, so problems on a phone far
+ *   away can be read back for debugging (tools/diagnostics/read-diagnostics.js).
+ *   Capped per hour so a loop can't flood it.
  *
  * PRIVACY: metadata only — never log decrypted content, locations, app names, or
  * any E2E-encrypted payload. Tags/ids/flags/error types only.
@@ -74,8 +76,7 @@ class DiagnosticsLogger @Inject constructor(
         crashlytics?.log("[$level] $tag: $message")
         if (t != null) crashlytics?.recordException(t)
         else if (level == DiagLevel.ERROR) crashlytics?.recordException(DiagnosticException("$tag: $message"))
-        // Mirror only the important events to the backend to limit writes.
-        if (level != DiagLevel.INFO) mirror(event, t)
+        mirror(event, t)
     }
 
     /** A plain-text dump of recent events for the in-app export / share. */
@@ -91,18 +92,37 @@ class DiagnosticsLogger @Inject constructor(
 
     fun recent(): List<Event> = synchronized(lock) { ring.toList() }
 
+    private val appVersion: String by lazy {
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?"
+    }
+
+    private var windowStart = 0L
+    private var windowCount = 0
+
+    /** Uploads one event, at most [UPLOADS_PER_HOUR] per hour from this install. */
     private fun mirror(event: Event, t: Throwable?) {
+        synchronized(lock) {
+            if (event.atMillis - windowStart > 60 * 60 * 1000L) { windowStart = event.atMillis; windowCount = 0 }
+            if (windowCount >= UPLOADS_PER_HOUR) return
+            windowCount++
+        }
         scope.launch {
             runCatching {
-                firestore.collection("diagnostics").document(installId).collection("events").add(
+                firestore.collection(COLLECTION).add(
                     mapOf(
                         "at" to FieldValue.serverTimestamp(),
                         "atMillis" to event.atMillis,
+                        "expireAt" to com.google.firebase.Timestamp(java.util.Date(event.atMillis + KEEP_MS)),
                         "level" to event.level.name,
-                        "tag" to event.tag,
-                        "message" to event.message,
+                        "tag" to event.tag.take(40),
+                        "message" to event.message.take(500),
+                        "exception" to (t?.let { "${it.javaClass.simpleName}: ${it.message.orEmpty()}" } ?: "").take(300),
                         "uid" to (uid() ?: ""),
-                        "exception" to (t?.javaClass?.simpleName ?: ""),
+                        "install" to installId,
+                        "app" to context.packageName,
+                        "version" to appVersion,
+                        "model" to (android.os.Build.MODEL ?: "").take(60),
+                        "sdk" to android.os.Build.VERSION.SDK_INT,
                     ),
                 )
             }
@@ -111,6 +131,9 @@ class DiagnosticsLogger @Inject constructor(
 
     private companion object {
         const val RING_CAP = 300
+        const val COLLECTION = "diagEvents"
+        const val UPLOADS_PER_HOUR = 120
+        const val KEEP_MS = 30L * 24 * 60 * 60 * 1000
     }
 }
 

@@ -66,6 +66,24 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // App diagnostics (errors, warnings, notes) for debugging. Apps only add
+    // entries, as themselves, with a bounded shape; nobody reads them through the
+    // app (read with admin tools). Expire after 30 days (TTL on expireAt).
+    match /diagEvents/{eventId} {
+      allow create: if request.auth != null
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['at', 'atMillis', 'expireAt', 'level', 'tag', 'message',
+             'exception', 'uid', 'install', 'app', 'version', 'model', 'sdk'])
+        && request.resource.data.level in ['INFO', 'WARN', 'ERROR']
+        && request.resource.data.tag is string && request.resource.data.tag.size() <= 40
+        && request.resource.data.message is string && request.resource.data.message.size() <= 500
+        && request.resource.data.exception is string && request.resource.data.exception.size() <= 300
+        && request.resource.data.install is string && request.resource.data.install.size() <= 64
+        && request.resource.data.app is string && request.resource.data.app.size() <= 64
+        && request.resource.data.version is string && request.resource.data.version.size() <= 32
+        && request.resource.data.model is string && request.resource.data.model.size() <= 60;
+    }
+
     // One-time sign-in for a reinstalled Shield restoring an old child (written
     // by restoreChild). Only that reinstalled install may read or clear it.
     match /restoreTokens/{installId} {

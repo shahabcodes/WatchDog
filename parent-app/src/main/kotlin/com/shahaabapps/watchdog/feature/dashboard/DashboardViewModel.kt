@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -65,10 +66,13 @@ class DashboardViewModel @Inject constructor(
 
     init {
         // Publish this parent's E2EE public key so linked children can wrap their
-        // data key for it. Idempotent; safe on every launch.
+        // data key for it, for every account signed in on this phone (signing out
+        // removes it, so a second account signed in later must publish too).
+        // Idempotent; safe on every launch.
         viewModelScope.launch {
-            val uid = authRepository.currentUserId.filterNotNull().first()
-            runCatching { e2eeManager.publishParentKey(uid) }
+            authRepository.currentUserId.filterNotNull().distinctUntilChanged().collect { uid ->
+                runCatching { e2eeManager.publishParentKey(uid) }
+            }
         }
     }
 

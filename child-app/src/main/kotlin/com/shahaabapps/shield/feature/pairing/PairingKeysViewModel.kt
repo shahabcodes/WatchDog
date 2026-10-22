@@ -27,6 +27,7 @@ class PairingKeysViewModel @Inject constructor(
     private val childRepository: ChildRepository,
     private val authRepository: com.shahaabapps.core.firebase.auth.AuthRepository,
     @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
+    private val diagnostics: com.shahaabapps.core.firebase.diagnostics.DiagnosticsLogger,
 ) : ViewModel() {
 
     private val _restoring = MutableStateFlow(false)
@@ -51,11 +52,16 @@ class PairingKeysViewModel @Inject constructor(
             viewModelScope.launch {
                 val token = childRepository.observeRestoreToken(installId).filterNotNull().first()
                 _restoring.value = true
-                if (authRepository.signInWithCustomToken(token) is AppResult.Success) {
-                    runCatching { childRepository.completeRestore(installId) }
+                diagnostics.info("restore", "restore token received install=$installId")
+                val signIn = authRepository.signInWithCustomToken(token)
+                if (signIn is AppResult.Success) {
+                    diagnostics.info("restore", "signed in as restored child=${signIn.data} from install=$installId")
+                    val done = childRepository.completeRestore(installId)
+                    if (done is AppResult.Failure) diagnostics.error("restore", "completeRestore failed", done.error)
                     e2eeManager.clearSession()
                     restartApp()
                 } else {
+                    diagnostics.error("restore", "restore sign-in failed install=$installId", (signIn as? AppResult.Failure)?.error)
                     _restoring.value = false
                     _error.value = "Couldn't restore this phone. Ask the parent to try again."
                 }

@@ -155,6 +155,16 @@ describe("attacks are refused", () => {
     await assertSucceeds(getDoc(doc(child(), `children/${CHILD}/ringImport/${PARENT}`)));
     await assertSucceeds(deleteDoc(doc(child(), `children/${CHILD}/ringImport/${PARENT}`)));
   });
+  it("diagnostics: apps add their own bounded events and can't read any", async () => {
+    const ev = (uid) => ({ at: 1, atMillis: 1, expireAt: 1, level: "WARN", tag: "e2ee", message: "m", exception: "",
+      uid, install: "i", app: "com.shahaabapps.watchdog", version: "0.1.0", model: "Pixel", sdk: 35 });
+    await assertSucceeds(setDoc(doc(parent(), "diagEvents/e1"), ev(PARENT)));
+    await assertFails(setDoc(doc(parent(), "diagEvents/e2"), ev(CHILD)));
+    await assertFails(setDoc(doc(parent(), "diagEvents/e3"), { ...ev(PARENT), message: "x".repeat(501) }));
+    await assertFails(setDoc(doc(parent(), "diagEvents/e4"), { ...ev(PARENT), extra: 1 }));
+    await assertFails(getDoc(doc(parent(), "diagEvents/e1")));
+    await assertFails(getDocs(collection(child(), "diagEvents")));
+  });
   it("only the owner can delete their shared key", async () => {
     await assertSucceeds(setDoc(doc(parent(), `publicKeys/${PARENT}`), { e2ePublicKey: "pk", aad2: true }));
     await assertFails(deleteDoc(doc(stranger(), `publicKeys/${PARENT}`)));

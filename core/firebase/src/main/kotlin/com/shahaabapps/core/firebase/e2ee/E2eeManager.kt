@@ -437,6 +437,7 @@ class E2eeManager @Inject constructor(
         val now = System.currentTimeMillis()
         if (now - (lastResyncRequest[tag] ?: 0L) < RESYNC_THROTTLE_MS) return
         lastResyncRequest[tag] = now
+        diagnostics.warn("e2ee", "decrypt miss; asking child to re-share and refreshing key child=$childId viewer=$viewerUid")
         scope.launch {
             runCatching { keys.requestResync(childId, viewerUid) }
             // The child may have re-wrapped a newer key-ring (a key rotation, or a
@@ -681,8 +682,15 @@ class E2eeManager @Inject constructor(
     suspend fun publishParentKey(parentUid: String) = withContext(Dispatchers.Default) {
         val pub = myPublicKeyB64()
         // The per-account key is still read by older Shield versions.
-        keys.publishParentPublicKey(parentUid, pub)
-        keys.publishParentDevice(parentUid, deviceId(), pub, android.os.Build.MODEL ?: "")
+        val shared = keys.publishParentPublicKey(parentUid, pub)
+        val device = keys.publishParentDevice(parentUid, deviceId(), pub, android.os.Build.MODEL ?: "")
+        val fp = E2ee.fingerprint(unb64(pub))
+        if (shared is AppResult.Success && device is AppResult.Success) {
+            diagnostics.info("e2ee", "parent key published parent=$parentUid device=${deviceId()} fp=$fp")
+        } else {
+            diagnostics.error("e2ee", "parent key publish failed parent=$parentUid shared=${shared is AppResult.Success} device=${device is AppResult.Success}",
+                (shared as? AppResult.Failure)?.error ?: (device as? AppResult.Failure)?.error)
+        }
         Unit
     }
 
@@ -698,11 +706,13 @@ class E2eeManager @Inject constructor(
         val mine = myPublicKeyB64()
         val shared = keys.readParentKeyFresh(parentUid).getOrNull()
         val others = keys.listParentDevicesFresh(parentUid)?.map { it.publicKeyB64 to it.updatedAt }
-        when (val h = SharedKeyPolicy.handover(mine, shared, others)) {
+        val h = SharedKeyPolicy.handover(mine, shared, others)
+        when (h) {
             SharedKeyPolicy.Handover.Leave -> Unit
             is SharedKeyPolicy.Handover.Replace -> keys.publishParentPublicKey(parentUid, h.publicKeyB64)
             SharedKeyPolicy.Handover.Delete -> keys.deleteParentPublicKey(parentUid)
         }
+        diagnostics.info("e2ee", "signed out: device key removed parent=$parentUid sharedKey=${h::class.simpleName}")
     }
 
     /** This install's stable device id (one Watch Dog install = one device key). */
@@ -748,7 +758,10 @@ class E2eeManager @Inject constructor(
      */
     suspend fun ringForRestore(childId: String, parentUid: String): List<ByteArray>? {
         parentRingCache.remove(childId)
-        return dataKeyForChild(childId, parentUid, null)
+        val ring = dataKeyForChild(childId, parentUid, null)
+        if (ring == null) diagnostics.warn("restore", "no key-ring for child=$childId on this phone device=${deviceId()}")
+        else diagnostics.info("restore", "key-ring read child=$childId keys=${ring.size}")
+        return ring
     }
 
     /**
@@ -762,6 +775,7 @@ class E2eeManager @Inject constructor(
         val wrapped = deviceKeyStore.wrapDataKeyFor(unb64(newChildPubB64), encodeRing(ring))
         val ok = keys.putRingImport(childId, parentUid, b64(wrapped), myPublicKeyB64()) is AppResult.Success
         if (ok) restorePins().edit().putString(childId, newChildPubB64).apply()
+        diagnostics.info("restore", "key-ring handed over child=$childId ok=$ok")
         ok
     }
 

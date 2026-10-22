@@ -14,6 +14,7 @@ import com.shahaabapps.core.model.PairingCodec
 import com.google.firebase.functions.FirebaseFunctions
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -47,7 +48,8 @@ sealed interface VerifyState {
 sealed interface ReconnectState {
     data object Idle : ReconnectState
     data object Working : ReconnectState
-    data object Success : ReconnectState
+    /** Done; [waitMinutes] > 0 when it waits for the other parents first. */
+    data class Success(val waitMinutes: Int = 0) : ReconnectState
     data class Error(val message: String) : ReconnectState
 }
 
@@ -322,9 +324,13 @@ class DashboardViewModel @Inject constructor(
                 "code" to pairing.code,
             )
             _reconnectState.value = runCatching {
-                FirebaseFunctions.getInstance().getHttpsCallable("restoreChild").callSafely(data)
+                FirebaseFunctions.getInstance().getHttpsCallable("restoreChild").callSafely(name = "restoreChild", data = data)
             }.fold(
-                onSuccess = { ReconnectState.Success },
+                onSuccess = { r ->
+                    val until = ((r.getData() as? Map<*, *>)?.get("pendingUntilMillis") as? Number)?.toLong() ?: 0L
+                    val wait = if (until > 0) ((until - System.currentTimeMillis()) / 60_000L).toInt().coerceAtLeast(1) else 0
+                    ReconnectState.Success(wait)
+                },
                 onFailure = {
                     runCatching { e2eeManager.cancelRingHandoff(oldChildId, me) }
                     ReconnectState.Error(it.message ?: "Couldn't restore this phone.")
@@ -334,6 +340,37 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun clearReconnectState() { _reconnectState.value = ReconnectState.Idle }
+
+    /** Children with a restore waiting for the other parents (cancellable). */
+    val pendingRestores: StateFlow<Set<String>> = children
+        .map { list -> list.map { it.childId } }
+        .distinctUntilChanged()
+        .flatMapLatest { ids ->
+            if (ids.isEmpty()) flowOf(emptySet())
+            else kotlinx.coroutines.flow.combine(ids.map { id -> observePendingRestore(id) }) { flags ->
+                ids.filterIndexed { i, _ -> flags[i] }.toSet()
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    private fun observePendingRestore(childId: String) = kotlinx.coroutines.flow.callbackFlow {
+        val reg = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+            .collection("pendingRestores").document(childId)
+            .addSnapshotListener { snap, err -> trySend(err == null && snap?.exists() == true) }
+        awaitClose { reg.remove() }
+    }
+
+    fun cancelRestore(childId: String) {
+        viewModelScope.launch {
+            _reconnectState.value = runCatching {
+                FirebaseFunctions.getInstance().getHttpsCallable("cancelRestore")
+                    .callSafely(name = "cancelRestore", data = hashMapOf("childId" to childId))
+            }.fold(
+                onSuccess = { ReconnectState.Idle },
+                onFailure = { ReconnectState.Error(it.message ?: "Couldn't cancel the restore.") },
+            )
+        }
+    }
 
     private companion object {
         const val APPROVAL_WAIT_MS = 15 * 60_000L

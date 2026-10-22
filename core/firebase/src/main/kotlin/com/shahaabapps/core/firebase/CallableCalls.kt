@@ -15,14 +15,25 @@ class OfflineException : IOException("No internet connection. Connect and try ag
  * DEADLINE_EXCEEDED), which users saw as "INTERNAL"; errors the function itself
  * raises keep their own message.
  */
-suspend fun HttpsCallableReference.callSafely(data: Any? = null): HttpsCallableResult =
-    try {
-        (if (data == null) call() else call(data)).await()
+suspend fun HttpsCallableReference.callSafely(data: Any? = null, name: String = "function"): HttpsCallableResult {
+    val start = System.currentTimeMillis()
+    return try {
+        (if (data == null) call() else call(data)).await().also {
+            com.shahaabapps.core.common.Diag.info("call", "$name ok ${System.currentTimeMillis() - start}ms")
+        }
     } catch (e: FirebaseFunctionsException) {
-        if (e.isConnectionFailure()) throw OfflineException() else throw e
+        val ms = System.currentTimeMillis() - start
+        if (e.isConnectionFailure()) {
+            com.shahaabapps.core.common.Diag.warn("call", "$name offline ${ms}ms")
+            throw OfflineException()
+        }
+        com.shahaabapps.core.common.Diag.warn("call", "$name ${e.code}: ${e.message.orEmpty().take(200)} ${ms}ms")
+        throw e
     } catch (e: IOException) {
+        com.shahaabapps.core.common.Diag.warn("call", "$name offline ${System.currentTimeMillis() - start}ms")
         throw OfflineException()
     }
+}
 
 private fun FirebaseFunctionsException.isConnectionFailure(): Boolean {
     if (code == FirebaseFunctionsException.Code.UNAVAILABLE ||

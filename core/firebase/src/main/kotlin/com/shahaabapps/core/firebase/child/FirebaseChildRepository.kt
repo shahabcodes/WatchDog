@@ -50,6 +50,7 @@ class FirebaseChildRepository @Inject constructor(
         childId: String,
         profile: UserProfile,
     ): AppResult<Unit> = runCatchingResult {
+        com.shahaabapps.core.common.Diag.action("child.saveChildProfile", "childId=$childId")
         // Only the profile: linkedParents and pairing are server-managed (the
         // rules reject client writes to them).
         val data = mapOf(
@@ -64,9 +65,10 @@ class FirebaseChildRepository @Inject constructor(
     }
 
     override suspend fun startPairing(childId: String?): AppResult<PairingCode> = runCatchingResult {
+        com.shahaabapps.core.common.Diag.action("child.startPairing", "childId=$childId")
         val args = hashMapOf<String, Any>()
         if (childId != null) args["childId"] = childId
-        val data = functions.getHttpsCallable("startPairing").callSafely(args).getData() as? Map<*, *>
+        val data = functions.getHttpsCallable("startPairing").callSafely(name = "startPairing", data = args).getData() as? Map<*, *>
         PairingCode(
             code = requireNotNull(data?.get("code") as? String) { "No pairing code returned" },
             expiresAtMillis = (data?.get("expiresAtMillis") as? Number)?.toLong() ?: 0L,
@@ -96,7 +98,7 @@ class FirebaseChildRepository @Inject constructor(
     override suspend fun linkedParentInfo(childId: String?): AppResult<List<ParentInfo>> = runCatchingResult {
         val args = hashMapOf<String, Any>()
         if (childId != null) args["childId"] = childId
-        val data = functions.getHttpsCallable("linkedParentInfo").callSafely(args).getData() as? Map<*, *>
+        val data = functions.getHttpsCallable("linkedParentInfo").callSafely(name = "linkedParentInfo", data = args).getData() as? Map<*, *>
         (data?.get("parents") as? List<*>).orEmpty().mapNotNull { p ->
             val m = p as? Map<*, *> ?: return@mapNotNull null
             ParentInfo(uid = m["uid"] as? String ?: return@mapNotNull null, email = m["email"] as? String ?: "")
@@ -105,16 +107,18 @@ class FirebaseChildRepository @Inject constructor(
 
     override suspend fun respondToParentRequest(parentId: String, approve: Boolean): AppResult<Unit> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("child.respondToParentRequest", "parentId=$parentId approve=$approve")
             functions.getHttpsCallable("respondToParentRequest")
-                .callSafely(hashMapOf("parentId" to parentId, "approve" to approve))
+                .callSafely(name = "respondToParentRequest", data = hashMapOf("parentId" to parentId, "approve" to approve))
                 
             Unit
         }
 
     override suspend fun requestParentRemoval(childId: String, parentId: String): AppResult<Unit> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("child.requestParentRemoval", "childId=$childId parentId=$parentId")
             functions.getHttpsCallable("requestParentRemoval")
-                .callSafely(hashMapOf("childId" to childId, "parentId" to parentId))
+                .callSafely(name = "requestParentRemoval", data = hashMapOf("childId" to childId, "parentId" to parentId))
             Unit
         }
 
@@ -142,8 +146,9 @@ class FirebaseChildRepository @Inject constructor(
 
     override suspend fun respondToParentRemoval(parentId: String, approve: Boolean): AppResult<Unit> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("child.respondToParentRemoval", "parentId=$parentId approve=$approve")
             functions.getHttpsCallable("respondToParentRemoval")
-                .callSafely(hashMapOf("parentId" to parentId, "approve" to approve))
+                .callSafely(name = "respondToParentRemoval", data = hashMapOf("parentId" to parentId, "approve" to approve))
             Unit
         }
 
@@ -166,6 +171,7 @@ class FirebaseChildRepository @Inject constructor(
     }
 
     override suspend fun linkChild(code: String): AppResult<LinkOutcome> = runCatchingResult {
+        com.shahaabapps.core.common.Diag.action("child.linkChild")
         // Linking needs a verified email. If it was verified since sign-in, the
         // token still says otherwise until it is refreshed.
         com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.let { user ->
@@ -177,7 +183,7 @@ class FirebaseChildRepository @Inject constructor(
         // The linkChild Cloud Function redeems the single-use code and asks the
         // child's phone to approve this parent; nothing is linked until it does.
         val data = functions.getHttpsCallable("linkChild")
-            .callSafely(hashMapOf("code" to code.trim()))
+            .callSafely(name = "linkChild", data = hashMapOf("code" to code.trim()))
             .getData() as? Map<*, *>
         val childId = requireNotNull(data?.get("childId") as? String) { "No child returned" }
         if (data?.get("status") == "linked") LinkOutcome.Linked(childId) else LinkOutcome.AwaitingApproval(childId)
@@ -194,13 +200,15 @@ class FirebaseChildRepository @Inject constructor(
     }
 
     override suspend fun completeRestore(tempChildId: String): AppResult<Unit> = runCatchingResult {
-        functions.getHttpsCallable("completeRestore").callSafely(hashMapOf("tempChildId" to tempChildId))
+        com.shahaabapps.core.common.Diag.action("child.completeRestore")
+        functions.getHttpsCallable("completeRestore").callSafely(name = "completeRestore", data = hashMapOf("tempChildId" to tempChildId))
         Unit
     }
 
     override suspend fun unlinkChild(childId: String): AppResult<Unit> =
         runCatchingResult {
-            functions.getHttpsCallable("unlinkChild").callSafely(hashMapOf("childId" to childId))
+            com.shahaabapps.core.common.Diag.action("child.unlinkChild", "childId=$childId")
+            functions.getHttpsCallable("unlinkChild").callSafely(name = "unlinkChild", data = hashMapOf("childId" to childId))
             Unit
         }
 

@@ -18,5 +18,6 @@ inline fun <T> runCatchingResult(block: () -> T): AppResult<T> = try {
     AppResult.Success(block())
 } catch (t: Throwable) {
     if (t is kotlinx.coroutines.CancellationException) throw t
+    Diag.failure(t)
     AppResult.Failure(t)
 }

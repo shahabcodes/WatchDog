@@ -80,6 +80,7 @@ class FirebaseRequestRepository @Inject constructor(
         grantUntilMillis: Long,
     ): AppResult<Unit> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("request.respond", "childId=$childId requestId=$requestId")
             requests(childId).document(requestId).update(
                 mapOf(
                     "status" to (if (approved) RequestStatus.APPROVED else RequestStatus.DENIED).name,

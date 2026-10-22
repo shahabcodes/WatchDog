@@ -134,6 +134,7 @@ class GeofenceSyncService : Service() {
     private var tentativeMove: android.location.Location? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        com.shahaabapps.core.common.Diag.info("service", "location service start")
         try {
             startForegroundCompat()
         } catch (t: Throwable) {
@@ -266,6 +267,7 @@ class GeofenceSyncService : Service() {
                 val stats = runCatching { batteryTracker.record(pct, charging, now, batteryTempTenths()) }.getOrNull()
                 runCatching { com.shahaabapps.shield.enforcement.TrustedClock.syncIfStale() }
                 val perms = com.shahaabapps.shield.enforcement.ChildPermissions.snapshot(this@GeofenceSyncService)
+                logPermissionChanges(perms, pct, charging)
                 com.shahaabapps.shield.enforcement.ProtectionReminder.update(
                     this@GeofenceSyncService,
                     // Quiet while protection is off, or during a parent's PIN removal window.
@@ -723,7 +725,38 @@ class GeofenceSyncService : Service() {
         super.onTaskRemoved(rootIntent)
     }
 
+    private var lastPermFlags: Map<String, Boolean>? = null
+    private var lastAliveLog = 0L
+
+    /** Diagnostics: which protection/permission flags changed, and a half-hourly heartbeat. */
+    private fun logPermissionChanges(p: com.shahaabapps.core.model.DevicePermissions, battery: Int, charging: Boolean) {
+        val flags = mapOf(
+            "location" to p.location, "locationAlways" to p.locationAlways, "accessibility" to p.accessibility,
+            "usageAccess" to p.usageAccess, "admin" to p.adminActive, "clockOk" to p.clockOk,
+            "gpsGenuine" to p.gpsGenuine, "parentKeysOk" to p.parentKeysOk, "adbOff" to p.adbOff,
+            "notifications" to p.notifications, "battery" to p.batteryUnrestricted,
+            "locationServicesOn" to !p.locationServicesOff, "powerSave" to p.powerSaveMode,
+            "backgroundRestricted" to p.backgroundRestricted,
+        )
+        val before = lastPermFlags
+        if (before == null) {
+            com.shahaabapps.core.common.Diag.info("perms", flags.entries.joinToString(" ") { "${it.key}=${it.value}" })
+        } else {
+            val changed = flags.filter { (k, v) -> before[k] != v }
+            if (changed.isNotEmpty()) {
+                com.shahaabapps.core.common.Diag.warn("perms", "changed: " + changed.entries.joinToString(" ") { "${it.key}=${it.value}" })
+            }
+        }
+        lastPermFlags = flags
+        val now = System.currentTimeMillis()
+        if (now - lastAliveLog > 30 * 60_000L) {
+            lastAliveLog = now
+            com.shahaabapps.core.common.Diag.info("alive", "battery=$battery charging=$charging")
+        }
+    }
+
     override fun onDestroy() {
+        com.shahaabapps.core.common.Diag.warn("service", "location service destroyed")
         super.onDestroy()
         locationCallback?.let { runCatching { fusedClient.removeLocationUpdates(it) } }
         apkInstallGuard?.stop()

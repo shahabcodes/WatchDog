@@ -21,9 +21,15 @@ class ShieldDeviceAdminReceiver : DeviceAdminReceiver() {
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence =
         "Turning this off lets Shield be uninstalled. A parent PIN is required to remove protection."
 
-    override fun onDisabled(context: Context, intent: Intent) = report(context)
+    override fun onDisabled(context: Context, intent: Intent) {
+        com.shahaabapps.core.common.Diag.warn("admin", "device admin turned OFF")
+        report(context)
+    }
 
-    override fun onEnabled(context: Context, intent: Intent) = report(context)
+    override fun onEnabled(context: Context, intent: Intent) {
+        com.shahaabapps.core.common.Diag.info("admin", "device admin turned on")
+        report(context)
+    }
 
     private fun report(context: Context) {
         val childId = authRepository.currentUserIdOrNull() ?: return

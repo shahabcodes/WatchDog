@@ -45,6 +45,7 @@ fun DiagnosticsScreen(
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     val clock = remember { SimpleDateFormat("MMM d HH:mm:ss", Locale.getDefault()) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { viewModel.refresh() }
 
     Column(modifier = Modifier.fillMaxSize().background(AppTheme.colors.groupedBackground)) {
         GuardianHeader(title = "Diagnostics", onBack = onBack)
@@ -52,12 +53,29 @@ fun DiagnosticsScreen(
             CupertinoCard {
                 CupertinoListRow(
                     title = "Collect diagnostics",
-                    subtitle = "Crash reports and anonymous breadcrumbs to help fix bugs. No locations or content.",
+                    subtitle = "Errors, warnings and actions from your family's phones, with date and time, to help fix problems. No locations or content.",
                     showDivider = false,
                     trailing = { Switch(checked = state.enabled, onCheckedChange = viewModel::setEnabled) },
                 )
             }
+            // Whose diagnostics: this phone, my account, or a child's phone.
+            androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                items(state.sources) { src ->
+                    androidx.compose.material3.FilterChip(
+                        selected = src.key == state.selected,
+                        onClick = { viewModel.select(src.key) },
+                        label = { Text(src.label) },
+                    )
+                }
+            }
+            if (state.loading) Text("Loading…", style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
+            state.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.destructive) }
             androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                CupertinoTextButton(
+                    text = "Refresh",
+                    onClick = viewModel::refresh,
+                    modifier = Modifier.weight(1f),
+                )
                 CupertinoPrimaryButton(
                     text = "Copy",
                     onClick = { clipboard.setText(AnnotatedString(viewModel.exportText())) },
@@ -81,7 +99,7 @@ fun DiagnosticsScreen(
             contentPadding = PaddingValues(horizontal = Spacing.lg, vertical = Spacing.sm),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            if (state.events.isEmpty()) {
+            if (state.rows.isEmpty() && !state.loading) {
                 item {
                     Text(
                         "No events yet. Reproduce the issue, then come back.",
@@ -90,14 +108,14 @@ fun DiagnosticsScreen(
                     )
                 }
             }
-            items(state.events) { e ->
+            items(state.rows) { e ->
                 val color = when (e.level) {
                     DiagLevel.ERROR -> AppTheme.colors.destructive
                     DiagLevel.WARN -> AppTheme.colors.warn
                     DiagLevel.INFO -> AppTheme.colors.secondaryLabel
                 }
                 Text(
-                    "${clock.format(Date(e.atMillis))}  ${e.level}  ${e.tag}: ${e.message}",
+                    "${clock.format(Date(e.atMillis))}  ${e.level}  ${e.where}  [${e.tag}] ${e.message}",
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = FontFamily.Monospace,
                     color = color,

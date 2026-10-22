@@ -84,6 +84,13 @@ service cloud.firestore {
         && request.resource.data.model is string && request.resource.data.model.size() <= 60;
     }
 
+    // A restore waiting for the other parents (written by restoreChild). The
+    // child's parents can see it, to cancel through cancelRestore.
+    match /pendingRestores/{childId} {
+      allow read: if request.auth != null
+        && request.auth.uid in get(/databases/$(database)/documents/children/$(childId)).data.linkedParents;
+    }
+
     // One-time sign-in for a reinstalled Shield restoring an old child (written
     // by restoreChild). Only that reinstalled install may read or clear it.
     match /restoreTokens/{installId} {

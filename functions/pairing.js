@@ -13,10 +13,12 @@
  *     existing parents are told.
  *
  * linkedParents is never client-writable (see firestore.rules); this file and
- * unlinkChild / reconnectChild are the only writers.
+ * unlinkChild / restoreChild are the only writers.
  */
 const crypto = require("crypto");
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { HttpsError } = require("firebase-functions/v2/https");
+// onCall with a diagnostics record per call (trace.js).
+const { onCall } = require("./trace");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
 
@@ -25,6 +27,13 @@ const CODE_LENGTH = 8; // 40 bits; with 10-min expiry, single use and rate limit
 const INVITE_TTL_MS = 10 * 60 * 1000;
 const REQUEST_TTL_MS = 15 * 60 * 1000;
 const REMOVAL_TTL_MS = 24 * 60 * 60 * 1000;
+// After a restore, the phone that took over the child's account can't change who
+// supervises it for a day (in case the restore wasn't what the family wanted).
+const RESTORE_COOLOFF_MS = 24 * 60 * 60 * 1000;
+function inRestoreCooloff(childSnap) {
+  const at = childSnap.get("restoredAt");
+  return !!at && Date.now() - at.toMillis() < RESTORE_COOLOFF_MS;
+}
 const LINK_ATTEMPTS_PER_HOUR = 10;
 const ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 
@@ -86,6 +95,10 @@ async function notifyParents(parentIds, title, body) {
     const toks = await db().collection(`users/${parentId}/fcmTokens`).get();
     toks.forEach((d) => tokenDocs.push(`users/${parentId}/fcmTokens/${d.id}`));
   }
+  const { serverDiag } = require("./trace");
+  await Promise.all(parentIds.map((pid) => serverDiag(
+    tokenDocs.length ? "INFO" : "WARN", "push",
+    tokenDocs.length ? `alert sent: ${title}` : `alert NOT sent (no phone registered): ${title}`, pid)));
   if (tokenDocs.length === 0) return;
   const tokens = tokenDocs.map((p) => p.split("/").pop());
   const resp = await getMessaging().sendEachForMulticast({
@@ -218,6 +231,7 @@ exports.respondToParentRequest = onCall(async (request) => {
     if (!childSnap.exists || !reqSnap.exists) return { ok: false };
     tx.delete(reqRef);
     if (!approve) return { ok: true, approved: false };
+    if (inRestoreCooloff(childSnap)) return { ok: false, cooloff: true };
     if (reqSnap.get("expiresAt").toMillis() < Date.now()) return { ok: false, expired: true };
     const before = childSnap.get("linkedParents") || [];
     tx.update(childRef, {
@@ -236,7 +250,8 @@ exports.respondToParentRequest = onCall(async (request) => {
   if (!result.ok) {
     throw new HttpsError(
       "failed-precondition",
-      result.expired ? "That request expired. Ask the parent to scan a new code." : "That request is no longer pending.",
+      result.cooloff ? "This phone was restored less than a day ago. Parents can be added again after that." :
+        result.expired ? "That request expired. Ask the parent to scan a new code." : "That request is no longer pending.",
     );
   }
   if (result.approved) {
@@ -275,7 +290,7 @@ exports.unlinkChild = onCall(async (request) => {
 });
 
 /**
- * Consume a code for [childId] without the approval step — used by reconnectChild,
+ * Consume a code for [childId] without the approval step — used by restoreChild,
  * where a linked parent moves the child's data onto a reinstalled device whose
  * fresh code they just scanned on that device. Throws on a wrong/expired code.
  */
@@ -359,6 +374,7 @@ exports.respondToParentRemoval = onCall(async (request) => {
       email: reqSnap.get("email") || "A parent account",
     };
     if (!approve) return { ok: true, approved: false, ...info };
+    if (inRestoreCooloff(childSnap)) return { ok: false, cooloff: true };
     if (reqSnap.get("expiresAt").toMillis() < Date.now()) return { ok: false, expired: true };
     const remaining = parents.filter((p) => p !== targetId);
     tx.update(childRef, { linkedParents: remaining, pairingActive: remaining.length === 0 });
@@ -367,7 +383,8 @@ exports.respondToParentRemoval = onCall(async (request) => {
   if (!result.ok) {
     throw new HttpsError(
       "failed-precondition",
-      result.expired ? "That request expired." : "That request is no longer pending.",
+      result.cooloff ? "This phone was restored less than a day ago. A parent can be removed after that." :
+        result.expired ? "That request expired." : "That request is no longer pending.",
     );
   }
   await notifyParents(

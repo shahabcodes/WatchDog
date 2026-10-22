@@ -44,6 +44,7 @@ class FirebaseGeofenceRepository @Inject constructor(
 
     override suspend fun saveGeofence(childId: String, geofence: Geofence): AppResult<Unit> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("geofence.saveGeofence", "childId=$childId")
             val doc = if (geofence.id.isBlank()) geofences(childId).document()
             else geofences(childId).document(geofence.id)
             // Non-sensitive fields stay plaintext so the child's enforcement and the
@@ -79,10 +80,14 @@ class FirebaseGeofenceRepository @Inject constructor(
         }
 
     override suspend fun deleteGeofence(childId: String, geofenceId: String): AppResult<Unit> =
-        runCatchingResult { geofences(childId).document(geofenceId).delete().await() }
+        runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("geofence.deleteGeofence", "childId=$childId geofenceId=$geofenceId")
+            geofences(childId).document(geofenceId).delete().await()
+        }
 
     override suspend fun clearEvents(childId: String): AppResult<Unit> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("geofence.clearEvents", "childId=$childId")
             // Firestore has no "delete collection"; page through and batch-delete.
             while (true) {
                 val snap = events(childId).limit(400).get().await()

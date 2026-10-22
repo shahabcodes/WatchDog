@@ -43,6 +43,7 @@ class FirebaseAppRulesRepository @Inject constructor(
 
     override suspend fun saveAppRule(childId: String, rule: AppRule): AppResult<Unit> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("rules.saveAppRule", "childId=$childId")
             // The rule's package, label, limits and schedule are sensitive. Seal them
             // and store under a HASHED doc id so the package name isn't in the path
             // either. updatedAtMillis stays plaintext (a non-sensitive timestamp the
@@ -97,6 +98,7 @@ class FirebaseAppRulesRepository @Inject constructor(
 
     override suspend fun deleteAppRule(childId: String, packageName: String): AppResult<Unit> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("rules.deleteAppRule", "childId=$childId")
             // Delete both the hashed and any legacy plaintext-id doc for this package.
             runCatching { appRulesCollection(childId).document(ruleDocId(packageName)).delete().await() }
             runCatching { appRulesCollection(childId).document(packageName).delete().await() }

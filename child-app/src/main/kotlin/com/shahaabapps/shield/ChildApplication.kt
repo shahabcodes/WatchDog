@@ -7,9 +7,12 @@ import dagger.hilt.android.HiltAndroidApp
 
 @HiltAndroidApp
 class ChildApplication : Application() {
+    @javax.inject.Inject lateinit var diagnostics: com.shahaabapps.core.firebase.diagnostics.DiagnosticsLogger
+
     override fun onCreate() {
         super.onCreate()
         com.shahaabapps.core.firebase.AppCheckSetup.install(this)
+        diagnostics.start(this)
         com.shahaabapps.shield.enforcement.TrustedClock.init(this)
         com.shahaabapps.shield.enforcement.ChildZone.init(this)
         // Keep the location backstop + flush scheduled on every process start,

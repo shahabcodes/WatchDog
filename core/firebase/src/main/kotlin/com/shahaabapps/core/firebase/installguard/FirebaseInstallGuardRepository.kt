@@ -55,6 +55,7 @@ class FirebaseInstallGuardRepository @Inject constructor(
 
     override suspend fun setGuard(childId: String, guard: InstallGuard): AppResult<Unit> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("installguard.setGuard", "childId=$childId")
             val uid = authRepository.currentUserIdOrNull()
             val sealed = e2ee.sealString(childId, uid, JSONArray(guard.packages).toString(), slot = "settings/installGuard")
             val data: Map<String, Any> = buildMap {

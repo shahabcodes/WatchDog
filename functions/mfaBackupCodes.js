@@ -17,7 +17,9 @@
  * generated after the current authenticator was enrolled.
  */
 const crypto = require("crypto");
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { HttpsError } = require("firebase-functions/v2/https");
+// onCall with a diagnostics record per call (trace.js).
+const { onCall } = require("./trace");
 const { defineSecret } = require("firebase-functions/params");
 const { getAuth } = require("firebase-admin/auth");
 const { getFirestore, Timestamp } = require("firebase-admin/firestore");

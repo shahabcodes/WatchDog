@@ -48,12 +48,14 @@ class FirebaseAuthRepository @Inject constructor(
 
     override suspend fun signUpWithEmail(email: String, password: String): AppResult<String> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("auth.signUpWithEmail")
             val result = auth.createUserWithEmailAndPassword(email, password).await()
             requireNotNull(result.user?.uid) { "Sign-up succeeded but uid was null" }
         }
 
     override suspend fun signInWithEmail(email: String, password: String): AppResult<SignInOutcome> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("auth.signInWithEmail")
             try {
                 val result = auth.signInWithEmailAndPassword(email, password).await()
                 SignInOutcome.Success(requireNotNull(result.user?.uid) { "Sign-in succeeded but uid was null" })
@@ -65,6 +67,7 @@ class FirebaseAuthRepository @Inject constructor(
 
     override suspend fun resolveMfa(code: String): AppResult<String> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("auth.resolveMfa")
             val resolver = requireNotNull(pendingResolver) { "No MFA sign-in in progress" }
             val hint = resolver.hints.firstOrNull { it.factorId == TotpMultiFactorGenerator.FACTOR_ID }
                 ?: error("This account's second factor isn't a TOTP authenticator.")
@@ -76,23 +79,27 @@ class FirebaseAuthRepository @Inject constructor(
 
     override suspend fun signInAnonymously(): AppResult<String> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("auth.signInAnonymously")
             val result = auth.signInAnonymously().await()
             requireNotNull(result.user?.uid) { "Anonymous sign-in returned null uid" }
         }
 
     override suspend fun signInWithCustomToken(token: String): AppResult<String> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("auth.signInWithCustomToken")
             val result = auth.signInWithCustomToken(token).await()
             requireNotNull(result.user?.uid) { "Sign-in returned null uid" }
         }
 
     override suspend fun sendPasswordReset(email: String): AppResult<Unit> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("auth.sendPasswordReset")
             auth.sendPasswordResetEmail(email).await()
         }
 
     override suspend fun changePassword(newPassword: String): AppResult<Unit> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("auth.changePassword")
             requireNotNull(auth.currentUser) { "Not signed in" }.updatePassword(newPassword).await()
             Unit
         }
@@ -104,6 +111,7 @@ class FirebaseAuthRepository @Inject constructor(
 
     override suspend fun sendEmailVerification(): AppResult<Unit> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("auth.sendEmailVerification")
             val user = requireNotNull(auth.currentUser) { "Not signed in" }
             user.sendEmailVerification().await()
             Unit
@@ -114,6 +122,7 @@ class FirebaseAuthRepository @Inject constructor(
 
     override suspend fun reauthenticate(password: String): AppResult<SignInOutcome> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("auth.reauthenticate")
             val user = requireNotNull(auth.currentUser) { "Not signed in" }
             val email = requireNotNull(user.email) { "No email on this account" }
             try {
@@ -151,6 +160,7 @@ class FirebaseAuthRepository @Inject constructor(
 
     override suspend fun disableMfa(): AppResult<Unit> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("auth.disableMfa")
             val user = requireNotNull(auth.currentUser) { "Not signed in" }
             user.multiFactor.enrolledFactors.forEach { factor ->
                 user.multiFactor.unenroll(factor).await()
@@ -160,14 +170,15 @@ class FirebaseAuthRepository @Inject constructor(
 
     override suspend fun generateBackupCodes(): AppResult<List<String>> =
         runCatchingResult {
-            val result = functions.getHttpsCallable("generateMfaBackupCodes").callSafely()
+            com.shahaabapps.core.common.Diag.action("auth.generateBackupCodes")
+            val result = functions.getHttpsCallable("generateMfaBackupCodes").callSafely(name = "generateMfaBackupCodes")
             val codes = (result.getData() as? Map<*, *>)?.get("codes") as? List<*>
             requireNotNull(codes) { "No codes returned" }.map { it.toString() }
         }
 
     override suspend fun backupCodeStatus(): AppResult<BackupCodeStatus> =
         runCatchingResult {
-            val result = functions.getHttpsCallable("getMfaBackupCodeStatus").callSafely()
+            val result = functions.getHttpsCallable("getMfaBackupCodeStatus").callSafely(name = "getMfaBackupCodeStatus")
             val data = result.getData() as? Map<*, *> ?: emptyMap<Any, Any>()
             BackupCodeStatus(
                 remaining = (data["remaining"] as? Number)?.toInt() ?: 0,
@@ -200,7 +211,7 @@ class FirebaseAuthRepository @Inject constructor(
 
     private suspend fun redeemBackupCode(email: String, password: String, code: String) {
         functions.getHttpsCallable("redeemMfaBackupCode")
-            .callSafely(hashMapOf("email" to email.trim(), "password" to password, "code" to code.trim()))
+            .callSafely(name = "redeemMfaBackupCode", data = hashMapOf("email" to email.trim(), "password" to password, "code" to code.trim()))
     }
 
     override suspend fun signOut() {

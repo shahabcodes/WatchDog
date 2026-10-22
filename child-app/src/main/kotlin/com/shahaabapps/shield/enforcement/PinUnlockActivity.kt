@@ -102,6 +102,7 @@ private fun PinUnlockScreen(
                 scope.launch {
                     val problem = viewModel.verifyPin(pin)
                     checking = false
+                    com.shahaabapps.core.common.Diag.info("pin", if (problem == null) "removal PIN accepted: uninstall window open" else "removal PIN refused")
                     if (problem == null) {
                         ProtectionLocalStore.unlock(context)
                         DeviceAdmin.remove(context)

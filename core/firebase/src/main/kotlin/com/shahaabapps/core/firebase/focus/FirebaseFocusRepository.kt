@@ -50,6 +50,7 @@ class FirebaseFocusRepository @Inject constructor(
 
     override suspend fun save(childId: String, settings: FocusSettings): AppResult<Unit> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("focus.save", "childId=$childId")
             val uid = authRepository.currentUserIdOrNull()
             val json = JSONObject()
                 .put("bedtime", settings.bedtime.toJson())

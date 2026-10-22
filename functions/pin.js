@@ -14,7 +14,9 @@
  * salt, 32-byte key, standard Base64 — so existing hashes verify unchanged.
  */
 const crypto = require("crypto");
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { HttpsError } = require("firebase-functions/v2/https");
+// onCall with a diagnostics record per call (trace.js).
+const { onCall } = require("./trace");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { _internal: pairing } = require("./pairing");
 

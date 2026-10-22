@@ -69,6 +69,7 @@ class FirebaseScreenshotRepository @Inject constructor(
 ) : ScreenshotRepository {
 
     override suspend fun requestCapture(childId: String): AppResult<Unit> = runCatchingResult {
+        com.shahaabapps.core.common.Diag.action("screenshot.requestCapture", "childId=$childId")
         commandDoc(childId).set(mapOf("nonce" to System.currentTimeMillis())).await()
         Unit
     }
@@ -211,6 +212,7 @@ class FirebaseScreenshotRepository @Inject constructor(
     }
 
     override suspend fun delete(childId: String, id: String): AppResult<Unit> = runCatchingResult {
+        com.shahaabapps.core.common.Diag.action("screenshot.delete", "childId=$childId id=$id")
         screenshotsCollection(childId).document(id).delete().await()
         Unit
     }

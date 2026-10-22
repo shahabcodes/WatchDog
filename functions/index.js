@@ -1,6 +1,9 @@
 const { onDocumentCreated, onDocumentDeleted, onDocumentWritten } = require("firebase-functions/v2/firestore");
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { HttpsError } = require("firebase-functions/v2/https");
+// onCall with a diagnostics record per call (trace.js).
+const { onCall } = require("./trace");
 const { setGlobalOptions } = require("firebase-functions/v2");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
@@ -71,130 +74,6 @@ exports.cleanupScreenshot = onDocumentDeleted(
     }
   },
 );
-
-/**
- * Reconnect a reinstalled Shield: migrate the old child's data (geofences, rules,
- * protection, history, etc.) onto the new device's ID, move the parent links over,
- * and delete the old child record. Called by a linked parent after scanning the
- * reinstalled device's pairing code.
- */
-exports.reconnectChild = onCall(async (request) => {
-  const parentId = request.auth && request.auth.uid;
-  if (!parentId) throw new HttpsError("unauthenticated", "Sign in required.");
-  // Moving encrypted data to a new child id leaves it unreadable (it is bound to
-  // the id and the old key). restoreChild replaces this; older Watch Dogs land here.
-  if (!(request.data || {}).allowLegacyMove) {
-    throw new HttpsError(
-      "failed-precondition",
-      "Update Watch Dog to restore this phone. This older version can't move the child's encrypted data safely.",
-    );
-  }
-
-  const data = request.data || {};
-  const oldChildId = pairingInternal.requireId(data.oldChildId, "child");
-  const newChildId = pairingInternal.requireId(data.newChildId, "device");
-  if (oldChildId === newChildId) {
-    throw new HttpsError("invalid-argument", "This device is already connected.");
-  }
-  await pairingInternal.rateLimit(`reconnect_${parentId}`, 10);
-
-  const oldRef = db.doc(`children/${oldChildId}`);
-  const newRef = db.doc(`children/${newChildId}`);
-  const [oldSnap, newSnap] = await Promise.all([oldRef.get(), newRef.get()]);
-  if (!oldSnap.exists) throw new HttpsError("not-found", "The original child was not found.");
-  if (!newSnap.exists) throw new HttpsError("not-found", "The reinstalled device was not found.");
-
-  const oldData = oldSnap.data() || {};
-  const newData = newSnap.data() || {};
-  const parents = Array.isArray(oldData.linkedParents) ? oldData.linkedParents : [];
-  if (!parents.includes(parentId)) {
-    throw new HttpsError("permission-denied", "You are not linked to this child.");
-  }
-  // The new device must be unsupervised (freshly reinstalled), so this can never
-  // rebind a child that already belongs to a family.
-  if (Array.isArray(newData.linkedParents) && newData.linkedParents.length > 0) {
-    throw new HttpsError(
-      "failed-precondition",
-      "That device is already set up with an account and can't be reconnected.",
-    );
-  }
-  // The old phone must have stopped checking in (Shield was removed from it); a
-  // live phone can't be moved away from under its family.
-  const monitor = await db.doc(`childMonitor/${oldChildId}`).get();
-  const lastBeat = monitor.exists && monitor.get("lastHeartbeatAt");
-  if (lastBeat && Date.now() - lastBeat.toMillis() < RECONNECT_QUIET_MS) {
-    throw new HttpsError(
-      "failed-precondition",
-      "Shield is still running on the original phone. Reconnect is only for a phone where Shield was " +
-        "reinstalled. If you just reinstalled it, wait 10 minutes and try again.",
-    );
-  }
-  // ...and the caller must hold the fresh code currently shown on that device.
-  if (!(await pairingInternal.consumeInviteFor(newChildId, data.code))) {
-    throw new HttpsError(
-      "permission-denied",
-      "That code is wrong or has expired. Scan the code on the reinstalled phone again.",
-    );
-  }
-
-  // Copy every subcollection from the old child onto the new one.
-  const SUBS = [
-    "geofences", "appRules", "inventory", "usage", "live",
-    "trail", "travelHistory", "geofenceEvents", "settings",
-  ];
-  for (const sub of SUBS) {
-    const docs = await oldRef.collection(sub).get();
-    let batch = db.batch();
-    let n = 0;
-    for (const d of docs.docs) {
-      batch.set(newRef.collection(sub).doc(d.id), d.data());
-      if (++n >= 400) { await batch.commit(); batch = db.batch(); n = 0; }
-    }
-    if (n > 0) await batch.commit();
-  }
-
-  // The removal PIN (server-only) moves too, or "Allow removal" stops working.
-  const pinSnap = await db.doc(`pinSecrets/${oldChildId}`).get();
-  if (pinSnap.exists) await db.doc(`pinSecrets/${newChildId}`).set(pinSnap.data());
-
-  // Carry over the old profile + parent links onto the new child record. Checked
-  // again inside the transaction: the caller must still be linked to the old
-  // child, and the new one must still be unsupervised.
-  const moved = await db.runTransaction(async (tx) => {
-    const [o, n] = await Promise.all([tx.get(oldRef), tx.get(newRef)]);
-    const nowParents = (o.exists && o.get("linkedParents")) || [];
-    const newParents = (n.exists && n.get("linkedParents")) || [];
-    if (!nowParents.includes(parentId) || newParents.length > 0) return null;
-    tx.set(newRef, {
-      profile: oldData.profile || newData.profile || {},
-      linkedParents: nowParents,
-      pairingActive: false,
-      pairingCode: FieldValue.delete(),
-      role: "CHILD",
-    }, { merge: true });
-    return nowParents;
-  });
-  if (!moved) {
-    throw new HttpsError("failed-precondition", "The family for this child changed. Try again.");
-  }
-
-  // Remove the old child and all of its data.
-  await db.recursiveDelete(oldRef);
-  await db.doc(`pinSecrets/${oldChildId}`).delete().catch(() => {});
-  await db.doc(`childMonitor/${oldChildId}`).delete().catch(() => {});
-
-  // Every parent hears about it, so a move nobody expected is noticed.
-  const childName = (oldData.profile && oldData.profile.name) || "your child";
-  const email = request.auth.token.email || "A parent";
-  await pairingInternal.notifyParents(
-    moved,
-    `${childName}'s Shield moved to a reinstalled phone`,
-    `${email} reconnected ${childName} to a phone where Shield was reinstalled. ` +
-      "If you didn't expect this, open Watch Dog and check the family.",
-  ).catch((e) => console.error("reconnect notify", e));
-
-  return { ok: true };
-});
 
 /**
  * When the child reports a geofence enter/exit event, push a notification to
@@ -269,6 +148,8 @@ exports.notifyGeofenceEvent = onDocumentCreated(
     };
 
     const resp = await getMessaging().sendEachForMulticast(message);
+    await require("./trace").serverDiag(resp.failureCount ? "WARN" : "INFO", "push",
+      `${process.env.FUNCTION_TARGET || "push"} sent=${resp.successCount} failed=${resp.failureCount}`, event.params.childId);
 
     // Prune tokens that are no longer valid.
     const deletions = [];
@@ -320,6 +201,8 @@ exports.triggerScreenshot = onDocumentWritten(
       android: { priority: "high" },
     };
     const resp = await getMessaging().sendEachForMulticast(message);
+    await require("./trace").serverDiag(resp.failureCount ? "WARN" : "INFO", "push",
+      `${process.env.FUNCTION_TARGET || "push"} sent=${resp.successCount} failed=${resp.failureCount}`, event.params.childId);
 
     // Prune tokens that are no longer valid.
     const deletions = [];
@@ -381,6 +264,8 @@ exports.triggerPermissionRequest = onDocumentWritten(
       android: { priority: "high", notification: { channelId: "permission_requests" } },
     };
     const resp = await getMessaging().sendEachForMulticast(message);
+    await require("./trace").serverDiag(resp.failureCount ? "WARN" : "INFO", "push",
+      `${process.env.FUNCTION_TARGET || "push"} sent=${resp.successCount} failed=${resp.failureCount}`, event.params.childId);
 
     const deletions = [];
     resp.responses.forEach((r, i) => {
@@ -439,6 +324,8 @@ exports.notifyNewApp = onDocumentCreated(
       android: { priority: "high", notification: { channelId: "geofence_alerts" } },
     };
     const resp = await getMessaging().sendEachForMulticast(message);
+    await require("./trace").serverDiag(resp.failureCount ? "WARN" : "INFO", "push",
+      `${process.env.FUNCTION_TARGET || "push"} sent=${resp.successCount} failed=${resp.failureCount}`, event.params.childId);
 
     const deletions = [];
     resp.responses.forEach((r, i) => {
@@ -521,6 +408,8 @@ exports.notifyChildRequest = onDocumentCreated(
       android: { priority: "high" },
     };
     const resp = await getMessaging().sendEachForMulticast(message);
+    await require("./trace").serverDiag(resp.failureCount ? "WARN" : "INFO", "push",
+      `${process.env.FUNCTION_TARGET || "push"} sent=${resp.successCount} failed=${resp.failureCount}`, event.params.childId);
 
     const deletions = [];
     resp.responses.forEach((r, i) => {
@@ -572,7 +461,8 @@ exports.respondToParentRemoval = pairing.respondToParentRemoval;
 // new install's code, the server issues a one-time sign-in for the old child id,
 // and the parent's Watch Dog hands the old data key to the new install.
 
-const RESTORE_TTL_MS = 10 * 60 * 1000;
+const RESTORE_TTL_MS = 55 * 60 * 1000;
+const RESTORE_WAIT_MS = 30 * 60 * 1000;
 
 /**
  * Data: { oldChildId, newChildId, code }. Caller: a parent linked to oldChildId,
@@ -615,25 +505,87 @@ exports.restoreChild = onCall(async (request) => {
     throw new HttpsError("permission-denied", "That code is wrong or has expired. Scan the code on the phone again.");
   }
 
+  const childName = (oldSnap.get("profile") || {}).name || "your child";
+  const email = request.auth.token.email || "A parent";
+  const others = parents.filter((p) => p !== parentId);
+  if (others.length === 0) {
+    await issueRestore(oldChildId, newChildId, parentId);
+    await pairingInternal.notifyParents(
+      parents,
+      `${childName}'s Shield was restored`,
+      `${email} restored ${childName} on a phone where Shield was reinstalled.`,
+    ).catch((e) => console.error("restore notify", e));
+    return { ok: true };
+  }
+  // Another parent supervises this child too: the restore waits, so they can stop
+  // it if they didn't expect it (it hands the child's account to a new phone).
+  const readyAt = Date.now() + RESTORE_WAIT_MS;
+  await db.doc(`pendingRestores/${oldChildId}`).set({
+    newChildId, parentId, email, readyAt: Timestamp.fromMillis(readyAt), createdAt: Timestamp.now(),
+  });
+  await pairingInternal.notifyParents(
+    parents,
+    `${childName}'s Shield will be restored in 30 minutes`,
+    `${email} is restoring ${childName} on a phone where Shield was reinstalled. ` +
+      "If you didn't expect this, cancel it in Watch Dog → Manage children.",
+  ).catch((e) => console.error("restore notify", e));
+  return { ok: true, pendingUntilMillis: readyAt };
+});
+
+/**
+ * Hands the child's account to the reinstalled phone: a one-time sign-in only that
+ * install can read, and a mark on the child so supervision changes are held back
+ * for a day (a restored phone can't at once remove or add parents).
+ */
+async function issueRestore(oldChildId, newChildId, parentId) {
   const { getAuth } = require("firebase-admin/auth");
   const token = await getAuth().createCustomToken(oldChildId, { restoredFrom: newChildId });
-  // Only the reinstalled phone (signed in as newChildId) can read this.
   await db.doc(`restoreTokens/${newChildId}`).set({
     token,
     oldChildId,
     parentId,
+    // A custom token works for an hour.
     expiresAt: Timestamp.fromMillis(Date.now() + RESTORE_TTL_MS),
   });
+  await db.doc(`children/${oldChildId}`).update({ restoredAt: Timestamp.now() });
+}
 
-  const childName = (oldSnap.get("profile") || {}).name || "your child";
-  const email = request.auth.token.email || "A parent";
-  await pairingInternal.notifyParents(
-    parents,
-    `${childName}'s Shield is being restored`,
-    `${email} restored ${childName} on a phone where Shield was reinstalled. ` +
-      "If you didn't expect this, open Watch Dog and check the family.",
-  ).catch((e) => console.error("restore notify", e));
-  return { ok: true };
+/** Every 5 minutes: restores whose waiting time is over and nobody cancelled. */
+exports.issuePendingRestores = onSchedule("every 5 minutes", async () => {
+  const due = await db.collection("pendingRestores").where("readyAt", "<=", Timestamp.now()).get();
+  for (const doc of due.docs) {
+    const { newChildId, parentId } = doc.data();
+    const oldChildId = doc.id;
+    await doc.ref.delete();
+    try {
+      const [o, n] = await Promise.all([db.doc(`children/${oldChildId}`).get(), db.doc(`children/${newChildId}`).get()]);
+      const parents = (o.exists && o.get("linkedParents")) || [];
+      if (!parents.includes(parentId) || !n.exists || ((n.get("linkedParents") || []).length > 0)) continue;
+      await issueRestore(oldChildId, newChildId, parentId);
+      const childName = (o.get("profile") || {}).name || "your child";
+      await pairingInternal.notifyParents(parents, `${childName}'s Shield was restored`,
+        `${childName} was restored on the reinstalled phone.`).catch(() => {});
+    } catch (e) {
+      console.error("issuePendingRestores", oldChildId, e);
+    }
+  }
+});
+
+/** Any parent of the child stops a waiting restore. Data: { childId }. */
+exports.cancelRestore = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
+  const childId = pairingInternal.requireId((request.data || {}).childId, "child");
+  const child = await db.doc(`children/${childId}`).get();
+  const parents = (child.exists && child.get("linkedParents")) || [];
+  if (!parents.includes(uid)) throw new HttpsError("permission-denied", "You are not linked to this child.");
+  const ref = db.doc(`pendingRestores/${childId}`);
+  if (!(await ref.get()).exists) return { ok: true, cancelled: false };
+  await ref.delete();
+  const childName = (child.get("profile") || {}).name || "your child";
+  await pairingInternal.notifyParents(parents, `Restore of ${childName} cancelled`,
+    `${request.auth.token.email || "A parent"} cancelled the restore of ${childName}.`).catch(() => {});
+  return { ok: true, cancelled: true };
 });
 
 /**
@@ -659,4 +611,41 @@ exports.completeRestore = onCall(async (request) => {
   const { getAuth } = require("firebase-admin/auth");
   await getAuth().deleteUser(tempId).catch(() => {});
   return { ok: true };
+});
+
+// ---- Diagnostics viewer -------------------------------------------------------
+
+/**
+ * Diagnostics for one account: the caller's own (all their phones) or a child
+ * they supervise, newest first. App events and the server's events about that
+ * account share one timeline. Data: { uid?, sinceMillis?, limit? }.
+ */
+exports.readDiagnostics = onCall(async (request) => {
+  const caller = request.auth && request.auth.uid;
+  if (!caller) throw new HttpsError("unauthenticated", "Sign in required.");
+  const data = request.data || {};
+  const target = data.uid ? pairingInternal.requireId(data.uid, "account") : caller;
+  if (target !== caller) {
+    const child = await db.doc(`children/${target}`).get();
+    if (!child.exists || !(child.get("linkedParents") || []).includes(caller)) {
+      throw new HttpsError("permission-denied", "You can only read your own or your children's diagnostics.");
+    }
+  }
+  const since = Math.max(Number(data.sinceMillis) || 0, Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const limit = Math.min(Math.max(Number(data.limit) || 300, 1), 1000);
+  const snap = await db.collection("diagEvents")
+    .where("uid", "==", target)
+    .where("atMillis", ">=", since)
+    .orderBy("atMillis", "desc")
+    .limit(limit)
+    .get();
+  return {
+    events: snap.docs.map((d) => {
+      const e = d.data();
+      return {
+        atMillis: e.atMillis, level: e.level, tag: e.tag, message: e.message, exception: e.exception || "",
+        app: e.app, version: e.version, model: e.model,
+      };
+    }),
+  };
 });

@@ -39,6 +39,7 @@ class WatchdogMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
+        com.shahaabapps.core.common.Diag.info("push", "received type=${message.data["type"] ?: "notification"}")
         // Geofence alerts arrive data-only and content-free: the place name is
         // E2E-encrypted, so decrypt the event on-device, then post the notification.
         if (message.data["type"] == "geofence") {

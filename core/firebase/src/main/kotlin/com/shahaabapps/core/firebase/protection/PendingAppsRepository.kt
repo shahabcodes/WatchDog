@@ -47,6 +47,7 @@ class FirebasePendingAppsRepository @Inject constructor(
 
     override suspend fun add(childId: String, app: PendingApp): AppResult<Unit> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("protection.add", "childId=$childId")
             collection(childId).document(app.packageName).set(
                 mapOf(
                     "packageName" to app.packageName,
@@ -59,6 +60,7 @@ class FirebasePendingAppsRepository @Inject constructor(
 
     override suspend fun remove(childId: String, packageName: String): AppResult<Unit> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("protection.remove", "childId=$childId")
             collection(childId).document(packageName).delete().await()
             Unit
         }

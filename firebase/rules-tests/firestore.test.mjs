@@ -165,6 +165,15 @@ describe("attacks are refused", () => {
     await assertFails(getDoc(doc(parent(), "diagEvents/e1")));
     await assertFails(getDocs(collection(child(), "diagEvents")));
   });
+  it("a waiting restore is visible to the child's parents only, and only the server writes it", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), `pendingRestores/${CHILD}`), { newChildId: "n", parentId: PARENT });
+    });
+    await assertSucceeds(getDoc(doc(parent(), `pendingRestores/${CHILD}`)));
+    await assertFails(getDoc(doc(stranger(), `pendingRestores/${CHILD}`)));
+    await assertFails(setDoc(doc(parent(), `pendingRestores/${CHILD}`), { newChildId: "x" }));
+    await assertFails(deleteDoc(doc(parent(), `pendingRestores/${CHILD}`)));
+  });
   it("only the owner can delete their shared key", async () => {
     await assertSucceeds(setDoc(doc(parent(), `publicKeys/${PARENT}`), { e2ePublicKey: "pk", aad2: true }));
     await assertFails(deleteDoc(doc(stranger(), `publicKeys/${PARENT}`)));

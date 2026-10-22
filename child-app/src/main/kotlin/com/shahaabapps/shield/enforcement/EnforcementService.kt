@@ -117,6 +117,7 @@ class EnforcementService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        com.shahaabapps.core.common.Diag.info("service", "enforcement (accessibility) connected")
         // Watchdog: the accessibility service is the component the OS keeps alive
         // most reliably, so use it to keep location flowing — (re)schedule the
         // backstop workers and best-effort restart the (OEM-killable) location
@@ -491,6 +492,8 @@ class EnforcementService : AccessibilityService() {
         if (packageName == lastBlockedPackage && now - lastBlockAtMillis < 1500) return
         lastBlockedPackage = packageName
         lastBlockAtMillis = now
+        // The app itself is not named: which apps a child uses is end-to-end encrypted.
+        com.shahaabapps.core.common.Diag.info("enforce", "app blocked reason=${reason ?: "rule"}")
 
         val intent = Intent(this, BlockActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
@@ -513,6 +516,7 @@ class EnforcementService : AccessibilityService() {
         if (!ProtectionLocalStore.isSettingsPackage(packageName)) return
         val text = windowText()
         if (ProtectionLocalStore.isProtectedSettingsScreen(className, text, ownAppLabel)) {
+            com.shahaabapps.core.common.Diag.info("guard", "settings page bounced (${className.orEmpty().substringAfterLast('.')})")
             performGlobalAction(GLOBAL_ACTION_HOME)
             android.widget.Toast.makeText(
                 this,
@@ -570,6 +574,7 @@ class EnforcementService : AccessibilityService() {
         if (ProtectionLocalStore.isUninstallScreen(packageName, className, text, ownAppLabel) ||
             (DeviceAdmin.isActive(this) && ProtectionLocalStore.isAdminRemovalScreen(packageName, className, text))
         ) {
+            com.shahaabapps.core.common.Diag.warn("guard", "uninstall/admin-removal screen bounced pkg=$packageName class=${className.orEmpty().substringAfterLast('.')}")
             performGlobalAction(GLOBAL_ACTION_HOME)
         }
     }
@@ -582,6 +587,7 @@ class EnforcementService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
+        com.shahaabapps.core.common.Diag.warn("service", "enforcement (accessibility) destroyed")
         recheckJob?.cancel()
         super.onDestroy()
         if (instance === this) instance = null

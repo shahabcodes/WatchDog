@@ -62,6 +62,7 @@ class FirebaseDeviceRepository @Inject constructor(
 
     override suspend fun sendRing(childId: String, message: String): AppResult<Unit> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("device.sendRing", "childId=$childId")
             val data = mapOf(
                 "active" to true,
                 "message" to message,
@@ -73,6 +74,7 @@ class FirebaseDeviceRepository @Inject constructor(
 
     override suspend fun clearRing(childId: String): AppResult<Unit> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("device.clearRing", "childId=$childId")
             live(childId).document(RING).update("active", false).await()
         }
 
@@ -182,6 +184,7 @@ class FirebaseDeviceRepository @Inject constructor(
     }
 
     override suspend fun requestLocation(childId: String): AppResult<Unit> = runCatchingResult {
+        com.shahaabapps.core.common.Diag.action("device.requestLocation", "childId=$childId")
         firestore.collection(CHILDREN).document(childId)
             .collection(COMMANDS).document(LOCATION)
             .set(mapOf("nonce" to System.currentTimeMillis())).await()
@@ -189,6 +192,7 @@ class FirebaseDeviceRepository @Inject constructor(
     }
 
     override suspend fun requestPermission(childId: String, permission: String): AppResult<Unit> = runCatchingResult {
+        com.shahaabapps.core.common.Diag.action("device.requestPermission", "childId=$childId permission=$permission")
         firestore.collection(CHILDREN).document(childId)
             .collection(COMMANDS).document("permissionRequest")
             .set(

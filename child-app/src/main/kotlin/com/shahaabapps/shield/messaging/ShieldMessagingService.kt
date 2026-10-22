@@ -41,6 +41,7 @@ class ShieldMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
+        com.shahaabapps.core.common.Diag.info("push", "received type=${message.data["type"] ?: "notification"}")
         when (message.data["type"]) {
             "screenshot" -> {
                 val nonce = message.data["nonce"]?.toLongOrNull() ?: System.currentTimeMillis()

@@ -37,7 +37,56 @@ class DiagnosticsLogger @Inject constructor(
     @ApplicationContext private val context: Context,
     private val firestore: FirebaseFirestore,
     private val auth: FirebaseAuth,
-) {
+) : com.shahaabapps.core.common.Diag.Sink {
+
+    override fun log(level: com.shahaabapps.core.common.Diag.Level, tag: String, message: String, t: Throwable?) =
+        log(DiagLevel.valueOf(level.name), tag, message, t)
+
+    @Volatile private var started = false
+
+    /**
+     * Called once from Application.onCreate: becomes the app-wide [Diag] sink and
+     * records the app start, sign-in changes, screens, and foreground/background.
+     */
+    fun start(app: android.app.Application) {
+        if (started) return
+        started = true
+        com.shahaabapps.core.common.Diag.sink = this
+        info("app", "start ${context.packageName} $appVersion on ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} sdk ${android.os.Build.VERSION.SDK_INT}")
+        var lastUid: String? = uid()
+        auth.addAuthStateListener { a ->
+            val now = a.currentUser?.uid
+            if (now != lastUid) {
+                val anon = a.currentUser?.isAnonymous == true
+                info("auth", if (now == null) "signed out (was ${lastUid ?: "-"})" else "signed in uid=$now${if (anon) " (child)" else ""}")
+                lastUid = now
+            }
+        }
+        app.registerActivityLifecycleCallbacks(object : android.app.Application.ActivityLifecycleCallbacks {
+            private var resumed = 0
+            override fun onActivityResumed(a: android.app.Activity) {
+                if (resumed++ == 0) info("app", "foreground")
+                info("screen", a.javaClass.simpleName)
+            }
+            override fun onActivityPaused(a: android.app.Activity) {
+                if (--resumed == 0) info("app", "background")
+            }
+            override fun onActivityCreated(a: android.app.Activity, b: android.os.Bundle?) {}
+            override fun onActivityStarted(a: android.app.Activity) {}
+            override fun onActivityStopped(a: android.app.Activity) {}
+            override fun onActivitySaveInstanceState(a: android.app.Activity, b: android.os.Bundle) {}
+            override fun onActivityDestroyed(a: android.app.Activity) {}
+        })
+        // Crashes: record before the default handler kills the process.
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, e ->
+            runCatching { log(DiagLevel.ERROR, "crash", "${e.javaClass.simpleName}: ${e.message.orEmpty().take(200)} at ${e.stackTrace.firstOrNull()}", e) }
+            previous?.uncaughtException(thread, e)
+        }
+    }
+
+    /** Same tag+message within this window is counted, not uploaded again. */
+    private val lastSeen = HashMap<String, Long>()
     private fun uid(): String? = auth.currentUser?.uid
     data class Event(val atMillis: Long, val level: DiagLevel, val tag: String, val message: String)
 
@@ -68,6 +117,13 @@ class DiagnosticsLogger @Inject constructor(
     fun log(level: DiagLevel, tag: String, message: String, t: Throwable? = null) {
         if (!enabled) return
         val event = Event(System.currentTimeMillis(), level, tag, message)
+        val repeat = synchronized(lock) {
+            val key = "$level|$tag|$message"
+            val prev = lastSeen[key]
+            lastSeen[key] = event.atMillis
+            if (lastSeen.size > 500) lastSeen.clear()
+            prev != null && event.atMillis - prev < REPEAT_WINDOW_MS
+        }
         synchronized(lock) {
             ring.addLast(event)
             while (ring.size > RING_CAP) ring.removeFirst()
@@ -76,7 +132,7 @@ class DiagnosticsLogger @Inject constructor(
         crashlytics?.log("[$level] $tag: $message")
         if (t != null) crashlytics?.recordException(t)
         else if (level == DiagLevel.ERROR) crashlytics?.recordException(DiagnosticException("$tag: $message"))
-        mirror(event, t)
+        if (!repeat) mirror(event, t)
     }
 
     /** A plain-text dump of recent events for the in-app export / share. */
@@ -132,7 +188,8 @@ class DiagnosticsLogger @Inject constructor(
     private companion object {
         const val RING_CAP = 300
         const val COLLECTION = "diagEvents"
-        const val UPLOADS_PER_HOUR = 120
+        const val UPLOADS_PER_HOUR = 300
+        const val REPEAT_WINDOW_MS = 60_000L
         const val KEEP_MS = 30L * 24 * 60 * 60 * 1000
     }
 }

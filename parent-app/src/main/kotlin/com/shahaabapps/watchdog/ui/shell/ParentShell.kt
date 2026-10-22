@@ -176,6 +176,12 @@ fun ParentShell(
 
     val initialChild = rememberSaveable { children.first().childId }
     val navController = rememberNavController()
+    // Diagnostics: which screen the parent is on (route only, no ids' contents).
+    androidx.compose.runtime.LaunchedEffect(navController) {
+        navController.currentBackStackEntryFlow.collect { entry ->
+            com.shahaabapps.core.common.Diag.info("screen", entry.destination.route ?: "?")
+        }
+    }
     val backEntry by navController.currentBackStackEntryAsState()
     val route = backEntry?.destination?.route
     val currentTab = route?.substringBefore("/") ?: Tab.OVERVIEW.route
@@ -1018,6 +1024,7 @@ private fun ManageChildrenScreen(
     var pendingReconnectId by remember { mutableStateOf<String?>(null) }
     val reconnectState by viewModel.reconnectState.collectAsStateWithLifecycle()
     val parentsDialog by viewModel.parentsDialog.collectAsStateWithLifecycle()
+    val pendingRestores by viewModel.pendingRestores.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -1079,12 +1086,16 @@ private fun ManageChildrenScreen(
         }
         is ReconnectState.Success -> com.shahaabapps.core.ui.components.AppDialog(
             onDismiss = viewModel::clearReconnectState,
-            title = "Phone restored",
+            title = if (rs.waitMinutes > 0) "Restore waiting" else "Phone restored",
             icon = Icons.Filled.CheckCircle,
             dismissText = "Done",
         ) {
             Text(
-                "The reinstalled phone is becoming this child again, with all its places, rules and history. It takes a minute and Shield restarts once on that phone.",
+                if (rs.waitMinutes > 0)
+                    "Another parent also supervises this child, so the restore waits about ${rs.waitMinutes} minutes " +
+                        "in case they want to stop it. Keep Shield open on the reinstalled phone; it restarts once when it's done."
+                else
+                    "The reinstalled phone is becoming this child again, with all its places, rules and history. It takes a minute and Shield restarts once on that phone.",
                 textAlign = TextAlign.Center,
             )
         }
@@ -1117,6 +1128,11 @@ private fun ManageChildrenScreen(
                                 text = if (online) "Online" else "Offline",
                                 color = if (online) AppTheme.colors.success else AppTheme.colors.secondaryLabel,
                             )
+                            if (child.childId in pendingRestores) {
+                                androidx.compose.material3.TextButton(onClick = { viewModel.cancelRestore(child.childId) }) {
+                                    Text("Restore waiting · Cancel", color = AppTheme.colors.destructive)
+                                }
+                            }
                         }
                         var menu by remember { mutableStateOf(false) }
                         Box {

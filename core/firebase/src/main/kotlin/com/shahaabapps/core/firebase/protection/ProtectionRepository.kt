@@ -116,6 +116,7 @@ class FirebaseProtectionRepository @Inject constructor(
         newPin: String?,
     ): AppResult<Unit> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("protection.save", "childId=$childId")
             val base = mutableMapOf<String, Any>(
                 "uninstallBlocked" to uninstallBlocked,
                 "blockNewApps" to blockNewApps,
@@ -127,20 +128,22 @@ class FirebaseProtectionRepository @Inject constructor(
             // The PIN is hashed and stored server-side, out of the child's reach.
             if (newPin != null) {
                 functions.getHttpsCallable("setRemovalPin")
-                    .callSafely(hashMapOf("childId" to childId, "pin" to newPin))
+                    .callSafely(name = "setRemovalPin", data = hashMapOf("childId" to childId, "pin" to newPin))
                     
             }
             Unit
         }
 
     override suspend fun migratePin(childId: String): AppResult<Unit> = runCatchingResult {
-        functions.getHttpsCallable("migratePin").callSafely(hashMapOf("childId" to childId))
+        com.shahaabapps.core.common.Diag.action("protection.migratePin", "childId=$childId")
+        functions.getHttpsCallable("migratePin").callSafely(name = "migratePin", data = hashMapOf("childId" to childId))
         Unit
     }
 
     override suspend fun verifyRemovalPin(pin: String): AppResult<Long> = runCatchingResult {
+        com.shahaabapps.core.common.Diag.action("protection.verifyRemovalPin")
         val data = functions.getHttpsCallable("verifyRemovalPin")
-            .callSafely(hashMapOf("pin" to pin)).getData() as? Map<*, *>
+            .callSafely(name = "verifyRemovalPin", data = hashMapOf("pin" to pin)).getData() as? Map<*, *>
         (data?.get("unlockUntilMillis") as? Number)?.toLong() ?: error("No unlock returned")
     }
 
@@ -163,6 +166,7 @@ class FirebaseProtectionRepository @Inject constructor(
 
     override suspend fun saveAlerts(childId: String, alerts: com.shahaabapps.core.model.AlertSettings): AppResult<Unit> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("protection.saveAlerts", "childId=$childId")
             alertsDoc(childId).set(
                 mapOf(
                     "protectionOff" to alerts.protectionOff,

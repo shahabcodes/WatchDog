@@ -38,6 +38,7 @@ class FirebaseTrackingRepository @Inject constructor(
 
     override suspend fun setMode(childId: String, mode: TrackingMode): AppResult<Unit> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("tracking.setMode", "childId=$childId mode=$mode")
             doc(childId).set(
                 mapOf("mode" to mode.name, "updatedAtMillis" to System.currentTimeMillis()),
             ).await()

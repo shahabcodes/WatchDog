@@ -6,9 +6,12 @@ import dagger.hilt.android.HiltAndroidApp
 
 @HiltAndroidApp
 class ParentApplication : Application() {
+    @javax.inject.Inject lateinit var diagnostics: com.shahaabapps.core.firebase.diagnostics.DiagnosticsLogger
+
     override fun onCreate() {
         super.onCreate()
         com.shahaabapps.core.firebase.AppCheckSetup.install(this)
+        diagnostics.start(this)
         // Create the geofence-alerts channel up front so background push
         // notifications (which reference it) are shown on Android O+.
         WatchdogMessagingService.ensureChannel(this)

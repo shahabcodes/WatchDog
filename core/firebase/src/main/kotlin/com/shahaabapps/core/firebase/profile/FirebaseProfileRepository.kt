@@ -36,6 +36,7 @@ class FirebaseProfileRepository @Inject constructor(
 
     override suspend fun saveProfile(profile: UserProfile): AppResult<Unit> =
         runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("profile.saveProfile")
             firestore.collection(COLLECTION_USERS)
                 .document(profile.id)
                 .set(profile.toMap())

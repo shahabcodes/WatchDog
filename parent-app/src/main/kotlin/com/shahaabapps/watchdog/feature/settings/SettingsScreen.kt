@@ -8,6 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.LockReset
@@ -44,6 +45,7 @@ fun SettingsScreen(
     onOpenSecurity: () -> Unit = {},
     onOpenChangePassword: () -> Unit = {},
     onOpenDiagnostics: () -> Unit = {},
+    onOpenGuide: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val mode by viewModel.themeMode.collectAsStateWithLifecycle()
@@ -119,6 +121,12 @@ fun SettingsScreen(
                     onClick = { if (!sendingReset) confirmReset = true },
                 )
             }
+            CupertinoListRow(
+                title = "App guide",
+                subtitle = "A tour of every screen",
+                leadingIcon = Icons.AutoMirrored.Filled.MenuBook,
+                onClick = onOpenGuide,
+            )
             CupertinoListRow(
                 title = "Diagnostics",
                 subtitle = "Crash & bug reports to help fix issues",

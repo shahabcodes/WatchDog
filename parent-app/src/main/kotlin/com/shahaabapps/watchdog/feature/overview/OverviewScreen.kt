@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Accessibility
@@ -106,6 +107,7 @@ fun OverviewScreen(
     onSelectChild: (String) -> Unit = {},
     onAddChild: () -> Unit = {},
     onManage: () -> Unit = {},
+    onOpenGuide: () -> Unit = {},
     onSettings: () -> Unit = {},
     onSignOut: () -> Unit = {},
     onVerifyConnection: () -> Unit = {},
@@ -363,6 +365,7 @@ fun OverviewScreen(
                 onSelectChild = { showChildSheet = false; onSelectChild(it) },
                 onAddChild = { showChildSheet = false; onAddChild() },
                 onManage = { showChildSheet = false; onManage() },
+                onOpenGuide = { showChildSheet = false; onOpenGuide() },
                 onSettings = { showChildSheet = false; onSettings() },
                 onSignOut = { showChildSheet = false; onSignOut() },
             )
@@ -637,6 +640,7 @@ private fun ChildSwitcherSheet(
     onSelectChild: (String) -> Unit,
     onAddChild: () -> Unit,
     onManage: () -> Unit,
+    onOpenGuide: () -> Unit,
     onSettings: () -> Unit,
     onSignOut: () -> Unit,
 ) {
@@ -730,6 +734,19 @@ private fun ChildSwitcherSheet(
             Icon(Icons.Filled.Group, contentDescription = null, tint = AppTheme.colors.secondaryLabel)
             Spacer(Modifier.width(12.dp))
             Text("Manage children", style = MaterialTheme.typography.bodyLarge, color = AppTheme.colors.secondaryLabel)
+        }
+        // App guide: a tour of every screen
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .clickable(onClick = onOpenGuide)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, tint = AppTheme.colors.secondaryLabel)
+            Spacer(Modifier.width(12.dp))
+            Text("App guide", style = MaterialTheme.typography.bodyLarge, color = AppTheme.colors.secondaryLabel)
         }
         // Settings
         Row(

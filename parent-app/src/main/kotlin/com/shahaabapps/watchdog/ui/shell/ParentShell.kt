@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -100,6 +101,9 @@ import com.shahaabapps.watchdog.feature.dashboard.LinkState
 import com.shahaabapps.watchdog.feature.dashboard.ReconnectState
 import com.shahaabapps.watchdog.feature.dashboard.QrImageDecoder
 import com.shahaabapps.watchdog.feature.geofence.GeofenceScreen
+import com.shahaabapps.watchdog.feature.guide.AppGuideChapterScreen
+import com.shahaabapps.watchdog.feature.guide.AppGuideIndexScreen
+import com.shahaabapps.watchdog.feature.guide.AppGuidePrefs
 import com.shahaabapps.watchdog.feature.overview.OverviewScreen
 import com.shahaabapps.watchdog.feature.settings.SettingsScreen
 import com.shahaabapps.watchdog.feature.usage.UsageScreen
@@ -131,6 +135,8 @@ fun ParentShell(
     // onboarding (we only arrived here from the empty/first-run state).
     var justConnected by rememberSaveable { mutableStateOf(false) }
     var sawEmpty by rememberSaveable { mutableStateOf(false) }
+    // "Take the tour" on the connected screen opens the App guide once the shell is up.
+    var pendingTour by rememberSaveable { mutableStateOf(false) }
     androidx.compose.runtime.LaunchedEffect(children) { if (children.isEmpty()) sawEmpty = true }
     androidx.compose.runtime.LaunchedEffect(linkState) {
         if (linkState is LinkState.Success && sawEmpty) justConnected = true
@@ -150,6 +156,9 @@ fun ParentShell(
         }
     }
 
+    // The App guide's "seen" flag (it auto-opens once per phone).
+    val guidePrefs = remember { AppGuidePrefs(notifContext) }
+
     if (loading && children.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             LoadingView(label = "Loading your family…")
@@ -168,7 +177,19 @@ fun ParentShell(
         com.shahaabapps.core.ui.theme.LighthouseType {
             ConnectedChildScreen(
                 childName = children.firstOrNull()?.profile?.name,
-                onContinue = { justConnected = false; sawEmpty = false; viewModel.clearLinkState() },
+                // "Open the family map" declines the tour, so the guide doesn't auto-open.
+                onContinue = {
+                    guidePrefs.markSeen()
+                    justConnected = false
+                    sawEmpty = false
+                    viewModel.clearLinkState()
+                },
+                onTour = {
+                    pendingTour = true
+                    justConnected = false
+                    sawEmpty = false
+                    viewModel.clearLinkState()
+                },
             )
         }
         return
@@ -199,7 +220,11 @@ fun ParentShell(
     val backEntry by navController.currentBackStackEntryAsState()
     val route = backEntry?.destination?.route
     val currentTab = route?.substringBefore("/") ?: Tab.OVERVIEW.route
-    val currentChildId = backEntry?.arguments?.getString("childId") ?: initialChild
+    // Routes without a child (guide, settings, …) keep the child last picked on a tab.
+    val routeChildId = backEntry?.arguments?.getString("childId")
+    var lastChildId by rememberSaveable { mutableStateOf(initialChild) }
+    androidx.compose.runtime.SideEffect { if (routeChildId != null) lastChildId = routeChildId }
+    val currentChildId = routeChildId ?: lastChildId
     val showChrome = Tab.entries.any { it.route == currentTab }
 
     val selectedChild = children.firstOrNull { it.childId == currentChildId } ?: children.first()
@@ -245,6 +270,28 @@ fun ParentShell(
                 restoreState = true
             }
         }
+    }
+
+    // The App guide opens by itself once per phone, the first time the family
+    // dashboard shows (not over a notification deep link), or on "Take the tour".
+    // It waits for the "Two-factor is off" notice, and only opens over Home.
+    var guideAutoShown by rememberSaveable { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(pendingTour, showMfaOffNotice) {
+        val onHome = navController.currentDestination?.route?.startsWith(Tab.OVERVIEW.route) ?: true
+        val firstTime = !guideAutoShown && !guidePrefs.seen && deepLink == null &&
+            !showMfaOffNotice && onHome
+        if (pendingTour || firstTime) {
+            guideAutoShown = true
+            pendingTour = false
+            // Persist now, so a process kill while it's open doesn't re-open it next launch.
+            guidePrefs.markSeen()
+            navController.navigate("guide?tour=true") { launchSingleTop = true }
+        }
+    }
+    // Leaves the guide from any of its pages, back to wherever it was opened from.
+    val exitGuide: () -> Unit = {
+        guidePrefs.markSeen()
+        if (!navController.popBackStack("guide?tour={tour}", inclusive = true)) navController.popBackStack()
     }
 
     if (showMfaOffNotice) {
@@ -307,6 +354,7 @@ fun ParentShell(
                     },
                     onAddChild = { navController.navigate("add") },
                     onManage = { navController.navigate("manage") },
+                    onOpenGuide = { navController.navigate("guide") { launchSingleTop = true } },
                     onSettings = { navController.navigate("settings") },
                     onSignOut = { viewModel.signOut() },
                     onVerifyConnection = { navController.navigate("verify/$currentChildId") },
@@ -345,6 +393,30 @@ fun ParentShell(
                     onOpenSecurity = { navController.navigate("security") },
                     onOpenChangePassword = { navController.navigate("password") },
                     onOpenDiagnostics = { navController.navigate("diagnostics") },
+                    onOpenGuide = { navController.navigate("guide") { launchSingleTop = true } },
+                )
+            }
+            // App guide: the index (with the navy cover first when ?tour=true), then
+            // one chapter pager per "guide/<chapterId>". No bottom bar on either.
+            composable(
+                "guide?tour={tour}",
+                listOf(navArgument("tour") { type = NavType.BoolType; defaultValue = false }),
+            ) { entry ->
+                AppGuideIndexScreen(
+                    showCover = entry.arguments?.getBoolean("tour") == true,
+                    onOpenChapter = { id -> navController.navigate("guide/$id") },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(
+                "guide/{chapterId}",
+                listOf(navArgument("chapterId") { type = NavType.StringType }),
+            ) { entry ->
+                AppGuideChapterScreen(
+                    startChapterId = entry.arguments?.getString("chapterId").orEmpty(),
+                    childName = selectedChild.profile.name,
+                    onBack = { navController.popBackStack() },
+                    onExit = exitGuide,
                 )
             }
             composable("security") {
@@ -490,7 +562,7 @@ private fun ParentBottomBar(currentTab: String, onSelect: (Tab) -> Unit) {
 
 /** Lighthouse-styled "child connected" success screen after first pairing. */
 @Composable
-private fun ConnectedChildScreen(childName: String?, onContinue: () -> Unit) {
+private fun ConnectedChildScreen(childName: String?, onContinue: () -> Unit, onTour: () -> Unit) {
     val navy = Color(0xFF00133F)
     val gold = Color(0xFFF5B83D)
     val subtitle = Color(0xFFC7D3F0)
@@ -538,6 +610,17 @@ private fun ConnectedChildScreen(childName: String?, onContinue: () -> Unit) {
             contentAlignment = Alignment.Center,
         ) {
             Text("Open the family map", color = navy, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        }
+        // Borderless secondary action, white on navy (the accent text button would vanish here).
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 44.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .clickable(onClick = onTour),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("Take the tour", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -1075,7 +1158,7 @@ private fun ManageChildrenScreen(
     confirm?.let { child ->
         com.shahaabapps.core.ui.components.ConfirmDialog(
             title = "Remove ${child.profile.name.ifBlank { "this child" }}?",
-            message = "This unlinks the device. Its restrictions turn off and it shows as no longer supervised. You can re-pair anytime.",
+            message = "This unlinks your account from this phone. If you're its last parent, Shield's restrictions turn off and it shows as no longer supervised. You can re-pair anytime.",
             confirmText = "Remove",
             onConfirm = { onRemove(child.childId); confirm = null },
             onDismiss = { confirm = null },

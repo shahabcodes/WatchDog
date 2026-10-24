@@ -96,6 +96,10 @@ import com.shahaabapps.core.ui.components.StatusChip
 import com.shahaabapps.core.ui.theme.AppFonts
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
+import com.shahaabapps.core.ui.tour.TourLayer
+import com.shahaabapps.core.ui.tour.TourScene
+import com.shahaabapps.core.ui.tour.TourScroller
+import com.shahaabapps.core.ui.tour.tourTarget
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -139,6 +143,12 @@ fun OverviewScreen(
     var showProtectionSheet by remember { mutableStateOf(false) }
     var showFocusSheet by remember { mutableStateOf(false) }
     var showChildSheet by remember { mutableStateOf(false) }
+    // The walk-through opens the children and Focus sheets for their steps, and
+    // pages through the dashboard to find cards further down.
+    TourScene("home.sheet") { showChildSheet = it }
+    TourScene("home.focus") { showFocusSheet = it }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    TourScroller(listState)
 
     androidx.compose.material3.pulltorefresh.PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -147,6 +157,7 @@ fun OverviewScreen(
     ) {
     // LazyColumn so off-screen sections don't all compose on first load.
     androidx.compose.foundation.lazy.LazyColumn(
+        state = listState,
         modifier = Modifier
             .fillMaxSize()
             .background(AppTheme.colors.groupedBackground),
@@ -157,7 +168,7 @@ fun OverviewScreen(
             item(key = "verify") {
                 VerifyConnectionBanner(
                     onVerify = onVerifyConnection,
-                    modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm),
+                    modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm).tourTarget("home.verify"),
                 )
             }
         }
@@ -195,7 +206,7 @@ fun OverviewScreen(
             val missing = missingProtections(perms, uninstallWanted)
             if (missing.isNotEmpty()) {
                 item(key = "protectionIncomplete") {
-                    Box(Modifier.padding(horizontal = Spacing.lg)) {
+                    Box(Modifier.padding(horizontal = Spacing.lg).tourTarget("home.protectionIncomplete")) {
                         ProtectionIncompleteCard(
                             childName = state.childName,
                             missing = missing,
@@ -210,7 +221,7 @@ fun OverviewScreen(
         item(key = "locationHealth") {
             val healthLoc by viewModel.childLocation.collectAsStateWithLifecycle()
             val locStatus by viewModel.locationStatus.collectAsStateWithLifecycle()
-            Box(Modifier.padding(horizontal = Spacing.lg)) {
+            Box(Modifier.padding(horizontal = Spacing.lg).tourTarget("home.locationHealth")) {
                 DashSection("Location health") {
                     LocationHealthCard(
                         online = state.online,
@@ -224,7 +235,7 @@ fun OverviewScreen(
         }
         // Screen time today.
         item(key = "screentime") {
-            Box(Modifier.padding(horizontal = Spacing.lg).dashReveal()) {
+            Box(Modifier.padding(horizontal = Spacing.lg).dashReveal().tourTarget("home.screentime")) {
                 ScreenTimeCard(
                     totalMinutes = state.screenTimeMinutes,
                     yesterdayMinutes = if (weekly.size >= 2) weekly[weekly.lastIndex - 1].minutes else null,
@@ -236,7 +247,7 @@ fun OverviewScreen(
         // New-apps review (conditional alert) — kept near the top so it's seen.
         if (pendingApps.isNotEmpty()) {
             item(key = "pending") {
-                Box(Modifier.padding(horizontal = Spacing.lg)) {
+                Box(Modifier.padding(horizontal = Spacing.lg).tourTarget("home.pendingApps")) {
                     DashSection("New apps to review") {
                         PendingAppsCard(
                             apps = pendingApps,
@@ -257,7 +268,7 @@ fun OverviewScreen(
         }
         // Focus modes.
         item(key = "focus") {
-            Box(Modifier.padding(horizontal = Spacing.lg)) {
+            Box(Modifier.padding(horizontal = Spacing.lg).tourTarget("home.focusCard")) {
                 DashSection("Focus modes") {
                     com.shahaabapps.watchdog.feature.focus.FocusCard(
                         settings = focus,
@@ -270,7 +281,7 @@ fun OverviewScreen(
         }
         // Protection.
         item(key = "protection") {
-            Box(Modifier.padding(horizontal = Spacing.lg)) {
+            Box(Modifier.padding(horizontal = Spacing.lg).tourTarget("home.protection")) {
                 DashSection("Protection") {
                     ProtectionCard(
                         blocked = protection.uninstallBlocked,
@@ -281,7 +292,7 @@ fun OverviewScreen(
         }
         // App installs.
         item(key = "installs") {
-            Box(Modifier.padding(horizontal = Spacing.lg)) {
+            Box(Modifier.padding(horizontal = Spacing.lg).tourTarget("home.installs")) {
                 DashSection("App installs") {
                     CupertinoCard {
                         CupertinoListRow(
@@ -297,7 +308,7 @@ fun OverviewScreen(
         // This week.
         if (weekly.any { it.minutes > 0 }) {
             item(key = "week") {
-                Box(Modifier.padding(horizontal = Spacing.lg)) {
+                Box(Modifier.padding(horizontal = Spacing.lg).tourTarget("home.week")) {
                     DashSection("This week") {
                         WeeklyTrendChart(weekly)
                     }
@@ -306,7 +317,7 @@ fun OverviewScreen(
         }
         // Battery.
         item(key = "battery") {
-            Box(Modifier.padding(horizontal = Spacing.lg)) {
+            Box(Modifier.padding(horizontal = Spacing.lg).tourTarget("home.battery")) {
                 DashSection("Battery") {
                     BatteryCard(
                         percent = state.batteryPercent,
@@ -321,7 +332,7 @@ fun OverviewScreen(
         // the hourly graph fills in over time.
         if (state.temperatureTenthsC > 0 || state.batteryStats?.hourly?.any { it.tempTenthsC > 0 } == true) {
             item(key = "temperature") {
-                Box(Modifier.padding(horizontal = Spacing.lg)) {
+                Box(Modifier.padding(horizontal = Spacing.lg).tourTarget("home.temperature")) {
                     DashSection("Temperature") {
                         TemperatureCard(currentTenthsC = state.temperatureTenthsC, stats = state.batteryStats)
                     }
@@ -330,7 +341,7 @@ fun OverviewScreen(
         }
         // Location tracking mode.
         item(key = "tracking") {
-            Box(Modifier.padding(horizontal = Spacing.lg)) {
+            Box(Modifier.padding(horizontal = Spacing.lg).tourTarget("home.tracking")) {
                 DashSection("Location tracking") {
                     TrackingCard(mode = trackingMode, onSelect = { viewModel.setTrackingMode(it) })
                 }
@@ -339,7 +350,7 @@ fun OverviewScreen(
         // Permissions on the child's phone.
         state.permissions?.let { perms ->
             item(key = "permissions") {
-                Box(Modifier.padding(horizontal = Spacing.lg)) {
+                Box(Modifier.padding(horizontal = Spacing.lg).tourTarget("home.permissions")) {
                     DashSection("Permissions on ${state.childName}'s phone") {
                         PermissionsCard(
                             perms,
@@ -359,6 +370,7 @@ fun OverviewScreen(
     if (showChildSheet) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(onDismissRequest = { showChildSheet = false }, sheetState = sheetState) {
+            TourLayer()
             ChildSwitcherSheet(
                 childNames = childNames,
                 selectedId = selectedId,
@@ -401,6 +413,7 @@ fun OverviewScreen(
     if (showFocusSheet) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(onDismissRequest = { showFocusSheet = false }, sheetState = sheetState) {
+            TourLayer()
             val focusApps by focusVm.installedApps.collectAsStateWithLifecycle()
             com.shahaabapps.watchdog.feature.focus.FocusEditor(
                 initial = focus,
@@ -479,6 +492,7 @@ private fun HomeHero(
         modifier = Modifier
             .fillMaxWidth()
             .height(320.dp)
+            .tourTarget("home.hero")
             .clip(RoundedCornerShape(bottomStart = 36.dp, bottomEnd = 36.dp))
             .clickable(onClick = onOpenMap),
     ) {
@@ -523,7 +537,7 @@ private fun HomeHero(
                 .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
         )
         // Status overlay.
-        Column(modifier = Modifier.align(Alignment.BottomStart).padding(Spacing.lg)) {
+        Column(modifier = Modifier.align(Alignment.BottomStart).padding(Spacing.lg).tourTarget("home.status")) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier.size(8.dp).clip(CircleShape)
@@ -580,7 +594,7 @@ private fun HomeTopRow(
             shape = CircleShape,
             color = AppTheme.colors.card,
             border = androidx.compose.foundation.BorderStroke(1.dp, AppTheme.colors.separator),
-            modifier = Modifier.clip(CircleShape).clickable(onClick = onOpenSwitcher),
+            modifier = Modifier.tourTarget("home.switcher").clip(CircleShape).clickable(onClick = onOpenSwitcher),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -613,7 +627,7 @@ private fun HomeTopRow(
                 shape = CircleShape,
                 color = AppTheme.colors.card,
                 border = androidx.compose.foundation.BorderStroke(1.dp, AppTheme.colors.separator),
-                modifier = Modifier.size(48.dp).clickable(onClick = onOpenAlerts),
+                modifier = Modifier.size(48.dp).tourTarget("home.bell").clickable(onClick = onOpenAlerts),
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(Icons.Filled.Notifications, contentDescription = "Notifications", tint = MaterialTheme.colorScheme.onBackground)
@@ -659,7 +673,7 @@ private fun ChildSwitcherSheet(
             color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.padding(bottom = Spacing.xs),
         )
-        childNames.forEach { (id, name) ->
+        childNames.forEachIndexed { index, (id, name) ->
             val selected = id == selectedId
             Surface(
                 shape = RoundedCornerShape(18.dp),
@@ -668,7 +682,10 @@ private fun ChildSwitcherSheet(
                     1.dp,
                     if (selected) AppTheme.colors.accent else AppTheme.colors.separator,
                 ),
-                modifier = Modifier.fillMaxWidth().clickable { onSelectChild(id) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (index == 0) Modifier.tourTarget("sheet.child") else Modifier)
+                    .clickable { onSelectChild(id) },
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -704,7 +721,7 @@ private fun ChildSwitcherSheet(
             shape = RoundedCornerShape(18.dp),
             color = AppTheme.colors.card,
             border = androidx.compose.foundation.BorderStroke(1.dp, AppTheme.colors.separator),
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onAddChild),
+            modifier = Modifier.fillMaxWidth().tourTarget("sheet.add").clickable(onClick = onAddChild),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -727,6 +744,7 @@ private fun ChildSwitcherSheet(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
+                .tourTarget("sheet.manage")
                 .clip(RoundedCornerShape(18.dp))
                 .clickable(onClick = onManage)
                 .padding(horizontal = 14.dp, vertical = 12.dp),
@@ -735,11 +753,12 @@ private fun ChildSwitcherSheet(
             Spacer(Modifier.width(12.dp))
             Text("Manage children", style = MaterialTheme.typography.bodyLarge, color = AppTheme.colors.secondaryLabel)
         }
-        // App guide: a tour of every screen
+        // App guide: the walk-through of every control
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
+                .tourTarget("sheet.guide")
                 .clip(RoundedCornerShape(18.dp))
                 .clickable(onClick = onOpenGuide)
                 .padding(horizontal = 14.dp, vertical = 12.dp),
@@ -753,6 +772,7 @@ private fun ChildSwitcherSheet(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
+                .tourTarget("sheet.settings")
                 .clip(RoundedCornerShape(18.dp))
                 .clickable(onClick = onSettings)
                 .padding(horizontal = 14.dp, vertical = 12.dp),
@@ -766,6 +786,7 @@ private fun ChildSwitcherSheet(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
+                .tourTarget("sheet.logout")
                 .clip(RoundedCornerShape(18.dp))
                 .clickable(onClick = onSignOut)
                 .padding(horizontal = 14.dp, vertical = 12.dp),
@@ -874,10 +895,10 @@ private fun QuickActions(
     onFocus: () -> Unit,
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-        QuickActionTile("Ring", Icons.Filled.NotificationsActive, primary = true, onClick = onRing, modifier = Modifier.weight(1f))
-        QuickActionTile("Locate", Icons.Filled.MyLocation, onClick = onLocate, modifier = Modifier.weight(1f))
-        QuickActionTile("Refresh", Icons.Filled.Refresh, onClick = onRefresh, modifier = Modifier.weight(1f))
-        QuickActionTile("Focus", Icons.Filled.Bedtime, onClick = onFocus, modifier = Modifier.weight(1f))
+        QuickActionTile("Ring", Icons.Filled.NotificationsActive, primary = true, onClick = onRing, modifier = Modifier.weight(1f).tourTarget("home.ring"))
+        QuickActionTile("Locate", Icons.Filled.MyLocation, onClick = onLocate, modifier = Modifier.weight(1f).tourTarget("home.locate"))
+        QuickActionTile("Refresh", Icons.Filled.Refresh, onClick = onRefresh, modifier = Modifier.weight(1f).tourTarget("home.refresh"))
+        QuickActionTile("Focus", Icons.Filled.Bedtime, onClick = onFocus, modifier = Modifier.weight(1f).tourTarget("home.focus"))
     }
 }
 
@@ -1616,6 +1637,18 @@ private fun PermissionsCard(
         perms.location -> "While in use only"
         else -> "Off"
     }
+    // The walk-through points at the first "Request" (rows in display order).
+    val firstMissing = listOf(
+        "location" to perms.locationAlways,
+        "admin" to (perms.adminActive || !uninstallWanted),
+        "accessibility" to perms.accessibility,
+        "usageAccess" to perms.usageAccess,
+        "notifications" to perms.notifications,
+        "battery" to perms.batteryUnrestricted,
+        "fullScreenAlarm" to perms.fullScreenAlarm,
+        "storage" to (perms.storageAccess || !showStorage),
+    ).firstOrNull { !it.second }?.first
+    androidx.compose.runtime.CompositionLocalProvider(LocalFirstMissingPerm provides firstMissing) {
     CupertinoCard {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             PermRow(Icons.Filled.LocationOn, "Location", perms.locationAlways, locationLabel, "location", onRequest)
@@ -1641,7 +1674,11 @@ private fun PermissionsCard(
             }
         }
     }
+    }
 }
+
+/** The permission key whose "Request" the walk-through spotlights (the first missing one). */
+private val LocalFirstMissingPerm = androidx.compose.runtime.staticCompositionLocalOf<String?> { null }
 
 @Composable
 private fun PermRow(
@@ -1667,6 +1704,7 @@ private fun PermRow(
                 color = if (requested) AppTheme.colors.secondaryLabel else AppTheme.colors.accent,
                 modifier = Modifier
                     .padding(end = Spacing.sm)
+                    .then(if (LocalFirstMissingPerm.current == permKey) Modifier.tourTarget("home.permRequest") else Modifier)
                     .clip(RoundedCornerShape(8.dp))
                     .clickable(enabled = !requested) { requested = true; onRequest(permKey) }
                     .padding(horizontal = 8.dp, vertical = 4.dp),
@@ -1700,6 +1738,7 @@ private fun BedtimeBanner(focus: com.shahaabapps.core.model.FocusSettings) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
+            .tourTarget("home.bedtime")
             .clip(RoundedCornerShape(22.dp))
             .background(Color(0xFF1C2140))
             .padding(horizontal = 16.dp, vertical = 14.dp),

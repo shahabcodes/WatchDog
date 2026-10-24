@@ -73,6 +73,9 @@ import com.shahaabapps.core.ui.components.SectionHeader
 import com.shahaabapps.core.ui.components.StatusChip
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
+import com.shahaabapps.core.ui.tour.tourTarget
+import com.shahaabapps.core.ui.tour.TourLayer
+import com.shahaabapps.core.ui.tour.TourScene
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -89,6 +92,8 @@ fun UsageScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var editing by remember { mutableStateOf<AppRow?>(null) }
+    // The walk-through opens the first app's rule sheet for its steps.
+    TourScene("activity.rule") { open -> editing = if (open) state.rows.firstOrNull() else null }
 
     Column(
         modifier = Modifier
@@ -114,6 +119,7 @@ fun UsageScreen(
                 )
                 Text(
                     formatDuration(state.totalMinutes),
+                    modifier = Modifier.tourTarget("activity.total"),
                     fontFamily = AppFonts.display,
                     fontSize = 34.sp,
                     fontWeight = FontWeight.ExtraBold,
@@ -141,9 +147,10 @@ fun UsageScreen(
                 value = state.query,
                 onValueChange = viewModel::setQuery,
                 placeholder = "Search apps",
+                modifier = Modifier.tourTarget("activity.search"),
             )
             Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                modifier = Modifier.fillMaxWidth().tourTarget("activity.sort").horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
             ) {
                 AppSort.entries.forEach { sort ->
@@ -171,6 +178,7 @@ fun UsageScreen(
                 val maxMinutes = state.rows.maxOfOrNull { it.minutes }?.coerceAtLeast(1) ?: 1
                 items(state.rows, key = { it.app.packageName }) { row ->
                     AppCard(
+                        modifier = if (row === state.rows.first()) Modifier.tourTarget("activity.app") else Modifier,
                         row = row,
                         showInstalled = state.sort == AppSort.INSTALLED,
                         fraction = (row.minutes.toFloat() / maxMinutes).coerceIn(0f, 1f),
@@ -185,6 +193,7 @@ fun UsageScreen(
     if (current != null) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(onDismissRequest = { editing = null }, sheetState = sheetState) {
+            TourLayer()
             RuleEditor(
                 app = current.app,
                 rule = current.rule,
@@ -202,8 +211,14 @@ fun UsageScreen(
 }
 
 @Composable
-private fun AppCard(row: AppRow, showInstalled: Boolean, fraction: Float, onClick: () -> Unit) {
-    CupertinoCard(onClick = onClick) {
+private fun AppCard(
+    row: AppRow,
+    showInstalled: Boolean,
+    fraction: Float,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    CupertinoCard(modifier = modifier, onClick = onClick) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             AppIcon(base64 = row.app.icon, label = row.app.label, size = 40.dp, modifier = Modifier.padding(end = Spacing.md))
             Column(modifier = Modifier.weight(1f)) {
@@ -263,7 +278,7 @@ private fun AppCard(row: AppRow, showInstalled: Boolean, fraction: Float, onClic
 
 @Composable
 private fun EmptyApps(hasQuery: Boolean) {
-    CupertinoCard(modifier = Modifier.padding(horizontal = Spacing.lg)) {
+    CupertinoCard(modifier = Modifier.padding(horizontal = Spacing.lg).tourTarget("activity.waiting")) {
         Text(if (hasQuery) "No apps match your search" else "Waiting for app list", style = MaterialTheme.typography.bodyLarge)
         if (!hasQuery) {
             Text(
@@ -307,7 +322,7 @@ private fun RuleEditor(
             Text(app.label.ifBlank { app.packageName }, style = MaterialTheme.typography.headlineMedium)
         }
 
-        CupertinoCard {
+        CupertinoCard(modifier = Modifier.tourTarget("rule.block")) {
             CupertinoListRow(
                 title = "Block completely",
                 subtitle = "Always off-limits",
@@ -318,7 +333,7 @@ private fun RuleEditor(
 
         if (!blocked) {
             Text("Daily limit", style = MaterialTheme.typography.titleMedium)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), modifier = Modifier.tourTarget("rule.limit")) {
                 LIMIT_OPTIONS.forEach { option ->
                     FilterChip(
                         selected = limit == option,
@@ -335,7 +350,7 @@ private fun RuleEditor(
                 style = MaterialTheme.typography.bodySmall,
                 color = AppTheme.colors.secondaryLabel,
             )
-            CupertinoCard {
+            CupertinoCard(modifier = Modifier.tourTarget("rule.hours")) {
                 Column {
                     windows.forEachIndexed { i, window ->
                         Row(
@@ -381,6 +396,7 @@ private fun RuleEditor(
                     .map { TimeWindow(it.first, it.second, setOf(1, 2, 3, 4, 5, 6, 7)) }
                 onSave(limit, blocked, schedule)
             },
+            modifier = Modifier.tourTarget("rule.save"),
         )
         if (rule != null) {
             CupertinoTextButton(text = "Remove rule", onClick = { confirmRemove = true }, destructive = true)

@@ -63,6 +63,7 @@ import coil.compose.AsyncImage
 import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
+import com.shahaabapps.core.ui.tour.tourTarget
 
 /**
  * Dashboard "Screen" control: request a screenshot of the child's screen and browse
@@ -138,7 +139,11 @@ fun ScreenshotSection(
                     color = AppTheme.colors.secondaryLabel,
                 )
             } else {
-                LazyRow(state = listState, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                LazyRow(
+                    state = listState,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    modifier = Modifier.tourTarget("shot.gallery"),
+                ) {
                     itemsIndexed(shots, key = { _, it -> it.capturedAtMillis }) { index, shot ->
                         Thumbnail(shot = shot, onClick = { viewerIndex = index })
                     }
@@ -196,6 +201,7 @@ private fun BulkAction(icon: androidx.compose.ui.graphics.vector.ImageVector, la
 private fun CaptureButton(waiting: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
+            .tourTarget("shot.capture")
             .clip(RoundedCornerShape(50))
             .background(AppTheme.colors.accent)
             .clickable(enabled = !waiting, onClick = onClick)

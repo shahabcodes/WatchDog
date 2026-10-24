@@ -125,6 +125,13 @@ class AppGuidePrefs(context: Context) {
         if (!seen) prefs.edit().putBoolean(KEY_SEEN, true).apply()
     }
 
+    /** The on-screen walk-through (coach marks) auto-starts once, until finished or skipped. */
+    val walkthroughSeen: Boolean get() = prefs.getBoolean(KEY_WALKTHROUGH, false)
+
+    fun markWalkthroughSeen() {
+        if (!walkthroughSeen) prefs.edit().putBoolean(KEY_WALKTHROUGH, true).apply()
+    }
+
     fun openedChapters(): Set<String> = prefs.getStringSet(KEY_OPENED, null)?.toSet() ?: emptySet()
 
     fun markOpened(chapterId: String) {
@@ -135,6 +142,7 @@ class AppGuidePrefs(context: Context) {
     private companion object {
         const val KEY_SEEN = "seen_v1"
         const val KEY_OPENED = "opened_chapters"
+        const val KEY_WALKTHROUGH = "walkthrough_seen_v1"
     }
 }
 

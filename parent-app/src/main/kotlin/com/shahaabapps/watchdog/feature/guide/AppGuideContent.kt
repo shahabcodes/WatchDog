@@ -201,7 +201,7 @@ object AppGuideContent {
                 step("Pick a day and time", "Tap the date pill to choose a day. Tap the From and To times to look at part of the day."),
                 step("Read the route", "The path is drawn as a line with numbered stops. Dashed grey lines mark gaps of more than 5 minutes without a location, for example in a tunnel or while the phone was off."),
                 step("Play it back", "Tap Play to watch the day, and choose \"1×\", \"2×\" or \"4×\" for speed. Drag the bar to jump to a moment, or skip to the previous or next stop."),
-                step("See every stop", "Tap the panel header, which shows the number of places and distance travelled, to open the timeline. Each stop shows when your child arrived and left, and how long they stayed. Tap a stop to fly to it on the map."),
+                step("See every stop", "A stop is anywhere your child stayed for more than 15 minutes. Tap the panel header, which shows the number of places and distance travelled, to open the timeline. Each stop shows when your child arrived and left, and how long they stayed. Tap a stop to fly to it on the map."),
                 step("Save a stop as a place", "If a stop isn't one of your places yet, tap \"+ Save as place\". \"New place\" opens named \"Home\", so rename it if needed and tap \"Save place\"."),
             ),
             tip = "Use the side buttons to fit the whole day on screen or to recentre. Tapping the map doesn't add a place in Today view; tap + to switch back to Live first. The switch still reads \"Today\" when you pick another day.",

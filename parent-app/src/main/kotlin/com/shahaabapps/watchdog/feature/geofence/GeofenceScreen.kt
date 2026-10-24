@@ -107,6 +107,9 @@ import com.shahaabapps.core.ui.components.CupertinoTextField
 import kotlinx.coroutines.launch
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
+import com.shahaabapps.core.ui.tour.TourLayer
+import com.shahaabapps.core.ui.tour.TourScene
+import com.shahaabapps.core.ui.tour.tourTarget
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.style.TextOverflow
@@ -270,6 +273,10 @@ fun GeofenceScreen(
     var showDatePicker by remember { mutableStateOf(false) }
     var showFromPicker by remember { mutableStateOf(false) }
     var showToPicker by remember { mutableStateOf(false) }
+    // The walk-through switches to Today and opens the add / places sheets for its steps.
+    TourScene("map.today") { historyMode = it }
+    TourScene("map.add") { showCategorySheet = it }
+    TourScene("map.places") { showList = it }
 
     val trail = remember(travelState.trail) { travelState.trail.sortedBy { it.timestampMillis } }
     // Contiguous segments, broken where there's a dead-zone gap (no signal/GPS).
@@ -500,23 +507,27 @@ fun GeofenceScreen(
                         }
                     }
                 }
-                ModeToggle(
-                    historyMode = historyMode,
-                    onLive = { historyMode = false },
-                    onHistory = { historyMode = true },
-                )
+                Box(Modifier.tourTarget("map.mode")) {
+                    ModeToggle(
+                        historyMode = historyMode,
+                        onLive = { historyMode = false },
+                        onHistory = { historyMode = true },
+                    )
+                }
                 Spacer(Modifier.weight(1f))
                 // Round + button in both modes; tap to pick what to add.
-                AddPlaceChip(
-                    mode = mode,
-                    selectedIcon = selectedIcon,
-                    onClick = { showCategorySheet = true },
-                )
+                Box(Modifier.tourTarget("map.add")) {
+                    AddPlaceChip(
+                        mode = mode,
+                        selectedIcon = selectedIcon,
+                        onClick = { showCategorySheet = true },
+                    )
+                }
             }
 
             if (historyMode) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md).tourTarget("today.pickers"),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                 ) {
                     SelectorPill(Icons.Filled.CalendarMonth, dateLabel(travelState.date), { showDatePicker = true }, Modifier.weight(1f))
@@ -532,7 +543,7 @@ fun GeofenceScreen(
                     },
                 )
                 if (locationAgeMs != null) {
-                    HintPill(text = "Updated ${agoLabel(locationAgeMs)}")
+                    Box(Modifier.tourTarget("map.fresh")) { HintPill(text = "Updated ${agoLabel(locationAgeMs)}") }
                 }
             }
         }
@@ -543,7 +554,8 @@ fun GeofenceScreen(
                 verticalArrangement = Arrangement.spacedBy(Spacing.sm),
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
-                    .padding(end = Spacing.md),
+                    .padding(end = Spacing.md)
+                    .tourTarget("today.fit"),
             ) {
                 MapRoundButton(Icons.Filled.FitScreen, "Fit the whole day") {
                     runCatching { controller.fitBounds(fitPoints) }
@@ -560,7 +572,8 @@ fun GeofenceScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = Spacing.lg, bottom = 88.dp),
+                    .padding(end = Spacing.lg, bottom = 88.dp)
+                    .tourTarget("map.recenter"),
             ) {
                 MapRoundButton(Icons.Filled.MyLocation, "Go to current location") {
                     childLocation?.let { runCatching { controller.animateTo(it.latitude, it.longitude, 17.5) } }
@@ -643,7 +656,8 @@ fun GeofenceScreen(
                 text = { Text("Places (${geofences.size})") },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(Spacing.lg),
+                    .padding(Spacing.lg)
+                    .tourTarget("map.places"),
             )
         }
 
@@ -659,6 +673,7 @@ fun GeofenceScreen(
     if (showCategorySheet) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(onDismissRequest = { showCategorySheet = false }, sheetState = sheetState) {
+            TourLayer()
             CategorySheet(
                 mode = mode,
                 selectedIcon = selectedIcon,
@@ -709,6 +724,7 @@ fun GeofenceScreen(
     if (showList) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(onDismissRequest = { showList = false }, sheetState = sheetState) {
+            TourLayer()
             PlacesList(
                 geofences = geofences,
                 events = events,
@@ -847,13 +863,16 @@ private fun CategorySheet(
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+            modifier = Modifier.tourTarget("add.categories"),
         ) {
-            CategoryPill(
-                label = "Draw area",
-                icon = Icons.Filled.Pentagon,
-                selected = mode == DrawMode.AREA,
-                onClick = onPickArea,
-            )
+            Box(Modifier.tourTarget("add.area")) {
+                CategoryPill(
+                    label = "Draw area",
+                    icon = Icons.Filled.Pentagon,
+                    selected = mode == DrawMode.AREA,
+                    onClick = onPickArea,
+                )
+            }
             PLACE_CATEGORIES.forEach { (key, label) ->
                 CategoryPill(
                     label = label,
@@ -1092,10 +1111,14 @@ private fun PlacesList(
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl)) {
         Text("Places & areas", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = Spacing.sm))
         if (geofences.isEmpty()) {
-            Text("None yet — tap the map to add one.", color = AppTheme.colors.secondaryLabel)
+            Text(
+                "None yet — tap the map to add one.",
+                color = AppTheme.colors.secondaryLabel,
+                modifier = Modifier.tourTarget("places.list"),
+            )
         } else {
             LazyColumn(
-                modifier = Modifier.heightIn(max = 220.dp),
+                modifier = Modifier.heightIn(max = 220.dp).tourTarget("places.list"),
                 verticalArrangement = Arrangement.spacedBy(Spacing.sm),
             ) {
                 items(geofences, key = { it.id }) { g ->
@@ -1148,7 +1171,7 @@ private fun PlacesList(
             Text(
                 "Recent activity",
                 style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(top = Spacing.md, bottom = Spacing.sm),
+                modifier = Modifier.padding(top = Spacing.md, bottom = Spacing.sm).tourTarget("places.recent"),
             )
             val names = geofences.associate { it.id to it.name }
             LazyColumn(
@@ -1262,6 +1285,7 @@ private fun HistorySheet(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .tourTarget("today.sheet")
                     .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
                     .clickable { expanded = !expanded }
                     .padding(top = Spacing.sm),
@@ -1304,6 +1328,7 @@ private fun HistorySheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = Spacing.sm)
+                    .tourTarget("today.play")
                     .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
                     .background(AppTheme.colors.groupedBackground)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -1361,7 +1386,7 @@ private fun HistorySheet(
             if (hasTrail) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp).tourTarget("today.speed"),
                 ) {
                     val canStep = stopFractions.isNotEmpty()
                     StepButton(Icons.Filled.SkipPrevious, "Previous stop", enabled = canStep) {

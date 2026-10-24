@@ -104,6 +104,16 @@ import com.shahaabapps.watchdog.feature.geofence.GeofenceScreen
 import com.shahaabapps.watchdog.feature.guide.AppGuideChapterScreen
 import com.shahaabapps.watchdog.feature.guide.AppGuideIndexScreen
 import com.shahaabapps.watchdog.feature.guide.AppGuidePrefs
+import com.shahaabapps.watchdog.feature.guide.Walkthrough
+import com.shahaabapps.core.ui.tour.LocalTour
+import com.shahaabapps.core.ui.tour.TourController
+import com.shahaabapps.core.ui.tour.TourExit
+import com.shahaabapps.core.ui.tour.TourHost
+import com.shahaabapps.core.ui.tour.TourLayer
+import com.shahaabapps.core.ui.tour.TourNavigator
+import com.shahaabapps.core.ui.tour.TourScene
+import com.shahaabapps.core.ui.tour.TourScroller
+import com.shahaabapps.core.ui.tour.tourTarget
 import com.shahaabapps.watchdog.feature.overview.OverviewScreen
 import com.shahaabapps.watchdog.feature.settings.SettingsScreen
 import com.shahaabapps.watchdog.feature.usage.UsageScreen
@@ -135,7 +145,7 @@ fun ParentShell(
     // onboarding (we only arrived here from the empty/first-run state).
     var justConnected by rememberSaveable { mutableStateOf(false) }
     var sawEmpty by rememberSaveable { mutableStateOf(false) }
-    // "Take the tour" on the connected screen opens the App guide once the shell is up.
+    // "Take the tour" on the connected screen starts the walk-through once the shell is up.
     var pendingTour by rememberSaveable { mutableStateOf(false) }
     androidx.compose.runtime.LaunchedEffect(children) { if (children.isEmpty()) sawEmpty = true }
     androidx.compose.runtime.LaunchedEffect(linkState) {
@@ -177,9 +187,10 @@ fun ParentShell(
         com.shahaabapps.core.ui.theme.LighthouseType {
             ConnectedChildScreen(
                 childName = children.firstOrNull()?.profile?.name,
-                // "Open the family map" declines the tour, so the guide doesn't auto-open.
+                // "Open the family map" declines the tour, so it doesn't auto-start.
                 onContinue = {
                     guidePrefs.markSeen()
+                    guidePrefs.markWalkthroughSeen()
                     justConnected = false
                     sawEmpty = false
                     viewModel.clearLinkState()
@@ -272,20 +283,55 @@ fun ParentShell(
         }
     }
 
-    // The App guide opens by itself once per phone, the first time the family
+    // The walk-through: coach marks over the real screens, one control at a time.
+    // It moves between screens itself; when it ends (Done or Skip) it returns to
+    // Home, or opens the chapter guide from the last step's "Read the full guide".
+    val tour = remember { TourController() }
+    val tourNavigator = remember(navController) {
+        object : TourNavigator {
+            override fun isOn(screen: String): Boolean =
+                navController.currentDestination?.route?.substringBefore("/")?.substringBefore("?") == screen
+
+            override fun open(screen: String) {
+                val child = lastChildId
+                when {
+                    Tab.entries.any { it.route == screen } -> navController.navigate("$screen/$child") {
+                        popUpTo(navController.graph.findStartDestination().id)
+                        launchSingleTop = true
+                    }
+                    screen == "alerts" -> navController.navigate("alerts/$child") { launchSingleTop = true }
+                    // Stepping back to a screen still on the stack pops to it instead of stacking a copy.
+                    !navController.popBackStack(screen, inclusive = false) ->
+                        navController.navigate(screen) { launchSingleTop = true }
+                }
+            }
+        }
+    }
+    val startWalkthrough: () -> Unit = {
+        if (!tour.active) {
+            tour.start(Walkthrough.steps, finalLink = "Read the full guide") { exit ->
+                guidePrefs.markWalkthroughSeen()
+                navController.navigate("${Tab.OVERVIEW.route}/$lastChildId") {
+                    popUpTo(navController.graph.findStartDestination().id)
+                    launchSingleTop = true
+                }
+                if (exit == TourExit.FinalLink) navController.navigate("guide") { launchSingleTop = true }
+            }
+        }
+    }
+
+    // The walk-through starts by itself once per phone, the first time the family
     // dashboard shows (not over a notification deep link), or on "Take the tour".
-    // It waits for the "Two-factor is off" notice, and only opens over Home.
-    var guideAutoShown by rememberSaveable { mutableStateOf(false) }
+    // It waits for the "Two-factor is off" notice, and only starts over Home.
+    var tourAutoShown by rememberSaveable { mutableStateOf(false) }
     androidx.compose.runtime.LaunchedEffect(pendingTour, showMfaOffNotice) {
         val onHome = navController.currentDestination?.route?.startsWith(Tab.OVERVIEW.route) ?: true
-        val firstTime = !guideAutoShown && !guidePrefs.seen && deepLink == null &&
+        val firstTime = !tourAutoShown && !guidePrefs.walkthroughSeen && deepLink == null &&
             !showMfaOffNotice && onHome
         if (pendingTour || firstTime) {
-            guideAutoShown = true
+            tourAutoShown = true
             pendingTour = false
-            // Persist now, so a process kill while it's open doesn't re-open it next launch.
-            guidePrefs.markSeen()
-            navController.navigate("guide?tour=true") { launchSingleTop = true }
+            startWalkthrough()
         }
     }
     // Leaves the guide from any of its pages, back to wherever it was opened from.
@@ -316,6 +362,8 @@ fun ParentShell(
         )
     }
 
+    androidx.compose.runtime.CompositionLocalProvider(LocalTour provides tour) {
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         containerColor = AppTheme.colors.groupedBackground,
         // No top bar: each screen owns its top (status-bar) inset. Zeroing the
@@ -354,7 +402,7 @@ fun ParentShell(
                     },
                     onAddChild = { navController.navigate("add") },
                     onManage = { navController.navigate("manage") },
-                    onOpenGuide = { navController.navigate("guide") { launchSingleTop = true } },
+                    onOpenGuide = startWalkthrough,
                     onSettings = { navController.navigate("settings") },
                     onSignOut = { viewModel.signOut() },
                     onVerifyConnection = { navController.navigate("verify/$currentChildId") },
@@ -393,7 +441,8 @@ fun ParentShell(
                     onOpenSecurity = { navController.navigate("security") },
                     onOpenChangePassword = { navController.navigate("password") },
                     onOpenDiagnostics = { navController.navigate("diagnostics") },
-                    onOpenGuide = { navController.navigate("guide") { launchSingleTop = true } },
+                    onOpenGuide = startWalkthrough,
+                    onReadGuide = { navController.navigate("guide") { launchSingleTop = true } },
                 )
             }
             // App guide: the index (with the navy cover first when ?tour=true), then
@@ -452,6 +501,10 @@ fun ParentShell(
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = Spacing.md),
         )
       }
+    }
+    // Over everything, bottom bar included.
+    TourHost(tour, tourNavigator)
+    }
     }
 }
 
@@ -530,7 +583,8 @@ private fun ParentBottomBar(currentTab: String, onSelect: (Tab) -> Unit) {
         modifier = Modifier
             .navigationBarsPadding()
             .padding(horizontal = Spacing.lg, vertical = Spacing.sm)
-            .fillMaxWidth(),
+            .fillMaxWidth()
+            .tourTarget("nav.bar"),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -1206,9 +1260,12 @@ private fun ManageChildrenScreen(
         ReconnectState.Idle -> Unit
     }
 
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    TourScroller(listState)
     Column(modifier = Modifier.fillMaxSize().background(AppTheme.colors.groupedBackground)) {
         SimpleHeader(title = "Children", onBack = onBack)
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm),
@@ -1216,7 +1273,10 @@ private fun ManageChildrenScreen(
             items(children, key = { it.childId }) { child ->
                 val online = child.device.lastSeenMillis > 0 &&
                     System.currentTimeMillis() - child.device.lastSeenMillis < 5 * 60_000L
-                com.shahaabapps.core.ui.components.CupertinoCard {
+                // The tour spotlights the first child's card and its ⋮ menu.
+                val first = child.childId == children.first().childId
+                fun Modifier.tour(id: String) = if (first) tourTarget(id) else this
+                com.shahaabapps.core.ui.components.CupertinoCard(modifier = Modifier.tour("manage.card")) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Avatar(name = child.profile.name, photoUrl = child.profile.photoUrl, size = 48.dp)
                         Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
@@ -1226,14 +1286,18 @@ private fun ManageChildrenScreen(
                                 color = if (online) AppTheme.colors.success else AppTheme.colors.secondaryLabel,
                             )
                             if (child.childId in pendingRestores) {
-                                androidx.compose.material3.TextButton(onClick = { viewModel.cancelRestore(child.childId) }) {
+                                androidx.compose.material3.TextButton(
+                                    onClick = { viewModel.cancelRestore(child.childId) },
+                                    modifier = Modifier.tourTarget("manage.restoreWaiting"),
+                                ) {
                                     Text("Restore waiting · Cancel", color = AppTheme.colors.destructive)
                                 }
                             }
                         }
                         var menu by remember { mutableStateOf(false) }
+                        if (first) TourScene("manage.menu") { menu = it }
                         Box {
-                            androidx.compose.material3.IconButton(onClick = { menu = true }) {
+                            androidx.compose.material3.IconButton(onClick = { menu = true }, modifier = Modifier.tour("manage.more")) {
                                 androidx.compose.material3.Icon(
                                     Icons.Filled.MoreVert,
                                     contentDescription = "More",
@@ -1241,7 +1305,9 @@ private fun ManageChildrenScreen(
                                 )
                             }
                             androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                if (first) TourLayer()
                                 androidx.compose.material3.DropdownMenuItem(
+                                    modifier = Modifier.tour("menu.parents"),
                                     text = { Text("Parents") },
                                     onClick = {
                                         menu = false
@@ -1250,16 +1316,19 @@ private fun ManageChildrenScreen(
                                     leadingIcon = { androidx.compose.material3.Icon(Icons.Filled.People, contentDescription = null, tint = AppTheme.colors.accent) },
                                 )
                                 androidx.compose.material3.DropdownMenuItem(
+                                    modifier = Modifier.tour("menu.restoreScan"),
                                     text = { Text("Restore reinstalled phone · scan code") },
                                     onClick = { menu = false; launchReconnectScan(child.childId) },
                                     leadingIcon = { androidx.compose.material3.Icon(Icons.Filled.QrCodeScanner, contentDescription = null, tint = AppTheme.colors.accent) },
                                 )
                                 androidx.compose.material3.DropdownMenuItem(
+                                    modifier = Modifier.tour("menu.restoreGallery"),
                                     text = { Text("Restore reinstalled phone · from gallery") },
                                     onClick = { menu = false; launchReconnectFromGallery(child.childId) },
                                     leadingIcon = { androidx.compose.material3.Icon(Icons.Filled.Image, contentDescription = null, tint = AppTheme.colors.accent) },
                                 )
                                 androidx.compose.material3.DropdownMenuItem(
+                                    modifier = Modifier.tour("menu.remove"),
                                     text = { Text("Remove", color = AppTheme.colors.destructive) },
                                     onClick = { menu = false; confirm = child },
                                     leadingIcon = { androidx.compose.material3.Icon(Icons.Filled.Delete, contentDescription = null, tint = AppTheme.colors.destructive) },
@@ -1279,7 +1348,7 @@ private fun ManageChildrenScreen(
                 CupertinoPrimaryButton(
                     text = "Add a child",
                     onClick = onAdd,
-                    modifier = Modifier.padding(top = Spacing.sm),
+                    modifier = Modifier.padding(top = Spacing.sm).tourTarget("manage.add"),
                 )
             }
         }

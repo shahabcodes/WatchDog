@@ -32,6 +32,7 @@ import com.shahaabapps.core.ui.components.CupertinoTextButton
 import com.shahaabapps.core.ui.components.GuardianHeader
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
+import com.shahaabapps.core.ui.tour.tourTarget
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -50,7 +51,7 @@ fun DiagnosticsScreen(
     Column(modifier = Modifier.fillMaxSize().background(AppTheme.colors.groupedBackground)) {
         GuardianHeader(title = "Diagnostics", onBack = onBack)
         Column(modifier = Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-            CupertinoCard {
+            CupertinoCard(modifier = Modifier.tourTarget("diag.collect")) {
                 CupertinoListRow(
                     title = "Collect diagnostics",
                     subtitle = "Errors, warnings and actions from your family's phones, with date and time, to help fix problems. No locations or content.",
@@ -59,7 +60,10 @@ fun DiagnosticsScreen(
                 )
             }
             // Whose diagnostics: this phone, my account, or a child's phone.
-            androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            androidx.compose.foundation.lazy.LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                modifier = Modifier.tourTarget("diag.sources"),
+            ) {
                 items(state.sources) { src ->
                     androidx.compose.material3.FilterChip(
                         selected = src.key == state.selected,
@@ -74,12 +78,12 @@ fun DiagnosticsScreen(
                 CupertinoTextButton(
                     text = "Refresh",
                     onClick = viewModel::refresh,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).tourTarget("diag.refresh"),
                 )
                 CupertinoPrimaryButton(
                     text = "Copy",
                     onClick = { clipboard.setText(AnnotatedString(viewModel.exportText())) },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).tourTarget("diag.copy"),
                 )
                 CupertinoTextButton(
                     text = "Share",
@@ -90,7 +94,7 @@ fun DiagnosticsScreen(
                         }
                         context.startActivity(Intent.createChooser(send, "Share diagnostics"))
                     },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).tourTarget("diag.share"),
                 )
             }
         }

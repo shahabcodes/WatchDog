@@ -658,7 +658,7 @@ class GeofenceSyncService : Service() {
 
     /**
      * Groups nearby fixes into a "stop". When the child leaves a spot they stayed
-     * at for at least [STOP_MIN_MS], the completed stop is saved to travel history.
+     * at for more than [STOP_MIN_MS], the completed stop is saved to travel history.
      */
     private fun trackStop(childId: String, loc: android.location.Location, now: Long) {
         val anchor = stopAnchor
@@ -676,7 +676,7 @@ class GeofenceSyncService : Service() {
         // Moved away: record the previous stay if it was long enough. Use `now`
         // for departure because, with move-only updates, no fixes arrive while
         // stationary — so the stay lasts from arrival until this leaving fix.
-        if (now - stopArrivalMillis >= STOP_MIN_MS) {
+        if (now - stopArrivalMillis > STOP_MIN_MS) {
             val stop = TravelStop(
                 latitude = anchor.latitude,
                 longitude = anchor.longitude,
@@ -785,7 +785,7 @@ class GeofenceSyncService : Service() {
 
         // Travel-history "stop" detection.
         private const val STOP_RADIUS_METERS = 150f
-        private const val STOP_MIN_MS = 2 * 60_000L // 2 minutes (shorter stays count)
+        private const val STOP_MIN_MS = 15 * 60_000L // a stay of more than 15 minutes is a stop
 
         // Only report location after moving this far — the move-only optimization.
         private const val MOVE_DISTANCE_METERS = 40f

@@ -50,6 +50,7 @@ import com.shahaabapps.core.ui.components.CupertinoSwitch
 import com.shahaabapps.core.ui.components.StatusChip
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
+import com.shahaabapps.core.ui.tour.tourTarget
 
 private val BEDTIME_TINT = Color(0xFF7C6FF0)
 private val SCHOOL_TINT = Color(0xFFF59E0B)
@@ -164,6 +165,7 @@ fun FocusEditor(
             window = bedtime,
             installedApps = installedApps,
             onChange = { bedtime = it },
+            modifier = Modifier.tourTarget("focus.bedtime"),
         )
         WindowEditor(
             icon = Icons.Filled.School,
@@ -172,10 +174,12 @@ fun FocusEditor(
             window = school,
             installedApps = installedApps,
             onChange = { school = it },
+            modifier = Modifier.tourTarget("focus.school"),
         )
         CupertinoPrimaryButton(
             text = "Save",
             onClick = { onSave(FocusSettings(bedtime = bedtime, school = school)) },
+            modifier = Modifier.tourTarget("focus.save"),
         )
     }
 }
@@ -188,12 +192,13 @@ private fun WindowEditor(
     window: FocusWindow,
     installedApps: List<com.shahaabapps.core.model.InstalledApp>,
     onChange: (FocusWindow) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var pickStart by remember { mutableStateOf(false) }
     var pickEnd by remember { mutableStateOf(false) }
     var pickApps by remember { mutableStateOf(false) }
 
-    CupertinoCard {
+    CupertinoCard(modifier = modifier) {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
@@ -440,7 +445,7 @@ private fun ZoneNote(zones: ChildZones, childName: String) {
 private fun TimeZoneRow(zones: ChildZones, childName: String, onSetZone: (String) -> Unit) {
     var picking by remember { mutableStateOf(false) }
     val who = childName.ifBlank { "your child" }
-    CupertinoCard(onClick = { picking = true }) {
+    CupertinoCard(modifier = Modifier.tourTarget("focus.zone"), onClick = { picking = true }) {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
             Text("Time zone", style = MaterialTheme.typography.bodyLarge)
             Text(

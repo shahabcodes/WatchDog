@@ -54,6 +54,7 @@ import com.shahaabapps.core.model.GeofenceTransition
 import com.shahaabapps.core.ui.theme.AppFonts
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
+import com.shahaabapps.core.ui.tour.tourTarget
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -147,7 +148,7 @@ fun AlertsScreen(
                 fontWeight = FontWeight.ExtraBold,
                 letterSpacing = (-0.6).sp,
                 color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).tourTarget("alerts.title"),
             )
             if (items.isNotEmpty()) {
                 Text(
@@ -156,6 +157,7 @@ fun AlertsScreen(
                     fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier
+                        .tourTarget("alerts.clear")
                         .clip(RoundedCornerShape(12.dp))
                         .clickable { viewModel.clearAll() }
                         .padding(horizontal = 8.dp, vertical = 6.dp),
@@ -177,19 +179,21 @@ fun AlertsScreen(
                     item { SectionLabel("REQUESTS") }
                     items(requests, key = { it.id }) { req ->
                         RequestCard(
+                            modifier = if (req === requests.first()) Modifier.tourTarget("alerts.request") else Modifier,
                             request = req,
                             onApprove = { approveReq = req },
                             onDeny = { denyReq = req },
                         )
                     }
                 }
+                // The walk-through points at the newest group of place history.
                 grouped[true]?.let { todayItems ->
                     item { SectionLabel("TODAY") }
-                    item { AlertCard(todayItems) }
+                    item { AlertCard(todayItems, Modifier.tourTarget("alerts.history")) }
                 }
                 grouped[false]?.let { earlier ->
                     item { SectionLabel("EARLIER") }
-                    item { AlertCard(earlier) }
+                    item { AlertCard(earlier, if (grouped[true] == null) Modifier.tourTarget("alerts.history") else Modifier) }
                 }
             }
         }
@@ -339,12 +343,13 @@ private fun RequestCard(
     request: com.shahaabapps.core.model.TimeRequest,
     onApprove: () -> Unit,
     onDeny: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Surface(
         shape = RoundedCornerShape(22.dp),
         color = AppTheme.colors.card,
         border = BorderStroke(1.dp, AppTheme.colors.accent.copy(alpha = 0.5f)),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Your child is asking ${request.summary}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
@@ -389,12 +394,12 @@ private fun SectionLabel(text: String) {
 }
 
 @Composable
-private fun AlertCard(items: List<AlertItem>) {
+private fun AlertCard(items: List<AlertItem>, modifier: Modifier = Modifier) {
     Surface(
         shape = RoundedCornerShape(22.dp),
         color = AppTheme.colors.card,
         border = BorderStroke(1.dp, AppTheme.colors.separator),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
             items.forEachIndexed { i, item ->

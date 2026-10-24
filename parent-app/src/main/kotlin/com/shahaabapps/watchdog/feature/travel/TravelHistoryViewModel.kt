@@ -79,7 +79,10 @@ class TravelHistoryViewModel @Inject constructor(
         }
         val recordedRaw = stops.filter { s ->
             val z = Instant.ofEpochMilli(s.arrivalMillis).atZone(zone)
-            z.toLocalDate() == date && minuteOfDay(z) in from..to
+            // Older Shields saved shorter stays too; only stays of more than
+            // [MIN_STOP_MS] count as stops.
+            z.toLocalDate() == date && minuteOfDay(z) in from..to &&
+                s.departureMillis - s.arrivalMillis > MIN_STOP_MS
         }
         // Derive stops from the trail too — the on-device stop tracker can miss a
         // stay if the service is killed mid-visit, but the trail is recorded
@@ -163,7 +166,7 @@ class TravelHistoryViewModel @Inject constructor(
 
     /**
      * Clusters consecutive trail points that stay within [STOP_RADIUS_M] of the
-     * cluster's anchor for at least [MIN_STOP_MS] into a stop (arrival→departure).
+     * cluster's anchor for more than [MIN_STOP_MS] into a stop (arrival→departure).
      * Recovers dwells (gym/home/office) from the reliably-recorded trail when the
      * on-device stop tracker missed them.
      */
@@ -180,7 +183,7 @@ class TravelHistoryViewModel @Inject constructor(
                 j++
             }
             val span = trail[j].timestampMillis - anchor.timestampMillis
-            if (j > i && span >= MIN_STOP_MS) {
+            if (j > i && span > MIN_STOP_MS) {
                 val lat = (i..j).sumOf { trail[it].latitude } / (j - i + 1)
                 val lng = (i..j).sumOf { trail[it].longitude } / (j - i + 1)
                 out += TravelStop(
@@ -216,6 +219,6 @@ class TravelHistoryViewModel @Inject constructor(
         /** Extra slack beyond a place's radius when labelling a stop (metres). */
         const val MATCH_MARGIN_METERS = 80.0
         const val STOP_RADIUS_M = 150.0
-        const val MIN_STOP_MS = 5 * 60_000L // a stay of at least 5 min counts as a stop
+        const val MIN_STOP_MS = 15 * 60_000L // a stay of more than 15 minutes is a stop
     }
 }

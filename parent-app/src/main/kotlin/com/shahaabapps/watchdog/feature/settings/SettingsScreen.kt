@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.LockReset
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -37,6 +38,7 @@ import androidx.compose.foundation.background
 import com.shahaabapps.core.ui.components.SectionHeader
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
+import com.shahaabapps.core.ui.tour.tourTarget
 import com.shahaabapps.watchdog.util.MapStyle
 
 @Composable
@@ -46,6 +48,7 @@ fun SettingsScreen(
     onOpenChangePassword: () -> Unit = {},
     onOpenDiagnostics: () -> Unit = {},
     onOpenGuide: () -> Unit = {},
+    onReadGuide: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val mode by viewModel.themeMode.collectAsStateWithLifecycle()
@@ -69,10 +72,10 @@ fun SettingsScreen(
             palette = palette,
             onModeChange = viewModel::setThemeMode,
             onPaletteChange = viewModel::setAccentPalette,
-            modifier = Modifier.padding(horizontal = Spacing.lg),
+            modifier = Modifier.padding(horizontal = Spacing.lg).tourTarget("settings.appearance"),
         )
 
-        Column(modifier = Modifier.padding(horizontal = Spacing.lg)) {
+        Column(modifier = Modifier.padding(horizontal = Spacing.lg).tourTarget("settings.mapStyle")) {
             SectionHeader(
                 text = "Map style",
                 modifier = Modifier.padding(start = Spacing.md, bottom = Spacing.xs),
@@ -107,44 +110,58 @@ fun SettingsScreen(
                     subtitle = "Protect sign-in with an authenticator app",
                     leadingIcon = Icons.Filled.Shield,
                     onClick = onOpenSecurity,
+                    modifier = Modifier.tourTarget("settings.twoFactor"),
                 )
                 CupertinoListRow(
                     title = "Change password",
                     subtitle = "Choose a new password for this account",
                     leadingIcon = Icons.Filled.Key,
                     onClick = onOpenChangePassword,
+                    modifier = Modifier.tourTarget("settings.password"),
                 )
                 CupertinoListRow(
                     title = if (sendingReset) "Sending reset link…" else "Reset password",
                     subtitle = viewModel.email,
                     leadingIcon = Icons.Filled.LockReset,
                     onClick = { if (!sendingReset) confirmReset = true },
+                    modifier = Modifier.tourTarget("settings.reset"),
                 )
             }
+            // The walk-through first; the chapter guide stays as the reference.
             CupertinoListRow(
                 title = "App guide",
-                subtitle = "A tour of every screen",
-                leadingIcon = Icons.AutoMirrored.Filled.MenuBook,
+                subtitle = "Walk through every control, one at a time",
+                leadingIcon = Icons.Filled.TouchApp,
                 onClick = onOpenGuide,
+                modifier = Modifier.tourTarget("settings.guide"),
+            )
+            CupertinoListRow(
+                title = "Read the full guide",
+                subtitle = "Every screen, explained in short chapters",
+                leadingIcon = Icons.AutoMirrored.Filled.MenuBook,
+                onClick = onReadGuide,
+                modifier = Modifier.tourTarget("settings.readGuide"),
             )
             CupertinoListRow(
                 title = "Diagnostics",
                 subtitle = "Crash & bug reports to help fix issues",
                 leadingIcon = Icons.Filled.BugReport,
                 onClick = onOpenDiagnostics,
+                modifier = Modifier.tourTarget("settings.diagnostics"),
             )
             CupertinoListRow(
                 title = "Sign out",
                 leadingIcon = Icons.Filled.Logout,
                 showDivider = false,
                 onClick = viewModel::signOut,
+                modifier = Modifier.tourTarget("settings.signout"),
             )
         }
 
         AboutSection(
             appName = "Watch Dog",
             tagline = "Parental controls for your family.",
-            modifier = Modifier.padding(horizontal = Spacing.lg),
+            modifier = Modifier.padding(horizontal = Spacing.lg).tourTarget("settings.about"),
         )
     }
 

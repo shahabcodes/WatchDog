@@ -31,12 +31,29 @@ data class ProtectionSettings(
     val lockSettings: Boolean = false,
     /** A PIN is set on the server (its hash is never readable by the apps). */
     val pinSet: Boolean = false,
+    /** When Shield blocks apps opened in a pop-up, split screen or picture-in-picture. */
+    val multiWindowBlock: MultiWindowBlock = MultiWindowBlock.OFF,
 ) {
     /** Whether a removal PIN has been set (server-side, or a not-yet-migrated hash). */
     val hasPin: Boolean get() = pinSet || pinHash.isNotEmpty() || legacyPin.isNotEmpty()
 
     /** An old-style hash is still in the child-readable doc and should be migrated. */
     val needsPinMigration: Boolean get() = pinHash.isNotEmpty() || legacyPin.isNotEmpty()
+}
+
+/**
+ * Parent's "Block pop-up and split-screen view" choice, stored in the protection
+ * doc as [wire]: never, only while Bedtime or School is on, or always.
+ */
+enum class MultiWindowBlock(val wire: String) {
+    OFF("off"),
+    FOCUS("focus"),
+    ALWAYS("always"),
+    ;
+
+    companion object {
+        fun from(wire: String?): MultiWindowBlock = entries.firstOrNull { it.wire == wire } ?: OFF
+    }
 }
 
 /** An app installed on the child device that was auto-blocked, awaiting parent review. */

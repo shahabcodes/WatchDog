@@ -402,8 +402,8 @@ fun OverviewScreen(
             ProtectionEditor(
                 initialAlerts = protectionAlerts,
                 initial = protection,
-                onSave = { uninstallBlocked, blockNewApps, lockSettings, newPin, alerts ->
-                    protectionVm.save(uninstallBlocked, blockNewApps, lockSettings, newPin, alerts)
+                onSave = { uninstallBlocked, blockNewApps, lockSettings, multiWindowBlock, newPin, alerts ->
+                    protectionVm.save(uninstallBlocked, blockNewApps, lockSettings, multiWindowBlock, newPin, alerts)
                     showProtectionSheet = false
                 },
             )
@@ -1862,6 +1862,7 @@ private fun ProtectionEditor(
         uninstallBlocked: Boolean,
         blockNewApps: Boolean,
         lockSettings: Boolean,
+        multiWindowBlock: com.shahaabapps.core.model.MultiWindowBlock,
         newPin: String?,
         alerts: com.shahaabapps.core.model.AlertSettings,
     ) -> Unit,
@@ -1871,6 +1872,7 @@ private fun ProtectionEditor(
     var alerts by remember { mutableStateOf(initialAlerts) }
     var pin by remember { mutableStateOf("") }
     var blockNewApps by remember { mutableStateOf(initial.blockNewApps) }
+    var multiWindowBlock by remember { mutableStateOf(initial.multiWindowBlock) }
     // The stored PIN is hashed, so we can't reveal it — we only know whether one
     // is set. Keep it, or switch to "reset" to enter a new one. With no PIN set
     // yet, start in reset mode so a compliant one must be entered.
@@ -1958,6 +1960,7 @@ private fun ProtectionEditor(
                 trailing = { CupertinoSwitch(checked = blockNewApps, onCheckedChange = { blockNewApps = it }) },
             )
         }
+        MultiWindowBlockPicker(multiWindowBlock) { multiWindowBlock = it }
         Text("Alerts", style = MaterialTheme.typography.titleMedium)
         CupertinoCard {
             Column {
@@ -1985,9 +1988,49 @@ private fun ProtectionEditor(
                 // Only send a new PIN when the parent actually entered one; otherwise
                 // keep the stored hash (toggling protection off keeps the PIN).
                 val newPin = if (blocked && resetting) pin else null
-                onSave(blocked, blockNewApps, lockSettings, newPin, alerts)
+                onSave(blocked, blockNewApps, lockSettings, multiWindowBlock, newPin, alerts)
             },
         )
+    }
+}
+
+/** "Block pop-up and split-screen view": Off / during Bedtime and School / Always. */
+@Composable
+private fun MultiWindowBlockPicker(
+    value: com.shahaabapps.core.model.MultiWindowBlock,
+    onSelect: (com.shahaabapps.core.model.MultiWindowBlock) -> Unit,
+) {
+    val desc = when (value) {
+        com.shahaabapps.core.model.MultiWindowBlock.OFF ->
+            "Apps can open in a pop-up window, split screen or picture-in-picture."
+        com.shahaabapps.core.model.MultiWindowBlock.FOCUS ->
+            "During Bedtime and School, apps opened in a pop-up window, split screen or picture-in-picture are covered and closed."
+        com.shahaabapps.core.model.MultiWindowBlock.ALWAYS ->
+            "Apps opened in a pop-up window, split screen or picture-in-picture are always covered and closed. Calls still work."
+    }
+    CupertinoCard {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Text("Block pop-up and split-screen view", style = MaterialTheme.typography.bodyLarge)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(AppTheme.colors.separator.copy(alpha = 0.4f))
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                TrackSeg("Off", value == com.shahaabapps.core.model.MultiWindowBlock.OFF, Modifier.weight(1f)) {
+                    onSelect(com.shahaabapps.core.model.MultiWindowBlock.OFF)
+                }
+                TrackSeg("Bedtime & school", value == com.shahaabapps.core.model.MultiWindowBlock.FOCUS, Modifier.weight(1.6f)) {
+                    onSelect(com.shahaabapps.core.model.MultiWindowBlock.FOCUS)
+                }
+                TrackSeg("Always", value == com.shahaabapps.core.model.MultiWindowBlock.ALWAYS, Modifier.weight(1f)) {
+                    onSelect(com.shahaabapps.core.model.MultiWindowBlock.ALWAYS)
+                }
+            }
+            Text(desc, style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
+        }
     }
 }
 

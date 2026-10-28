@@ -10,6 +10,9 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.telecom.TelecomManager
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
@@ -24,6 +27,7 @@ import com.shahaabapps.core.firebase.rules.AppRulesRepository
 import com.shahaabapps.core.firebase.screenshot.ScreenshotRepository
 import com.shahaabapps.core.model.AppRule
 import com.shahaabapps.core.model.FocusSettings
+import com.shahaabapps.core.model.MultiWindowBlock
 import com.shahaabapps.core.model.PendingApp
 import com.shahaabapps.core.model.RequestKind
 import com.shahaabapps.core.model.RequestStatus
@@ -42,7 +46,8 @@ import javax.inject.Inject
 
 /**
  * Watches foreground app changes and blocks apps that violate their rule
- * (hard block, daily limit reached, or outside allowed hours).
+ * (hard block, daily limit reached, or outside allowed hours). Apps in a pop-up,
+ * split screen or picture-in-picture are covered in place by [WindowGuard].
  */
 @AndroidEntryPoint
 class EnforcementService : AccessibilityService() {
@@ -114,6 +119,27 @@ class EnforcementService : AccessibilityService() {
     @Volatile private var lastForegroundPackage: String? = null
     private var recheckJob: kotlinx.coroutines.Job? = null
 
+    /** Parent's "Block pop-up and split-screen view" (cached locally for offline use). */
+    @Volatile private var multiWindowBlock: MultiWindowBlock = MultiWindowBlock.OFF
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var lastWindowScanAt = 0L
+    private var windowScanPosted = false
+    private val windowScanRunnable = Runnable {
+        windowScanPosted = false
+        scanWindows()
+    }
+
+    private val windowGuard by lazy {
+        WindowGuard(
+            service = this,
+            coverFor = ::coverFor,
+            onBackgroundFullscreen = ::enforce,
+            neverCover = ::neverCover,
+            onAsk = ::askFromCover,
+        )
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
@@ -125,15 +151,18 @@ class EnforcementService : AccessibilityService() {
         runCatching { com.shahaabapps.shield.location.LocationSyncWorker.schedule(this) }
         runCatching { com.shahaabapps.shield.location.LocationFlushWorker.schedulePeriodic(this) }
         runCatching { com.shahaabapps.shield.location.GeofenceSyncService.start(this) }
+        multiWindowBlock = ProtectionLocalStore.multiWindowBlock(this)
         val childId = authRepository.currentUserIdOrNull() ?: return
         serviceScope.launch {
             appRulesRepository.observeAppRules(childId).collectLatest { rules ->
                 rulesByPackage = rules.associateBy { it.packageName }
+                onBlockInputsChanged()
             }
         }
         serviceScope.launch {
             childRepository.observeChild(childId).collectLatest { child ->
                 supervised = child?.isLinked == true
+                onBlockInputsChanged()
             }
         }
         // New apps awaiting a parent's review stay blocked until a parent allows
@@ -144,7 +173,10 @@ class EnforcementService : AccessibilityService() {
             }
         }
         serviceScope.launch {
-            focusRepository.observe(childId).collectLatest { focus = it }
+            focusRepository.observe(childId).collectLatest {
+                focus = it
+                onBlockInputsChanged()
+            }
         }
         serviceScope.launch {
             installGuardRepository.observe(childId).collectLatest { installGuard = it }
@@ -152,7 +184,10 @@ class EnforcementService : AccessibilityService() {
         // When the parent approves an ask, grant a time-boxed exception so the
         // app actually opens (otherwise it stays "off limits" despite approval).
         serviceScope.launch {
-            requestRepository.observe(childId, 20).collectLatest { recomputeGrants(it) }
+            requestRepository.observe(childId, 20).collectLatest {
+                recomputeGrants(it)
+                onBlockInputsChanged()
+            }
         }
         // Parent screenshot requests — captured silently via the accessibility
         // screenshot API (no MediaProjection, no on-screen indicator). API 30+.
@@ -185,6 +220,9 @@ class EnforcementService : AccessibilityService() {
                 ProtectionLocalStore.setBlocked(this@EnforcementService, settings.uninstallBlocked)
                 ProtectionLocalStore.setBlockNewApps(this@EnforcementService, settings.blockNewApps)
                 ProtectionLocalStore.setLockSettings(this@EnforcementService, settings.lockSettings)
+                ProtectionLocalStore.setMultiWindowBlock(this@EnforcementService, settings.multiWindowBlock)
+                multiWindowBlock = settings.multiWindowBlock
+                onBlockInputsChanged()
                 // Parent turned protection off → release device admin so the app
                 // can be uninstalled again.
                 if (!settings.uninstallBlocked && DeviceAdmin.isActive(this@EnforcementService)) {
@@ -260,7 +298,12 @@ class EnforcementService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        when (event?.eventType) {
+            // A pop-up / split / PiP window appeared, moved or closed.
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED -> { requestWindowScan(); return }
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> Unit
+            else -> return
+        }
         val packageName = event.packageName?.toString() ?: return
         val className = event.className?.toString()
         if (packageName !in TRANSIENT_PACKAGES) lastForegroundPackage = packageName
@@ -270,8 +313,40 @@ class EnforcementService : AccessibilityService() {
         guardUninstall(packageName, className, eventText)
         guardSettings(packageName, className)
 
+        // Refresh which apps sit in a pop-up / split / PiP first, so an app opened
+        // straight into one is covered in place, not blocked full-screen beneath it.
+        scanWindows()
         enforce(packageName)
     }
+
+    /** Scans app windows at most every [WINDOW_SCAN_MIN_MS]; a burst ends with one trailing scan. */
+    private fun requestWindowScan() {
+        if (windowScanPosted) return
+        val wait = lastWindowScanAt + WINDOW_SCAN_MIN_MS - SystemClock.uptimeMillis()
+        if (wait <= 0) {
+            scanWindows()
+        } else {
+            windowScanPosted = true
+            mainHandler.postDelayed(windowScanRunnable, wait)
+        }
+    }
+
+    private fun scanWindows() {
+        lastWindowScanAt = SystemClock.uptimeMillis()
+        runCatching { windowGuard.scan() }
+            .onFailure { com.shahaabapps.core.common.Diag.warn("enforce", "window scan failed", it) }
+    }
+
+    /** Rules, grants, focus or settings changed: re-decide covered windows now. */
+    private fun onBlockInputsChanged() {
+        mainHandler.post {
+            windowGuard.invalidate()
+            requestWindowScan()
+        }
+    }
+
+    /** Why an app must be blocked right now: the name to show and the child-facing reason. */
+    private data class BlockDecision(val label: String, val reason: String?)
 
     /**
      * Applies focus windows, install guard, new-app review and app rules to the app
@@ -279,8 +354,20 @@ class EnforcementService : AccessibilityService() {
      * open, so a limit or bedtime that starts mid-use still applies.
      */
     private fun enforce(packageName: String) {
-        if (!supervised) return // device no longer supervised — no restrictions
-        if (packageName == this.packageName) return
+        // In a pop-up / split / PiP window the app is covered in place (WindowGuard);
+        // a full-screen BlockActivity would open underneath a floating pop-up.
+        if (packageName in windowGuard.partialPackages) return
+        val decision = blockDecision(packageName) ?: return
+        blockApp(packageName, decision.label, decision.reason)
+    }
+
+    /**
+     * Whether [packageName] must be blocked now, and why (null = allowed). No side
+     * effects, so it serves the app in front and any other visible window alike.
+     */
+    private fun blockDecision(packageName: String): BlockDecision? {
+        if (!supervised) return null // device no longer supervised — no restrictions
+        if (packageName == this.packageName) return null
 
         val now = TrustedClock.now()
         // Parent-approved temporary exceptions. A grant only counts while it is at
@@ -298,8 +385,7 @@ class EnforcementService : AccessibilityService() {
         if (focusReason != null && !focusSuppressed && !appAllowed &&
             packageName !in focusExempt && packageName !in activeFocusAllowed()
         ) {
-            blockApp(packageName, appLabelFor(packageName), focusReason)
-            return
+            return BlockDecision(appLabelFor(packageName), focusReason)
         }
 
         // Install guard — launch-time block ONLY in blocklist mode (explicitly
@@ -307,23 +393,20 @@ class EnforcementService : AccessibilityService() {
         // via the download quarantine and must NOT disable already-installed apps
         // (doing so would block the launcher/other apps across the device).
         if (!installGuard.allowlist && installGuard.blocks(packageName) && isSideloaded(packageName)) {
-            blockApp(
-                packageName,
+            return BlockDecision(
                 appLabelFor(packageName),
                 "This app isn't allowed to be installed from outside the Play Store.",
             )
-            return
         }
 
         if (packageName in pendingPackages && !appAllowed) {
-            blockApp(packageName, appLabelFor(packageName), "This new app is waiting for a parent to review it.")
-            return
+            return BlockDecision(appLabelFor(packageName), "This new app is waiting for a parent to review it.")
         }
 
-        val rule = rulesByPackage[packageName] ?: return
+        val rule = rulesByPackage[packageName] ?: return null
         // A parent-approved unlock / more-time lets this app through its rule
         // (hard block or daily limit) until the grant expires.
-        if (appAllowed) return
+        if (appAllowed) return null
         val usedMinutes = usageTracker.todayForegroundMinutes(packageName)
         val decision = RuleEvaluator.evaluate(
             rule,
@@ -331,9 +414,69 @@ class EnforcementService : AccessibilityService() {
             java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone(ChildZone.zone()))
                 .apply { timeInMillis = TrustedClock.now() },
         )
-        if (decision.block) {
-            blockApp(packageName, rule.appLabel.ifBlank { packageName }, decision.reason)
+        return if (decision.block) BlockDecision(rule.appLabel.ifBlank { packageName }, decision.reason) else null
+    }
+
+    /**
+     * What covers [pkg]'s pop-up / split / PiP window: its normal block (same
+     * wording and "Ask…" as BlockActivity), else the parent's "Block pop-up and
+     * split-screen view" when it applies now. Null = may stay open.
+     */
+    private fun coverFor(pkg: String): WindowGuard.Cover? {
+        blockDecision(pkg)?.let { d ->
+            val reason = d.reason ?: "It's off-limits right now."
+            val variant = variantFor(reason)
+            return WindowGuard.Cover(
+                pkg = pkg,
+                title = blockTitle(variant, d.label),
+                message = "${d.label} is paused. $reason",
+                reason = reason,
+                dark = variant == BlockVariant.BEDTIME,
+                askLabel = askLabelFor(variant),
+                ask = askRequestFor(variant, pkg, d.label),
+            )
         }
+        if (!multiWindowBlockedNow()) return null
+        // Calls (and the essentials kept during focus windows) always stay usable,
+        // and only real apps count, not system components without a launcher entry.
+        if (pkg in focusExempt || pkg in CALL_PACKAGES || packageManager.getLaunchIntentForPackage(pkg) == null) return null
+        return WindowGuard.Cover(
+            pkg = pkg,
+            title = "${appLabelFor(pkg)} can't open here",
+            message = MULTI_WINDOW_REASON,
+            reason = "multi-window off",
+            dark = false,
+            askLabel = null,
+            ask = null,
+        )
+    }
+
+    /** The parent's pop-up / split-screen block applies right now. */
+    private fun multiWindowBlockedNow(): Boolean {
+        if (!supervised) return false
+        return when (multiWindowBlock) {
+            MultiWindowBlock.OFF -> false
+            MultiWindowBlock.ALWAYS -> true
+            // A bedtime extension lifts it along with the rest of the focus window.
+            MultiWindowBlock.FOCUS -> activeFocusReason() != null && focusGrantUntil <= TrustedClock.now()
+        }
+    }
+
+    private fun neverCover(pkg: String): Boolean =
+        pkg == packageName || pkg in TRANSIENT_PACKAGES || pkg == "android" || pkg == homePackage
+
+    private val homePackage: String? by lazy {
+        runCatching {
+            val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+            packageManager.resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
+        }.getOrNull()
+    }
+
+    /** "Ask…" tapped on a cover: the same request BlockActivity sends. */
+    private fun askFromCover(cover: WindowGuard.Cover) {
+        val request = cover.ask ?: return
+        val childId = authRepository.currentUserIdOrNull() ?: return
+        serviceScope.launch { runCatching { requestRepository.create(childId, request) } }
     }
 
     /**
@@ -553,6 +696,7 @@ class EnforcementService : AccessibilityService() {
                 val front = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
                     ?: lastForegroundPackage ?: continue
                 runCatching {
+                    scanWindows()
                     guardSettings(front, null)
                     enforce(front)
                 }
@@ -589,6 +733,8 @@ class EnforcementService : AccessibilityService() {
     override fun onDestroy() {
         com.shahaabapps.core.common.Diag.warn("service", "enforcement (accessibility) destroyed")
         recheckJob?.cancel()
+        mainHandler.removeCallbacksAndMessages(null)
+        runCatching { windowGuard.clear() }
         super.onDestroy()
         if (instance === this) instance = null
         runCatching { unregisterReceiver(packageAddedReceiver) }
@@ -608,6 +754,21 @@ class EnforcementService : AccessibilityService() {
 
         /** How often the app in front is re-checked while it stays open. */
         private const val RECHECK_MS = 20_000L
+        /** Window changes are scanned at most this often (~3 a second). */
+        private const val WINDOW_SCAN_MIN_MS = 333L
+        private const val MULTI_WINDOW_REASON = "Pop-up and split-screen view are turned off by your parent."
+        /** Phone, dialer and emergency apps are never blocked for being in a pop-up. */
+        private val CALL_PACKAGES = setOf(
+            "com.android.phone",
+            "com.android.dialer",
+            "com.google.android.dialer",
+            "com.samsung.android.dialer",
+            "com.samsung.android.incallui",
+            "com.android.server.telecom",
+            "com.android.emergency",
+            "com.google.android.apps.safetyhub",
+            "com.samsung.android.emergency",
+        )
         /** Upper bound on nodes read for the Settings guard. */
         private const val MAX_NODES = 400
         /** Overlays that aren't "the app in front" (shade, keyboards). */

@@ -1,6 +1,7 @@
 package com.shahaabapps.shield.enforcement
 
 import android.content.Context
+import com.shahaabapps.core.model.MultiWindowBlock
 
 /**
  * Small synchronous store the accessibility guard reads on every window change:
@@ -13,6 +14,7 @@ object ProtectionLocalStore {
     private const val KEY_UNLOCK_UNTIL = "unlock_until"
     private const val KEY_BLOCK_NEW_APPS = "block_new_apps"
     private const val KEY_LOCK_SETTINGS = "lock_settings"
+    private const val KEY_MULTI_WINDOW_BLOCK = "multi_window_block"
 
     /** How long a correct PIN keeps the guard down (to allow removal). */
     const val UNLOCK_WINDOW_MS = 2 * 60_000L
@@ -39,6 +41,14 @@ object ProtectionLocalStore {
     }
 
     fun isBlockNewApps(context: Context): Boolean = prefs(context).getBoolean(KEY_BLOCK_NEW_APPS, false)
+
+    /** Parent's "Block pop-up and split-screen view" choice (kept for offline use). */
+    fun setMultiWindowBlock(context: Context, value: MultiWindowBlock) {
+        prefs(context).edit().putString(KEY_MULTI_WINDOW_BLOCK, value.wire).apply()
+    }
+
+    fun multiWindowBlock(context: Context): MultiWindowBlock =
+        MultiWindowBlock.from(prefs(context).getString(KEY_MULTI_WINDOW_BLOCK, null))
 
     fun unlock(context: Context) {
         prefs(context).edit().putLong(KEY_UNLOCK_UNTIL, TrustedClock.now() + UNLOCK_WINDOW_MS).apply()

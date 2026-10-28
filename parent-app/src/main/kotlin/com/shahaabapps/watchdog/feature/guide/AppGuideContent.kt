@@ -276,6 +276,7 @@ object AppGuideContent {
                 step("Finish on their phone", "On your child's phone, open Shield → Me → \"Protect this app\", tap \"Enable\", then \"Activate this device admin app\". Until then, the \"Protection incomplete\" card on Home offers \"Ask {child}'s phone to turn it on\"."),
                 step("Lock Shield's settings", "This keeps your child out of the Settings pages that could switch Shield off. Your removal PIN unlocks them on the phone."),
                 step("Block new apps", "New apps your child installs stay blocked until you decide. They appear on Home under \"NEW APPS TO REVIEW\", where you tap \"Allow\" or \"Keep blocked\"."),
+                step("Block pop-up and split-screen view", "Choose \"Off\", \"Bedtime & school\" or \"Always\": while it's on, an app your child opens in a pop-up window, split screen or picture-in-picture is covered and closed, so blocked apps can't hide there."),
                 step("Choose your alerts", "Under \"Alerts\", turn \"Protection turned off\", \"Date or time changed\", \"Fake GPS\", \"Travelling\" and \"Not checking in\" on or off. \"Protection turned off\" also covers USB debugging being turned on and a parent's phone waiting for approval on your child's phone."),
             ),
             tip = "Changes here apply only when you tap \"Save\". \"Reset PIN\" sets a new PIN, and turning protection off keeps the old one. Choosing \"Allow\" for a new app also removes any limit or hours you set for it.",

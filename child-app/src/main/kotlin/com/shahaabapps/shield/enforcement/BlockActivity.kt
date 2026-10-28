@@ -105,12 +105,7 @@ class BlockActivity : ComponentActivity() {
 
     private fun askParent(variant: BlockVariant, pkg: String, label: String) {
         val childId = authRepository.currentUserIdOrNull() ?: return
-        val request = when (variant) {
-            BlockVariant.TIMESUP -> TimeRequest(kind = RequestKind.MORE_TIME, appPackage = pkg, appLabel = label, minutes = 15)
-            BlockVariant.BEDTIME -> TimeRequest(kind = RequestKind.EXTEND_BEDTIME, minutes = 15)
-            BlockVariant.SCHOOL -> TimeRequest(kind = RequestKind.USE_IN_SCHOOL, appPackage = pkg, appLabel = label)
-            BlockVariant.BLOCKED -> TimeRequest(kind = RequestKind.UNLOCK_APP, appPackage = pkg, appLabel = label)
-        }
+        val request = askRequestFor(variant, pkg, label)
         lifecycleScope.launch { runCatching { requestRepository.create(childId, request) } }
     }
 
@@ -132,9 +127,10 @@ class BlockActivity : ComponentActivity() {
     }
 }
 
-private enum class BlockVariant { TIMESUP, BEDTIME, SCHOOL, BLOCKED }
+// Shared with the pop-up / split-screen cover (WindowGuard) so both say the same.
+internal enum class BlockVariant { TIMESUP, BEDTIME, SCHOOL, BLOCKED }
 
-private fun variantFor(reason: String): BlockVariant {
+internal fun variantFor(reason: String): BlockVariant {
     val r = reason.lowercase()
     return when {
         "bedtime" in r -> BlockVariant.BEDTIME
@@ -142,6 +138,28 @@ private fun variantFor(reason: String): BlockVariant {
         "limit" in r || "time" in r || "up" in r -> BlockVariant.TIMESUP
         else -> BlockVariant.BLOCKED
     }
+}
+
+internal fun blockTitle(variant: BlockVariant, label: String): String = when (variant) {
+    BlockVariant.TIMESUP -> "Time's up for $label"
+    BlockVariant.BEDTIME -> "Bedtime. Time to wind down"
+    BlockVariant.SCHOOL -> "School time. Stay focused"
+    BlockVariant.BLOCKED -> "$label is off-limits"
+}
+
+internal fun askLabelFor(variant: BlockVariant): String = when (variant) {
+    BlockVariant.TIMESUP -> "Ask for 15 more minutes"
+    BlockVariant.BEDTIME -> "Ask to stay up 15 minutes"
+    BlockVariant.SCHOOL -> "Ask to use this app"
+    BlockVariant.BLOCKED -> "Ask to allow it"
+}
+
+/** The request the "Ask…" button sends to the parent for this kind of block. */
+internal fun askRequestFor(variant: BlockVariant, pkg: String, label: String): TimeRequest = when (variant) {
+    BlockVariant.TIMESUP -> TimeRequest(kind = RequestKind.MORE_TIME, appPackage = pkg, appLabel = label, minutes = 15)
+    BlockVariant.BEDTIME -> TimeRequest(kind = RequestKind.EXTEND_BEDTIME, minutes = 15)
+    BlockVariant.SCHOOL -> TimeRequest(kind = RequestKind.USE_IN_SCHOOL, appPackage = pkg, appLabel = label)
+    BlockVariant.BLOCKED -> TimeRequest(kind = RequestKind.UNLOCK_APP, appPackage = pkg, appLabel = label)
 }
 
 @Composable
@@ -166,18 +184,8 @@ private fun BlockContent(
         BlockVariant.SCHOOL -> Icons.Filled.School
         BlockVariant.BLOCKED -> Icons.Filled.Block
     }
-    val title = when (variant) {
-        BlockVariant.TIMESUP -> "Time's up for $label"
-        BlockVariant.BEDTIME -> "Bedtime. Time to wind down"
-        BlockVariant.SCHOOL -> "School time. Stay focused"
-        BlockVariant.BLOCKED -> "$label is off-limits"
-    }
-    val askLabel = when (variant) {
-        BlockVariant.TIMESUP -> "Ask for 15 more minutes"
-        BlockVariant.BEDTIME -> "Ask to stay up 15 minutes"
-        BlockVariant.SCHOOL -> "Ask to use this app"
-        BlockVariant.BLOCKED -> "Ask to allow it"
-    }
+    val title = blockTitle(variant, label)
+    val askLabel = askLabelFor(variant)
     var asked by remember { mutableStateOf(false) }
 
     Column(

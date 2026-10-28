@@ -43,11 +43,12 @@ class ProtectionViewModel @Inject constructor(
         uninstallBlocked: Boolean,
         blockNewApps: Boolean,
         lockSettings: Boolean,
+        multiWindowBlock: com.shahaabapps.core.model.MultiWindowBlock,
         newPin: String?,
         alerts: com.shahaabapps.core.model.AlertSettings,
     ) {
         viewModelScope.launch {
-            protectionRepository.save(childId, uninstallBlocked, blockNewApps, lockSettings, newPin)
+            protectionRepository.save(childId, uninstallBlocked, blockNewApps, lockSettings, multiWindowBlock, newPin)
             if (alerts != this@ProtectionViewModel.alerts.value) protectionRepository.saveAlerts(childId, alerts)
         }
     }

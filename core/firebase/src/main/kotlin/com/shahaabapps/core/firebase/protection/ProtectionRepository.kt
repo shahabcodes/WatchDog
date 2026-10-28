@@ -4,6 +4,7 @@ import com.shahaabapps.core.firebase.callSafely
 
 import com.shahaabapps.core.common.AppResult
 import com.shahaabapps.core.common.runCatchingResult
+import com.shahaabapps.core.model.MultiWindowBlock
 import com.shahaabapps.core.model.ProtectionSettings
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -41,6 +42,7 @@ interface ProtectionRepository {
         uninstallBlocked: Boolean,
         blockNewApps: Boolean,
         lockSettings: Boolean,
+        multiWindowBlock: MultiWindowBlock,
         newPin: String?,
     ): AppResult<Unit>
 
@@ -79,6 +81,7 @@ class FirebaseProtectionRepository @Inject constructor(
                     lockSettings = snapshot?.getBoolean("lockSettings")
                         ?: (snapshot?.getBoolean("uninstallBlocked") ?: false),
                     pinSet = snapshot?.getBoolean("hasPin") ?: false,
+                    multiWindowBlock = MultiWindowBlock.from(snapshot?.getString("multiWindowBlock")),
                 ),
             )
         }
@@ -102,6 +105,7 @@ class FirebaseProtectionRepository @Inject constructor(
                     lockSettings = snapshot.getBoolean("lockSettings")
                         ?: (snapshot.getBoolean("uninstallBlocked") ?: false),
                     pinSet = snapshot.getBoolean("hasPin") ?: false,
+                    multiWindowBlock = MultiWindowBlock.from(snapshot.getString("multiWindowBlock")),
                 ),
             )
         }
@@ -113,6 +117,7 @@ class FirebaseProtectionRepository @Inject constructor(
         uninstallBlocked: Boolean,
         blockNewApps: Boolean,
         lockSettings: Boolean,
+        multiWindowBlock: MultiWindowBlock,
         newPin: String?,
     ): AppResult<Unit> =
         runCatchingResult {
@@ -121,6 +126,7 @@ class FirebaseProtectionRepository @Inject constructor(
                 "uninstallBlocked" to uninstallBlocked,
                 "blockNewApps" to blockNewApps,
                 "lockSettings" to lockSettings,
+                "multiWindowBlock" to multiWindowBlock.wire,
                 "updatedAtMillis" to System.currentTimeMillis(),
             )
             // merge: the PIN fields are server-managed and left untouched here.

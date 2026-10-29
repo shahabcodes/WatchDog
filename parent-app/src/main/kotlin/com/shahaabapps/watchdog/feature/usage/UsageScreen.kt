@@ -88,10 +88,19 @@ private val LIMIT_OPTIONS = listOf(null, 15, 30, 60, 120, 180)
 fun UsageScreen(
     onBack: () -> Unit,
     embedded: Boolean = false,
+    /** Package whose rule sheet to open once (from a blocked-app alert). */
+    openApp: String? = null,
     viewModel: UsageViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var editing by remember { mutableStateOf<AppRow?>(null) }
+    // Opened once the apps load; saved, so coming back to the tab doesn't reopen it.
+    var openedApp by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    androidx.compose.runtime.LaunchedEffect(openApp, state.loading) {
+        if (openApp == null || openApp == openedApp || state.loading) return@LaunchedEffect
+        openedApp = openApp
+        state.rows.firstOrNull { it.app.packageName == openApp }?.let { editing = it }
+    }
     // The walk-through opens the first app's rule sheet for its steps.
     TourScene("activity.rule") { open -> editing = if (open) state.rows.firstOrNull() else null }
 

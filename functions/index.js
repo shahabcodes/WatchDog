@@ -15,6 +15,7 @@ setGlobalOptions({ region: "us-central1", maxInstances: 10 });
 const db = getFirestore();
 const pairing = require("./pairing");
 const pairingInternal = pairing._internal;
+const monitorInternal = require("./monitor")._internal;
 
 // Links and web addresses in child-supplied text: a push that says "sign in at
 // <link>" would look like it came from Watch Dog.
@@ -167,6 +168,75 @@ exports.notifyGeofenceEvent = onDocumentCreated(
     });
     await Promise.all(deletions);
   }
+);
+
+/**
+ * When Shield records that the child tried to open a blocked app, push the
+ * linked parents. Which app (and why it was blocked) is E2E-encrypted in the
+ * event, so this function never sees it: the push is DATA-ONLY and content-free,
+ * and Watch Dog decrypts the event on-device to build the notification. Shield
+ * already throttles to one event per app per 10 minutes; the hourly budget here
+ * stops a tampered phone flooding parents.
+ *
+ * Firestore trigger: children/{childId}/blockAttempts/{eventId}
+ */
+exports.notifyBlockAttempt = onDocumentCreated(
+  "children/{childId}/blockAttempts/{eventId}",
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+    const data = snap.data() || {};
+    const childId = event.params.childId;
+    const eventId = event.params.eventId;
+
+    // An attempt recorded offline and synced late stays in the collection, but
+    // a push now would be stale.
+    const occurredMs = Number(data.atMillis) || 0;
+    if (occurredMs && Date.now() - occurredMs > STALE_EVENT_MS) return;
+    if (!(await monitorInternal.alertSwitches(childId)).blockedApps) return;
+    if (!(await pushAllowed("blockAttempt", childId, 30))) return;
+
+    const childSnap = await db.doc(`children/${childId}`).get();
+    if (!childSnap.exists) return;
+    const child = childSnap.data() || {};
+    const parents = Array.isArray(child.linkedParents) ? child.linkedParents : [];
+    if (parents.length === 0) return;
+    const childName = clip(child.profile && child.profile.name, 60, "Your child");
+
+    const tokenDocs = [];
+    for (const parentId of parents) {
+      const toks = await db.collection(`users/${parentId}/fcmTokens`).get();
+      toks.forEach((d) => tokenDocs.push({ parentId, token: d.id }));
+    }
+    if (tokenDocs.length === 0) return;
+
+    const message = {
+      tokens: tokenDocs.map((t) => t.token),
+      // No app name or reason: only where to find the sealed event.
+      data: { type: "blockAttempt", childId, eventId, childName },
+      android: { priority: "high" },
+    };
+
+    const resp = await getMessaging().sendEachForMulticast(message);
+    await require("./trace").serverDiag(resp.failureCount ? "WARN" : "INFO", "push",
+      `${process.env.FUNCTION_TARGET || "push"} sent=${resp.successCount} failed=${resp.failureCount}`, event.params.childId);
+
+    // Prune tokens that are no longer valid.
+    const deletions = [];
+    resp.responses.forEach((r, i) => {
+      if (!r.success) {
+        const code = r.error && r.error.code;
+        if (
+          code === "messaging/registration-token-not-registered" ||
+          code === "messaging/invalid-argument"
+        ) {
+          const t = tokenDocs[i];
+          deletions.push(db.doc(`users/${t.parentId}/fcmTokens/${t.token}`).delete());
+        }
+      }
+    });
+    await Promise.all(deletions);
+  },
 );
 
 /**

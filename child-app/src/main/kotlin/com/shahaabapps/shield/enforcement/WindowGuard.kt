@@ -20,6 +20,7 @@ import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.shahaabapps.core.common.Diag
+import com.shahaabapps.core.model.BlockAttemptReason
 import com.shahaabapps.core.model.TimeRequest
 
 /**
@@ -38,6 +39,8 @@ internal class WindowGuard(
     /** Shield, the launcher, keyboards and system UI are never covered. */
     private val neverCover: (pkg: String) -> Boolean,
     private val onAsk: (Cover) -> Unit,
+    /** A new cover went up: the child tried to use a blocked app in this window. */
+    private val onCovered: (Cover) -> Unit,
 ) {
     enum class Mode(val diag: String) { FULLSCREEN("large window"), SPLIT("split"), POPUP("popup"), PIP("pip") }
 
@@ -48,6 +51,9 @@ internal class WindowGuard(
         val message: String,
         /** For diagnostics only (never the app's name). */
         val reason: String,
+        /** The app's name and why it's blocked, for the parent's (sealed) alert only. */
+        val label: String,
+        val kind: BlockAttemptReason,
         val dark: Boolean,
         val askLabel: String?,
         val ask: TimeRequest?,
@@ -176,6 +182,7 @@ internal class WindowGuard(
         shown[app.window.id] = Shown(view, params, cover, app.mode)
         // The app itself is not named: which apps a child uses is end-to-end encrypted.
         Diag.info("enforce", "blocked in ${app.mode.diag} reason=${cover.reason}")
+        onCovered(cover)
     }
 
     private fun remove(windowId: Int) {

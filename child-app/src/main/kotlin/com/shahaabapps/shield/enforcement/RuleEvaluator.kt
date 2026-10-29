@@ -1,6 +1,7 @@
 package com.shahaabapps.shield.enforcement
 
 import com.shahaabapps.core.model.AppRule
+import com.shahaabapps.core.model.BlockAttemptReason
 import java.util.Calendar
 
 /**
@@ -8,7 +9,8 @@ import java.util.Calendar
  */
 object RuleEvaluator {
 
-    data class Decision(val block: Boolean, val reason: String?)
+    /** [kind]: why, for the parent's blocked-app alert (set whenever [block]). */
+    data class Decision(val block: Boolean, val reason: String?, val kind: BlockAttemptReason? = null)
 
     private val ALLOWED = Decision(block = false, reason = null)
 
@@ -19,7 +21,7 @@ object RuleEvaluator {
     ): Decision {
         if (rule == null) return ALLOWED
 
-        if (rule.blocked) return Decision(true, "This app is blocked")
+        if (rule.blocked) return Decision(true, "This app is blocked", BlockAttemptReason.BLOCKED)
 
         if (rule.schedule.isNotEmpty()) {
             val minuteOfDay = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
@@ -29,12 +31,12 @@ object RuleEvaluator {
                     minuteOfDay >= window.startMinuteOfDay &&
                     minuteOfDay < window.endMinuteOfDay
             }
-            if (!insideAnyWindow) return Decision(true, "Outside allowed hours")
+            if (!insideAnyWindow) return Decision(true, "Outside allowed hours", BlockAttemptReason.HOURS)
         }
 
         val limit = rule.dailyLimitMinutes
         if (limit != null && usedMinutesToday >= limit) {
-            return Decision(true, "Daily time limit reached")
+            return Decision(true, "Daily time limit reached", BlockAttemptReason.LIMIT)
         }
 
         return ALLOWED

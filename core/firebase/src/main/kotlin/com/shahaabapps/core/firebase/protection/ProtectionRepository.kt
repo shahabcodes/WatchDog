@@ -164,6 +164,7 @@ class FirebaseProtectionRepository @Inject constructor(
                     fakeGps = snapshot?.getBoolean("fakeGps") ?: true,
                     travel = snapshot?.getBoolean("travel") ?: true,
                     noCheckIn = snapshot?.getBoolean("noCheckIn") ?: true,
+                    blockedApps = snapshot?.getBoolean("blockedApps") ?: true,
                 ),
             )
         }
@@ -180,6 +181,7 @@ class FirebaseProtectionRepository @Inject constructor(
                     "fakeGps" to alerts.fakeGps,
                     "travel" to alerts.travel,
                     "noCheckIn" to alerts.noCheckIn,
+                    "blockedApps" to alerts.blockedApps,
                     "updatedAtMillis" to System.currentTimeMillis(),
                 ),
             ).await()

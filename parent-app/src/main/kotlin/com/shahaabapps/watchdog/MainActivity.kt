@@ -68,6 +68,19 @@ class MainActivity : ComponentActivity() {
     private fun parseDeepLink(intent: Intent?): RequestDeepLink? {
         intent ?: return null
         val childId = intent.getStringExtra(WatchdogMessagingService.EXTRA_CHILD_ID) ?: return null
+        if (intent.getStringExtra(WatchdogMessagingService.EXTRA_ACTION) == WatchdogMessagingService.ACTION_APP_RULES) {
+            // Blocked-app alert (a content tap, so it already dismissed itself).
+            val appPackage = intent.getStringExtra(WatchdogMessagingService.EXTRA_APP_PACKAGE)
+            intent.removeExtra(WatchdogMessagingService.EXTRA_CHILD_ID)
+            intent.removeExtra(WatchdogMessagingService.EXTRA_ACTION)
+            intent.removeExtra(WatchdogMessagingService.EXTRA_APP_PACKAGE)
+            return RequestDeepLink(
+                childId = childId,
+                requestId = "",
+                action = WatchdogMessagingService.ACTION_APP_RULES,
+                appPackage = appPackage,
+            )
+        }
         val requestId = intent.getStringExtra(WatchdogMessagingService.EXTRA_REQUEST_ID) ?: return null
         val action = intent.getStringExtra(WatchdogMessagingService.EXTRA_ACTION)
             ?: WatchdogMessagingService.ACTION_VIEW

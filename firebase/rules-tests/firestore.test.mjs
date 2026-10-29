@@ -215,6 +215,24 @@ describe("attacks are refused", () => {
     await assertFails(updateDoc(doc(child(), `children/${CHILD}`), { "profile.name": "x".repeat(61) }));
     await assertFails(updateDoc(doc(child(), `children/${CHILD}`), { role: "PARENT" }));
   });
+  it("blockAttempts stay sealed, unedited and private to the family", async () => {
+    const path = `children/${CHILD}/blockAttempts/b1`;
+    // Which app was blocked must never reach the server in plaintext.
+    await assertFails(setDoc(doc(child(), path), { enc: true, e: "sealed", atMillis: 1, label: "TikTok" }));
+    await assertFails(setDoc(doc(child(), path), { packageName: "com.zhiliaoapp.musically", atMillis: 1 }));
+    await assertFails(setDoc(doc(child(), path), { enc: false, e: "sealed", atMillis: 1 }));
+    await assertFails(setDoc(doc(child(), path), { enc: true, e: "x".repeat(4096), atMillis: 1 }));
+    await assertFails(setDoc(doc(parent(), path), { enc: true, e: "sealed", atMillis: 1 }));
+    await assertFails(setDoc(doc(stranger(), path), { enc: true, e: "sealed", atMillis: 1 }));
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), path), { enc: true, e: "sealed", atMillis: 1 });
+    });
+    await assertFails(getDoc(doc(stranger(), path)));
+    await assertFails(getDocs(collection(stranger(), `children/${CHILD}/blockAttempts`)));
+    await assertFails(updateDoc(doc(child(), path), { e: "other" }));
+    await assertFails(deleteDoc(doc(child(), path)));
+    await assertFails(deleteDoc(doc(stranger(), path)));
+  });
 });
 
 describe("legitimate app writes still work", () => {
@@ -274,6 +292,12 @@ describe("legitimate app writes still work", () => {
     await assertSucceeds(setDoc(doc(child(), `children/${CHILD}/screenshots/s1`), { data: "x", capturedAtMillis: 1, enc: true }));
     await assertSucceeds(setDoc(doc(child(), `children/${CHILD}/pendingApps/com.new`), { packageName: "com.new", label: "New", installedAtMillis: 1 }));
     await assertSucceeds(setDoc(doc(child(), `children/${CHILD}/e2eeKeys/${PARENT}`), { wrapped: "w" }));
+  });
+  it("blockAttempts: child records a sealed attempt, parent reads and clears it", async () => {
+    await assertSucceeds(setDoc(doc(child(), `children/${CHILD}/blockAttempts/b1`), { enc: true, e: "sealed", atMillis: 1 }));
+    await assertSucceeds(getDoc(doc(parent(), `children/${CHILD}/blockAttempts/b1`)));
+    await assertSucceeds(getDocs(collection(parent(), `children/${CHILD}/blockAttempts`)));
+    await assertSucceeds(deleteDoc(doc(parent(), `children/${CHILD}/blockAttempts/b1`)));
   });
   it("parent clears events, screenshots and reviewed apps", async () => {
     await env.withSecurityRulesDisabled(async (ctx) => {

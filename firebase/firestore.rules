@@ -266,6 +266,20 @@ service cloud.firestore {
         allow create: if isChild();
       }
 
+      // Blocked-app attempts: the child records them (sealed: which app is E2EE);
+      // a parent reads and clears them. Only the time stays plaintext, so the
+      // push function can skip stale events. Never edited.
+      match /blockAttempts/{eventId} {
+        allow read: if canRead();
+        allow delete: if isParent();
+        allow create: if isChild()
+          && request.resource.data.keys().hasOnly(['enc', 'e', 'atMillis'])
+          && request.resource.data.enc == true
+          && request.resource.data.e is string
+          && request.resource.data.e.size() < 4096
+          && request.resource.data.get('atMillis', 0) is int;
+      }
+
       // On-demand commands (screenshot, location refresh, permission ask): a
       // parent writes them; the child reports screenshot progress.
       match /commands/{docId} {

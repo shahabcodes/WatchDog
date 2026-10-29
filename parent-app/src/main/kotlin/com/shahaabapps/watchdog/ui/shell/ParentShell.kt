@@ -265,6 +265,16 @@ fun ParentShell(
             onDeepLinkHandled()
             return@LaunchedEffect
         }
+        if (link.action == com.shahaabapps.watchdog.messaging.WatchdogMessagingService.ACTION_APP_RULES) {
+            // A blocked-app alert: that child's Activity tab, on the app's rule sheet.
+            val app = link.appPackage?.let { "?app=${android.net.Uri.encode(it)}" }.orEmpty()
+            navController.navigate("${Tab.SCREENTIME.route}/${link.childId}$app") {
+                popUpTo(navController.graph.findStartDestination().id)
+                launchSingleTop = true
+            }
+            onDeepLinkHandled()
+            return@LaunchedEffect
+        }
         navController.navigate(
             "alerts/${link.childId}?requestId=${link.requestId}&action=${link.action}",
         ) { launchSingleTop = true }
@@ -434,7 +444,13 @@ fun ParentShell(
             ) {
                 AlertsScreen(onBack = { navController.popBackStack() })
             }
-            composable("screentime/{childId}", childArg) { UsageScreen(onBack = { }, embedded = true) }
+            composable(
+                "screentime/{childId}?app={app}",
+                childArg + navArgument("app") { type = NavType.StringType; nullable = true; defaultValue = null },
+            ) { entry ->
+                // ?app= comes from a blocked-app alert: open that app's rule sheet.
+                UsageScreen(onBack = { }, embedded = true, openApp = entry.arguments?.getString("app"))
+            }
             composable("settings") {
                 SettingsScreen(
                     onBack = { navController.popBackStack() },

@@ -78,4 +78,6 @@ data class AlertSettings(
     val travel: Boolean = true,
     /** The phone hasn't checked in for 3 hours (and when it's back). */
     val noCheckIn: Boolean = true,
+    /** The child tried to open a blocked app (at most one alert per app per 10 minutes). */
+    val blockedApps: Boolean = true,
 )

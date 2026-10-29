@@ -88,6 +88,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.shahaabapps.core.ui.components.AppIcon
 import com.shahaabapps.core.ui.components.CupertinoCard
 import com.shahaabapps.core.ui.components.CupertinoListRow
+import com.shahaabapps.core.ui.components.SectionHeader
 import com.shahaabapps.core.ui.components.CupertinoPrimaryButton
 import com.shahaabapps.core.ui.components.CupertinoSwitch
 import com.shahaabapps.core.ui.components.CupertinoTextButton
@@ -1976,8 +1977,11 @@ private fun ProtectionEditor(
                 AlertRow("Travelling", "The phone has been on another time zone for 2 hours", alerts.travel) {
                     alerts = alerts.copy(travel = it)
                 }
-                AlertRow("Not checking in", "No contact with the phone for 3 hours, and when it's back", alerts.noCheckIn, showDivider = false) {
+                AlertRow("Not checking in", "No contact with the phone for 3 hours, and when it's back", alerts.noCheckIn) {
                     alerts = alerts.copy(noCheckIn = it)
+                }
+                AlertRow("Blocked app attempts", "When your child tries to open a blocked app", alerts.blockedApps, showDivider = false) {
+                    alerts = alerts.copy(blockedApps = it)
                 }
             }
         }
@@ -1994,42 +1998,42 @@ private fun ProtectionEditor(
     }
 }
 
-/** "Block pop-up and split-screen view": Off / during Bedtime and School / Always. */
+/**
+ * "Pop-up and split-screen view": one row per choice (title + what it means),
+ * with a check on the chosen one, like the map-style list in Settings.
+ */
 @Composable
 private fun MultiWindowBlockPicker(
     value: com.shahaabapps.core.model.MultiWindowBlock,
     onSelect: (com.shahaabapps.core.model.MultiWindowBlock) -> Unit,
 ) {
-    val desc = when (value) {
-        com.shahaabapps.core.model.MultiWindowBlock.OFF ->
-            "Apps can open in a pop-up window, split screen or picture-in-picture."
-        com.shahaabapps.core.model.MultiWindowBlock.FOCUS ->
-            "During Bedtime and School, apps opened in a pop-up window, split screen or picture-in-picture are covered and closed."
-        com.shahaabapps.core.model.MultiWindowBlock.ALWAYS ->
-            "Apps opened in a pop-up window, split screen or picture-in-picture are always covered and closed. Calls still work."
-    }
-    CupertinoCard {
-        Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            Text("Block pop-up and split-screen view", style = MaterialTheme.typography.bodyLarge)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(AppTheme.colors.separator.copy(alpha = 0.4f))
-                    .padding(3.dp),
-                horizontalArrangement = Arrangement.spacedBy(3.dp),
-            ) {
-                TrackSeg("Off", value == com.shahaabapps.core.model.MultiWindowBlock.OFF, Modifier.weight(1f)) {
-                    onSelect(com.shahaabapps.core.model.MultiWindowBlock.OFF)
-                }
-                TrackSeg("Bedtime & school", value == com.shahaabapps.core.model.MultiWindowBlock.FOCUS, Modifier.weight(1.6f)) {
-                    onSelect(com.shahaabapps.core.model.MultiWindowBlock.FOCUS)
-                }
-                TrackSeg("Always", value == com.shahaabapps.core.model.MultiWindowBlock.ALWAYS, Modifier.weight(1f)) {
-                    onSelect(com.shahaabapps.core.model.MultiWindowBlock.ALWAYS)
-                }
+    val options = listOf(
+        Triple(com.shahaabapps.core.model.MultiWindowBlock.OFF, "Off",
+            "Apps can open in a pop-up, split screen or picture-in-picture."),
+        Triple(com.shahaabapps.core.model.MultiWindowBlock.FOCUS, "During Bedtime & School",
+            "Only during focus times, any app opened that way is covered and closed."),
+        Triple(com.shahaabapps.core.model.MultiWindowBlock.ALWAYS, "Always",
+            "Any app opened that way is always covered and closed. Calls still work."),
+    )
+    Column {
+        SectionHeader(
+            text = "Pop-up and split-screen view",
+            modifier = Modifier.padding(start = Spacing.md, bottom = Spacing.xs),
+        )
+        CupertinoCard {
+            options.forEachIndexed { index, (option, title, subtitle) ->
+                CupertinoListRow(
+                    title = title,
+                    subtitle = subtitle,
+                    showDivider = index < options.lastIndex,
+                    onClick = { onSelect(option) },
+                    trailing = {
+                        if (option == value) {
+                            Icon(Icons.Filled.Check, contentDescription = "Selected", tint = AppTheme.colors.accent)
+                        }
+                    },
+                )
             }
-            Text(desc, style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
         }
     }
 }

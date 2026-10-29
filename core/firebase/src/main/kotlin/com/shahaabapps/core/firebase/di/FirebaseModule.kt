@@ -8,6 +8,8 @@ import com.shahaabapps.core.firebase.device.DeviceRepository
 import com.shahaabapps.core.firebase.device.FirebaseDeviceRepository
 import com.shahaabapps.core.firebase.profile.FirebaseProfileRepository
 import com.shahaabapps.core.firebase.profile.ProfileRepository
+import com.shahaabapps.core.firebase.blockattempt.BlockAttemptRepository
+import com.shahaabapps.core.firebase.blockattempt.FirebaseBlockAttemptRepository
 import com.shahaabapps.core.firebase.geofence.FirebaseGeofenceRepository
 import com.shahaabapps.core.firebase.geofence.GeofenceRepository
 import com.shahaabapps.core.firebase.messaging.FirebaseMessagingTokenRepository
@@ -96,6 +98,10 @@ interface FirebaseBindsModule {
     @Binds
     @Singleton
     fun bindGeofenceRepository(impl: FirebaseGeofenceRepository): GeofenceRepository
+
+    @Binds
+    @Singleton
+    fun bindBlockAttemptRepository(impl: FirebaseBlockAttemptRepository): BlockAttemptRepository
 
     @Binds
     @Singleton

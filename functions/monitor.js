@@ -62,6 +62,7 @@ async function alertSwitches(childId) {
     fakeGps: on("fakeGps"),
     travel: on("travel"),
     noCheckIn: on("noCheckIn"),
+    blockedApps: on("blockedApps"),
   };
 }
 
@@ -221,3 +222,6 @@ async function promptTravellers() {
     ).catch((e) => console.error("promptTravellers notify", e));
   }
 }
+
+// For index.js: the blocked-app alert honours the same per-child switches.
+exports._internal = { alertSwitches };

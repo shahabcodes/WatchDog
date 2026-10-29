@@ -26,6 +26,7 @@ import com.shahaabapps.core.firebase.request.RequestRepository
 import com.shahaabapps.core.firebase.rules.AppRulesRepository
 import com.shahaabapps.core.firebase.screenshot.ScreenshotRepository
 import com.shahaabapps.core.model.AppRule
+import com.shahaabapps.core.model.BlockAttemptReason
 import com.shahaabapps.core.model.FocusSettings
 import com.shahaabapps.core.model.MultiWindowBlock
 import com.shahaabapps.core.model.PendingApp
@@ -63,6 +64,7 @@ class EnforcementService : AccessibilityService() {
     @Inject lateinit var screenshotRepository: ScreenshotRepository
     @Inject lateinit var requestRepository: RequestRepository
     @Inject lateinit var installGuardRepository: com.shahaabapps.core.firebase.installguard.InstallGuardRepository
+    @Inject lateinit var blockAttemptRepository: com.shahaabapps.core.firebase.blockattempt.BlockAttemptRepository
 
     /**
      * Temporary parent-approved exceptions, recomputed from the requests feed.
@@ -136,7 +138,13 @@ class EnforcementService : AccessibilityService() {
             coverFor = ::coverFor,
             neverCover = ::neverCover,
             onAsk = ::askFromCover,
+            onCovered = { cover -> blockAttempts.record(cover.pkg, cover.label, cover.kind) },
         )
+    }
+
+    /** Tells the parents (throttled, sealed) when the child tries a blocked app. */
+    private val blockAttempts by lazy {
+        BlockAttemptRecorder(this, blockAttemptRepository, authRepository::currentUserIdOrNull, serviceScope)
     }
 
     override fun onServiceConnected() {
@@ -344,8 +352,11 @@ class EnforcementService : AccessibilityService() {
         }
     }
 
-    /** Why an app must be blocked right now: the name to show and the child-facing reason. */
-    private data class BlockDecision(val label: String, val reason: String?)
+    /**
+     * Why an app must be blocked right now: the name to show, the child-facing
+     * reason, and the [kind] the parent's blocked-app alert reports.
+     */
+    private data class BlockDecision(val label: String, val reason: String?, val kind: BlockAttemptReason)
 
     /**
      * Applies focus windows, install guard, new-app review and app rules to the app
@@ -357,7 +368,7 @@ class EnforcementService : AccessibilityService() {
         // a full-screen BlockActivity would open underneath a floating pop-up.
         if (packageName in windowGuard.partialPackages) return
         val decision = blockDecision(packageName) ?: return
-        blockApp(packageName, decision.label, decision.reason)
+        blockApp(packageName, decision.label, decision.reason, decision.kind)
     }
 
     /**
@@ -384,7 +395,8 @@ class EnforcementService : AccessibilityService() {
         if (focusReason != null && !focusSuppressed && !appAllowed &&
             packageName !in focusExempt && packageName !in activeFocusAllowed()
         ) {
-            return BlockDecision(appLabelFor(packageName), focusReason)
+            val kind = if (variantFor(focusReason) == BlockVariant.BEDTIME) BlockAttemptReason.BEDTIME else BlockAttemptReason.SCHOOL
+            return BlockDecision(appLabelFor(packageName), focusReason, kind)
         }
 
         // Install guard — launch-time block ONLY in blocklist mode (explicitly
@@ -395,11 +407,12 @@ class EnforcementService : AccessibilityService() {
             return BlockDecision(
                 appLabelFor(packageName),
                 "This app isn't allowed to be installed from outside the Play Store.",
+                BlockAttemptReason.INSTALL_GUARD,
             )
         }
 
         if (packageName in pendingPackages && !appAllowed) {
-            return BlockDecision(appLabelFor(packageName), "This new app is waiting for a parent to review it.")
+            return BlockDecision(appLabelFor(packageName), "This new app is waiting for a parent to review it.", BlockAttemptReason.REVIEW)
         }
 
         val rule = rulesByPackage[packageName] ?: return null
@@ -413,7 +426,11 @@ class EnforcementService : AccessibilityService() {
             java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone(ChildZone.zone()))
                 .apply { timeInMillis = TrustedClock.now() },
         )
-        return if (decision.block) BlockDecision(rule.appLabel.ifBlank { packageName }, decision.reason) else null
+        return if (decision.block) {
+            BlockDecision(rule.appLabel.ifBlank { packageName }, decision.reason, decision.kind ?: BlockAttemptReason.BLOCKED)
+        } else {
+            null
+        }
     }
 
     /**
@@ -430,6 +447,8 @@ class EnforcementService : AccessibilityService() {
                 title = blockTitle(variant, d.label),
                 message = "${d.label} is paused. $reason",
                 reason = reason,
+                label = d.label,
+                kind = d.kind,
                 dark = variant == BlockVariant.BEDTIME,
                 askLabel = askLabelFor(variant),
                 ask = askRequestFor(variant, pkg, d.label),
@@ -444,6 +463,8 @@ class EnforcementService : AccessibilityService() {
             title = "${appLabelFor(pkg)} can't open here",
             message = MULTI_WINDOW_REASON,
             reason = "multi-window off",
+            label = appLabelFor(pkg),
+            kind = BlockAttemptReason.MULTI_WINDOW,
             dark = false,
             askLabel = null,
             ask = null,
@@ -628,7 +649,7 @@ class EnforcementService : AccessibilityService() {
         return exempt
     }
 
-    private fun blockApp(packageName: String, label: String, reason: String?) {
+    private fun blockApp(packageName: String, label: String, reason: String?, kind: BlockAttemptReason) {
         // Debounce repeated events for the same app.
         val now = System.currentTimeMillis()
         if (packageName == lastBlockedPackage && now - lastBlockAtMillis < 1500) return
@@ -636,6 +657,7 @@ class EnforcementService : AccessibilityService() {
         lastBlockAtMillis = now
         // The app itself is not named: which apps a child uses is end-to-end encrypted.
         com.shahaabapps.core.common.Diag.info("enforce", "app blocked reason=${reason ?: "rule"}")
+        blockAttempts.record(packageName, label, kind)
 
         val intent = Intent(this, BlockActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)

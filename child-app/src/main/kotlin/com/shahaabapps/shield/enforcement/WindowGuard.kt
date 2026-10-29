@@ -35,13 +35,11 @@ internal class WindowGuard(
     private val service: AccessibilityService,
     /** What to cover [pkg]'s window with, or null when it may be used there. */
     private val coverFor: (pkg: String) -> Cover?,
-    /** A full-screen app that isn't the focused one: the normal (BlockActivity) check. */
-    private val onBackgroundFullscreen: (pkg: String) -> Unit,
     /** Shield, the launcher, keyboards and system UI are never covered. */
     private val neverCover: (pkg: String) -> Boolean,
     private val onAsk: (Cover) -> Unit,
 ) {
-    enum class Mode(val diag: String) { FULLSCREEN("fullscreen"), SPLIT("split"), POPUP("popup"), PIP("pip") }
+    enum class Mode(val diag: String) { FULLSCREEN("large window"), SPLIT("split"), POPUP("popup"), PIP("pip") }
 
     /** The block shown over one window. [ask] is null where no "Ask…" is offered. */
     data class Cover(
@@ -91,16 +89,15 @@ internal class WindowGuard(
             val display = displaySize()
             if (display.x <= 0 || display.y <= 0) return
             val apps = classify(appWindows, windows, display)
-            partialPackages = apps.filter { it.mode != Mode.FULLSCREEN }.map { it.pkg }.toSet()
+            // With several app windows on screen, every blocked one is covered,
+            // whatever its size: a large pop-up can be almost as big as the screen
+            // (and then looked "full screen"), and the full-screen block page would
+            // open underneath it. Covering a truly full-screen app is harmless.
+            partialPackages = apps.map { it.pkg }.toSet()
 
             val keep = HashSet<Int>()
             for (app in apps) {
                 if (neverCover(app.pkg)) continue
-                if (app.mode == Mode.FULLSCREEN) {
-                    // The focused one is checked by the window-state event / recheck loop.
-                    if (!app.window.isFocused && !app.window.isActive) onBackgroundFullscreen(app.pkg)
-                    continue
-                }
                 val cover = decide(app.pkg) ?: continue
                 keep += app.window.id
                 show(app, cover)

@@ -134,7 +134,6 @@ class EnforcementService : AccessibilityService() {
         WindowGuard(
             service = this,
             coverFor = ::coverFor,
-            onBackgroundFullscreen = ::enforce,
             neverCover = ::neverCover,
             onAsk = ::askFromCover,
         )

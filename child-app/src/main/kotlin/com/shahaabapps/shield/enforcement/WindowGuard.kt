@@ -42,7 +42,7 @@ internal class WindowGuard(
     /** A new cover went up: the child tried to use a blocked app in this window. */
     private val onCovered: (Cover) -> Unit,
 ) {
-    enum class Mode(val diag: String) { FULLSCREEN("large window"), SPLIT("split"), POPUP("popup"), PIP("pip") }
+    enum class Mode(val diag: String) { FULLSCREEN("large window"), SPLIT("split"), POPUP("popup"), PIP("pip"), PINNED("pinned app") }
 
     /** The block shown over one window. [ask] is null where no "Ask…" is offered. */
     data class Cover(
@@ -86,6 +86,12 @@ internal class WindowGuard(
         val windows = runCatching { service.windows }.getOrNull() ?: return
         try {
             val appWindows = windows.filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
+            // A pinned app ("Pin this app" in Recents): Android won't open the block
+            // page or go Home until it's unpinned, so the app is covered instead.
+            if (isPinned()) {
+                coverPinned(appWindows)
+                return
+            }
             // One app window is the normal full-screen case: skip the rest (battery).
             if (appWindows.size <= 1) {
                 partialPackages = emptySet()
@@ -113,6 +119,25 @@ internal class WindowGuard(
         } finally {
             windows.forEach { it.release() }
         }
+    }
+
+    private fun isPinned(): Boolean = runCatching {
+        service.getSystemService(android.app.ActivityManager::class.java).lockTaskModeState ==
+            android.app.ActivityManager.LOCK_TASK_MODE_PINNED
+    }.getOrDefault(false)
+
+    /** Covers the pinned app (the only app window) while it's blocked, with how to unpin it. */
+    private fun coverPinned(appWindows: List<AccessibilityWindowInfo>) {
+        val keep = HashSet<Int>()
+        val pinned = appWindows.mapNotNull { w -> packageOf(w)?.let { AppWindow(w, it, Rect().also(w::getBoundsInScreen), Mode.PINNED) } }
+        partialPackages = pinned.map { it.pkg }.toSet()
+        for (app in pinned) {
+            if (neverCover(app.pkg)) continue
+            val cover = decide(app.pkg) ?: continue
+            keep += app.window.id
+            show(app, cover.copy(message = cover.message + "\n\n" + UNPIN_HINT))
+        }
+        shown.keys.filter { it !in keep }.forEach(::remove)
     }
 
     /** Removes every cover (service going away / no longer supervised). */
@@ -409,6 +434,9 @@ internal class WindowGuard(
         private const val FULL_FRACTION_H = 0.8f
         private const val DECISION_TTL_MS = 3_000L
         private const val MAX_CLOSE_ATTEMPTS = 3
+        /** Shown on a pinned app's cover: Samsung's unpin gestures (buttons and gestures). */
+        private const val UNPIN_HINT = "This app is pinned. To leave it, touch and hold Back and Recents together " +
+            "(with gesture navigation, swipe up and hold)."
         private const val CLOSE_RETRY_MS = 4_000L
         private const val MAX_NODES = 300
 

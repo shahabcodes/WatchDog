@@ -240,6 +240,48 @@ fun ParentShell(
 
     val selectedChild = children.firstOrNull { it.childId == currentChildId } ?: children.first()
 
+    // One consistent way to move between tab destinations ("<tab>/<childId>"),
+    // so the saved/restored back stack stays coherent however a tab was opened.
+    // Each screen's ViewModel reads its child once, from its own back-stack entry,
+    // so an entry must never be reused for another child: launchSingleTop keeps the
+    // old entry (new arguments, old ViewModel) and restoreState brings back the tab
+    // as it was saved, for whichever child that was. On a change of child the stack
+    // is rebuilt from that child's Home, and a tab is restored only when it was
+    // saved for the same child.
+    val savedTabChild = remember(navController) { mutableMapOf<String, String>() }
+    val switchTab: (String) -> Unit = remember(navController) {
+        fun(route: String) {
+            val tab = route.substringBefore("/")
+            val child = route.substringAfter("/").substringBefore("?")
+            val startId = navController.graph.findStartDestination().id
+            val homeChild = runCatching {
+                navController.getBackStackEntry(startId).arguments?.getString("childId")
+            }.getOrNull()
+            if (homeChild != child) {
+                savedTabChild.clear()
+                navController.navigate("${Tab.OVERVIEW.route}/$child") {
+                    popUpTo(navController.graph.id) { inclusive = true }
+                }
+                if (tab == Tab.OVERVIEW.route) return
+            } else {
+                // The tab being left is saved below: remember for which child.
+                navController.currentBackStackEntry?.let { entry ->
+                    val leaving = entry.destination.route?.substringBefore("/")
+                    val leavingChild = entry.arguments?.getString("childId")
+                    if (leaving != Tab.OVERVIEW.route && leavingChild != null &&
+                        Tab.entries.any { it.route == leaving }
+                    ) savedTabChild[leaving!!] = leavingChild
+                }
+            }
+            navController.navigate(route) {
+                popUpTo(startId) { saveState = true }
+                launchSingleTop = true
+                // ?app= opens one app's rule sheet: a fresh screen, not the saved one.
+                restoreState = tab != Tab.OVERVIEW.route && savedTabChild[tab] == child && !route.contains("?")
+            }
+        }
+    }
+
     // If the selected child no longer exists (e.g. after a reconnect replaced its
     // id, or a remove), move the UI to a child that does — otherwise the screens
     // keep observing a deleted child and show "offline / no data".
@@ -248,10 +290,7 @@ fun ParentShell(
             Tab.entries.any { it.route == currentTab } &&
             children.none { it.childId == currentChildId }
         ) {
-            navController.navigate("$currentTab/${children.first().childId}") {
-                popUpTo("${Tab.OVERVIEW.route}/{childId}") { inclusive = true }
-                launchSingleTop = true
-            }
+            switchTab("$currentTab/${children.first().childId}")
         }
     }
 
@@ -268,10 +307,7 @@ fun ParentShell(
         if (link.action == com.shahaabapps.watchdog.messaging.WatchdogMessagingService.ACTION_APP_RULES) {
             // A blocked-app alert: that child's Activity tab, on the app's rule sheet.
             val app = link.appPackage?.let { "?app=${android.net.Uri.encode(it)}" }.orEmpty()
-            navController.navigate("${Tab.SCREENTIME.route}/${link.childId}$app") {
-                popUpTo(navController.graph.findStartDestination().id)
-                launchSingleTop = true
-            }
+            switchTab("${Tab.SCREENTIME.route}/${link.childId}$app")
             onDeepLinkHandled()
             return@LaunchedEffect
         }
@@ -279,18 +315,6 @@ fun ParentShell(
             "alerts/${link.childId}?requestId=${link.requestId}&action=${link.action}",
         ) { launchSingleTop = true }
         onDeepLinkHandled()
-    }
-
-    // One consistent way to move between tab destinations, so the saved/restored
-    // back stack stays coherent however the Map was opened (bottom bar or a card).
-    val switchTab: (String) -> Unit = remember(navController) {
-        { route ->
-            navController.navigate(route) {
-                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                launchSingleTop = true
-                restoreState = true
-            }
-        }
     }
 
     // The walk-through: coach marks over the real screens, one control at a time.
@@ -305,10 +329,7 @@ fun ParentShell(
             override fun open(screen: String) {
                 val child = lastChildId
                 when {
-                    Tab.entries.any { it.route == screen } -> navController.navigate("$screen/$child") {
-                        popUpTo(navController.graph.findStartDestination().id)
-                        launchSingleTop = true
-                    }
+                    Tab.entries.any { it.route == screen } -> switchTab("$screen/$child")
                     screen == "alerts" -> navController.navigate("alerts/$child") { launchSingleTop = true }
                     // Stepping back to a screen still on the stack pops to it instead of stacking a copy.
                     !navController.popBackStack(screen, inclusive = false) ->
@@ -321,10 +342,7 @@ fun ParentShell(
         if (!tour.active) {
             tour.start(Walkthrough.steps, finalLink = "Read the full guide") { exit ->
                 guidePrefs.markWalkthroughSeen()
-                navController.navigate("${Tab.OVERVIEW.route}/$lastChildId") {
-                    popUpTo(navController.graph.findStartDestination().id)
-                    launchSingleTop = true
-                }
+                switchTab("${Tab.OVERVIEW.route}/$lastChildId")
                 if (exit == TourExit.FinalLink) navController.navigate("guide") { launchSingleTop = true }
             }
         }
@@ -408,7 +426,7 @@ fun ParentShell(
                     childNames = children.map { it.childId to it.profile.name.ifBlank { "Child" } },
                     selectedId = currentChildId,
                     onSelectChild = { id ->
-                        navController.navigate("${Tab.OVERVIEW.route}/$id") { launchSingleTop = true }
+                        switchTab("${Tab.OVERVIEW.route}/$id")
                     },
                     onAddChild = { navController.navigate("add") },
                     onManage = { navController.navigate("manage") },

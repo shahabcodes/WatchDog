@@ -9,6 +9,7 @@ import com.shahaabapps.core.firebase.auth.AuthRepository
 import com.shahaabapps.core.firebase.screenshot.ScreenshotRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,9 +44,23 @@ class ScreenshotViewModel @Inject constructor(
     private val _captureState = MutableStateFlow<CaptureState>(CaptureState.Idle)
     val captureState: StateFlow<CaptureState> = _captureState.asStateFlow()
 
-    /** Timestamp of the capture the parent is currently waiting on (0 when idle). */
+    // Whether the parent is waiting on a capture. A capture is matched by the
+    // CHILD's own timestamps (newer than the child's last status / screenshot seen
+    // before the request), never against this phone's clock: the two phones'
+    // clocks can be half a minute apart, which left the spinner running after the
+    // screenshot had already arrived.
     @Volatile
-    private var requestedAt: Long = 0L
+    private var waiting: Boolean = false
+
+    /** The child's latest status time and screenshot time seen so far (child clock). */
+    @Volatile
+    private var lastStatusAt: Long = 0L
+    @Volatile
+    private var statusAtRequest: Long = 0L
+    @Volatile
+    private var newestShotAtRequest: Long = 0L
+
+    private var timeoutJob: Job? = null
 
     // Guards against downloading the same screenshot twice while in flight.
     private val inFlight = Collections.synchronizedSet(mutableSetOf<Long>())
@@ -55,11 +70,13 @@ class ScreenshotViewModel @Inject constructor(
         // that goes wrong shows an error instead of spinning forever.
         viewModelScope.launch {
             repository.observeStatus(childId).collect { status ->
-                if (status == null || requestedAt == 0L || status.atMillis < requestedAt) return@collect
+                if (status == null) return@collect
+                lastStatusAt = maxOf(lastStatusAt, status.atMillis)
+                if (!waiting || status.atMillis <= statusAtRequest) return@collect
                 val s = status.status.lowercase()
                 _captureState.value = when {
-                    s.startsWith("capturing") -> CaptureState.Working("Capturing the screen…")
-                    s.startsWith("ok") -> CaptureState.Working("Receiving…")
+                    s.startsWith("capturing") -> { armTimeout(PROGRESS_TIMEOUT_MS); CaptureState.Working("Capturing the screen…") }
+                    s.startsWith("ok") -> { armTimeout(PROGRESS_TIMEOUT_MS); CaptureState.Working("Receiving…") }
                     s.contains("upload failed") -> fail("Couldn't upload the screenshot. Check the child's connection.")
                     s.contains("decode") -> fail("The device captured the screen but couldn't process it.")
                     s.contains("takescreenshot") -> fail("The device couldn't capture the screen right now.")
@@ -87,8 +104,9 @@ class ScreenshotViewModel @Inject constructor(
                                 LocalScreenshotStore.save(context, parentUid, childId, millis, r.data)
                                 refresh()
                                 // This is the capture the parent was waiting on — done.
-                                if (requestedAt > 0L && millis >= requestedAt - CLOCK_SKEW_MS) {
-                                    requestedAt = 0L
+                                if (waiting && millis > newestShotAtRequest) {
+                                    waiting = false
+                                    timeoutJob?.cancel()
                                     _captureState.value = CaptureState.Idle
                                 }
                             }
@@ -102,8 +120,9 @@ class ScreenshotViewModel @Inject constructor(
     }
 
     fun request() {
-        val now = System.currentTimeMillis()
-        requestedAt = now
+        statusAtRequest = lastStatusAt
+        newestShotAtRequest = _shots.value.maxOfOrNull { it.capturedAtMillis } ?: 0L
+        waiting = true
         _captureState.value = CaptureState.Working("Waking the device…")
         viewModelScope.launch {
             when (val r = repository.requestCapture(childId)) {
@@ -111,11 +130,19 @@ class ScreenshotViewModel @Inject constructor(
                 is AppResult.Success -> Unit
             }
         }
-        // Give up after a while instead of spinning forever (device offline, Shield
-        // not running, accessibility off, etc.).
-        viewModelScope.launch {
-            delay(CAPTURE_TIMEOUT_MS)
-            if (requestedAt == now && _captureState.value is CaptureState.Working) {
+        armTimeout(CAPTURE_TIMEOUT_MS)
+    }
+
+    /**
+     * Give up after a while instead of spinning forever (device offline, Shield not
+     * running, accessibility off, etc.). Restarted on each sign of progress, since the
+     * wake-up push alone can take half a minute to reach the child's phone.
+     */
+    private fun armTimeout(ms: Long) {
+        timeoutJob?.cancel()
+        timeoutJob = viewModelScope.launch {
+            delay(ms)
+            if (waiting && _captureState.value is CaptureState.Working) {
                 fail("Couldn't reach the device. Make sure it's online and Shield is running.")
             }
         }
@@ -123,12 +150,14 @@ class ScreenshotViewModel @Inject constructor(
 
     /** Dismiss a capture error so the control returns to its normal state. */
     fun clearCaptureState() {
-        requestedAt = 0L
+        waiting = false
+        timeoutJob?.cancel()
         _captureState.value = CaptureState.Idle
     }
 
     private fun fail(message: String): CaptureState.Error {
-        requestedAt = 0L
+        waiting = false
+        timeoutJob?.cancel()
         val state = CaptureState.Error(message)
         _captureState.value = state
         return state
@@ -152,8 +181,8 @@ class ScreenshotViewModel @Inject constructor(
     private companion object {
         // Keep local screenshots for two weeks, then auto-delete.
         const val LOCAL_RETENTION_MS = 14L * 24 * 60 * 60 * 1000
-        const val CAPTURE_TIMEOUT_MS = 20_000L
-        // Tolerance for parent/child clock differences when matching the result.
-        const val CLOCK_SKEW_MS = 15_000L
+        const val CAPTURE_TIMEOUT_MS = 45_000L
+        // After the child reports progress, how long to wait for the image itself.
+        const val PROGRESS_TIMEOUT_MS = 30_000L
     }
 }

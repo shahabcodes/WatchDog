@@ -65,6 +65,7 @@ class EnforcementService : AccessibilityService() {
     @Inject lateinit var requestRepository: RequestRepository
     @Inject lateinit var installGuardRepository: com.shahaabapps.core.firebase.installguard.InstallGuardRepository
     @Inject lateinit var blockAttemptRepository: com.shahaabapps.core.firebase.blockattempt.BlockAttemptRepository
+    @Inject lateinit var watchShotRepository: com.shahaabapps.core.firebase.watch.WatchShotRepository
 
     /**
      * Temporary parent-approved exceptions, recomputed from the requests feed.
@@ -142,6 +143,27 @@ class EnforcementService : AccessibilityService() {
         )
     }
 
+    /** "Supervised" apps: random screenshots while one is in use (API 30+). */
+    private val watchCapturer by lazy {
+        WatchCapturer(
+            context = this,
+            scope = serviceScope,
+            repository = watchShotRepository,
+            childId = authRepository::currentUserIdOrNull,
+            front = { lastForegroundPackage },
+            isShowing = { pkg ->
+                val root = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
+                (root == null || root == pkg) && supervised && blockDecision(pkg) == null
+            },
+            intervalFor = { pkg ->
+                val rule = rulesByPackage[pkg]
+                if (supervised && rule != null && rule.watched) rule.watchEverySeconds else 0
+            },
+            labelFor = ::appLabelFor,
+            grab = { onResult -> grabScreen(WATCH_MAX_WIDTH, WATCH_QUALITY, onResult = onResult) },
+        )
+    }
+
     /** Tells the parents (throttled, sealed) when the child tries a blocked app. */
     private val blockAttempts by lazy {
         BlockAttemptRecorder(this, blockAttemptRepository, authRepository::currentUserIdOrNull, serviceScope)
@@ -214,6 +236,7 @@ class EnforcementService : AccessibilityService() {
         }
         focusExempt = computeFocusExempt()
         startRecheckLoop()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) watchCapturer.start()
         serviceScope.launch { runCatching { TrustedClock.syncIfStale() } }
         // Schedules follow the child's home time zone (set by the parent), not the
         // phone's zone setting.
@@ -583,43 +606,60 @@ class EnforcementService : AccessibilityService() {
     @RequiresApi(Build.VERSION_CODES.R)
     private fun captureScreenshot(childId: String) {
         serviceScope.launch { screenshotRepository.reportStatus(childId, "capturing") }
+        grabScreen(SHOT_MAX_WIDTH, SHOT_QUALITY, onError = { error ->
+            serviceScope.launch { screenshotRepository.reportStatus(childId, error) }
+        }) { bytes, _ ->
+            serviceScope.launch {
+                if (bytes == null) return@launch
+                when (val r = screenshotRepository.uploadScreenshot(childId, bytes)) {
+                    is com.shahaabapps.core.common.AppResult.Success ->
+                        screenshotRepository.reportStatus(childId, "ok ${bytes.size}b")
+                    is com.shahaabapps.core.common.AppResult.Failure ->
+                        screenshotRepository.reportStatus(childId, "upload failed: ${r.error.message}")
+                }
+            }
+        }
+    }
+
+    /**
+     * One screenshot of the whole screen as JPEG. [onResult] gets the bytes, or null
+     * with hidden = true when a secure window (banking, DRM video) blocks capture.
+     * Other failures go to [onError] as a status line ("decode failed", …).
+     */
+    @android.annotation.SuppressLint("NewApi") // checked at the top
+    private fun grabScreen(
+        maxWidth: Int,
+        quality: Int,
+        onError: (String) -> Unit = {},
+        onResult: (bytes: ByteArray?, hidden: Boolean) -> Unit,
+    ) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
         runCatching {
             takeScreenshot(
                 Display.DEFAULT_DISPLAY,
                 screenshotExecutor,
                 object : TakeScreenshotCallback {
                     override fun onSuccess(result: ScreenshotResult) {
-                        val bytes = runCatching { result.toImageBytes() }.getOrNull()
+                        val bytes = runCatching { result.toImageBytes(maxWidth, quality) }.getOrNull()
                         result.hardwareBuffer.close()
-                        serviceScope.launch {
-                            if (bytes == null) {
-                                screenshotRepository.reportStatus(childId, "decode failed")
-                            } else {
-                                when (val r = screenshotRepository.uploadScreenshot(childId, bytes)) {
-                                    is com.shahaabapps.core.common.AppResult.Success ->
-                                        screenshotRepository.reportStatus(childId, "ok ${bytes.size}b")
-                                    is com.shahaabapps.core.common.AppResult.Failure ->
-                                        screenshotRepository.reportStatus(childId, "upload failed: ${r.error.message}")
-                                }
-                            }
-                        }
+                        if (bytes == null) onError("decode failed") else mainHandler.post { onResult(bytes, false) }
                     }
 
                     override fun onFailure(errorCode: Int) {
-                        serviceScope.launch { screenshotRepository.reportStatus(childId, "takeScreenshot failed: $errorCode") }
+                        if (errorCode == ERROR_TAKE_SCREENSHOT_SECURE_WINDOW) {
+                            mainHandler.post { onResult(null, true) }
+                        }
+                        onError("takeScreenshot failed: $errorCode")
                     }
                 },
             )
-        }.onFailure {
-            serviceScope.launch { screenshotRepository.reportStatus(childId, "takeScreenshot threw: ${it.message}") }
-        }
+        }.onFailure { onError("takeScreenshot threw: ${it.message}") }
     }
 
     @RequiresApi(Build.VERSION_CODES.R)
-    private fun ScreenshotResult.toImageBytes(): ByteArray? {
+    private fun ScreenshotResult.toImageBytes(maxW: Int, quality: Int): ByteArray? {
         val hardware = Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace) ?: return null
         val software = hardware.copy(Bitmap.Config.ARGB_8888, false) ?: return null
-        val maxW = 1000
         val scaled = if (software.width > maxW) {
             val ratio = maxW.toFloat() / software.width
             Bitmap.createScaledBitmap(software, maxW, (software.height * ratio).toInt(), true)
@@ -628,9 +668,16 @@ class EnforcementService : AccessibilityService() {
         }
         // JPEG (not PNG) keeps the upload/download small (~100KB vs ~600KB) so the
         // screenshot reaches the parent quickly.
-        return ByteArrayOutputStream().use { out ->
-            scaled.compress(Bitmap.CompressFormat.JPEG, 80, out)
-            out.toByteArray()
+        return try {
+            ByteArrayOutputStream().use { out ->
+                scaled.compress(Bitmap.CompressFormat.JPEG, quality, out)
+                out.toByteArray()
+            }
+        } finally {
+            // Watched apps capture often: free the pixels now, not at the next GC.
+            if (scaled !== software) scaled.recycle()
+            software.recycle()
+            hardware.recycle()
         }
     }
 
@@ -754,6 +801,7 @@ class EnforcementService : AccessibilityService() {
     override fun onDestroy() {
         com.shahaabapps.core.common.Diag.warn("service", "enforcement (accessibility) destroyed")
         recheckJob?.cancel()
+        runCatching { watchCapturer.stop() }
         mainHandler.removeCallbacksAndMessages(null)
         runCatching { windowGuard.clear() }
         super.onDestroy()
@@ -772,6 +820,13 @@ class EnforcementService : AccessibilityService() {
         // Only honour a screenshot request this fresh, so stale requests aren't
         // replayed when the service (re)starts.
         private const val REQUEST_FRESH_MS = 2 * 60_000L
+
+        // On-demand screenshots: sharp enough to read. Watched-app shots are smaller
+        // (sent often): about 50 KB each.
+        private const val SHOT_MAX_WIDTH = 1000
+        private const val SHOT_QUALITY = 80
+        private const val WATCH_MAX_WIDTH = 720
+        private const val WATCH_QUALITY = 60
 
         /** How often the app in front is re-checked while it stays open. */
         private const val RECHECK_MS = 20_000L

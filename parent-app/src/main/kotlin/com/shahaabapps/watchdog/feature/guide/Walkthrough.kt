@@ -82,7 +82,7 @@ object Walkthrough {
         step(ACTIVITY, "activity.sort", "Sort the list", "Sort by \"Used time\", \"Name\" or \"Installed on\", which also shows each app's install date."),
         step(ACTIVITY, "activity.app", "Apps and rules", "Each card shows today's time. \"Blocked\" or \"Limited\" marks an app with a rule; tap an app to set one."),
         step(ACTIVITY, "activity.waiting", "Waiting for apps", "Open Shield on your child's phone so it sends its list of apps."),
-        step(ACTIVITY, "rule.block", "Block completely", "Blocks the app at all times. Its limit and hours are kept for when you turn the block off.", scene = "activity.rule"),
+        step(ACTIVITY, "rule.block", "Allowed, Supervised or Blocked", "Allowed follows the limit and hours. Supervised also sends you screenshots at random moments while it's open. Blocked is always off.", scene = "activity.rule"),
         step(ACTIVITY, "rule.limit", "Daily limit", "The most time per day, from \"15m\" to \"3h\", or \"No limit\".", scene = "activity.rule"),
         step(ACTIVITY, "rule.hours", "Allowed hours", "Tap \"Add hours\" for a window. Outside these windows the app is blocked.", scene = "activity.rule"),
         step(ACTIVITY, "rule.save", "Save", "Sends the rule to your child's phone. Limits and hours follow your child's time zone from Focus modes.", scene = "activity.rule"),

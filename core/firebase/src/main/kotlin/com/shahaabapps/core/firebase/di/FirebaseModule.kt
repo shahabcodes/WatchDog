@@ -105,6 +105,12 @@ interface FirebaseBindsModule {
 
     @Binds
     @Singleton
+    fun bindWatchShotRepository(
+        impl: com.shahaabapps.core.firebase.watch.FirebaseWatchShotRepository,
+    ): com.shahaabapps.core.firebase.watch.WatchShotRepository
+
+    @Binds
+    @Singleton
     fun bindRequestRepository(impl: FirebaseRequestRepository): RequestRepository
 
     @Binds

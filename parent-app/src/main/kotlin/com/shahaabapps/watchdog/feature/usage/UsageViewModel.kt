@@ -38,6 +38,9 @@ data class UsageUiState(
     val query: String = "",
     val sort: AppSort = AppSort.USED,
     val rows: List<AppRow> = emptyList(),
+    /** How many apps are watched, and their screenshots on this phone from today. */
+    val watchedApps: Int = 0,
+    val watchShotsToday: Int = 0,
 )
 
 @HiltViewModel
@@ -45,6 +48,9 @@ class UsageViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     usageRepository: UsageRepository,
     private val appRulesRepository: AppRulesRepository,
+    watchShotSync: com.shahaabapps.watchdog.feature.watch.WatchShotSync,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
+    private val authRepository: com.shahaabapps.core.firebase.auth.AuthRepository,
 ) : ViewModel() {
 
     private val childId: String = checkNotNull(savedStateHandle["childId"])
@@ -52,14 +58,30 @@ class UsageViewModel @Inject constructor(
 
     private val query = MutableStateFlow("")
     private val sort = MutableStateFlow(AppSort.USED)
+    /** Today's watched-app screenshots stored on this phone; refreshed as new ones arrive. */
+    private val shotsToday = MutableStateFlow(0)
+
+    init {
+        countShotsToday()
+        viewModelScope.launch { watchShotSync.run(childId) { countShotsToday() } }
+    }
+
+    private fun countShotsToday() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val start = LocalDate.now().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+            val uid = authRepository.currentUserIdOrNull() ?: return@launch
+            shotsToday.value = com.shahaabapps.watchdog.feature.watch.LocalWatchStore
+                .list(context, uid, childId).count { it.capturedAtMillis >= start && it.file != null }
+        }
+    }
 
     val uiState: StateFlow<UsageUiState> = combine(
         usageRepository.observeUsage(childId, today),
         appRulesRepository.observeInstalledApps(childId),
         appRulesRepository.observeAppRules(childId),
         query,
-        sort,
-    ) { usage, apps, rules, q, selectedSort ->
+        combine(sort, shotsToday) { a, b -> a to b },
+    ) { usage, apps, rules, q, (selectedSort, todayShots) ->
         val rulesByPackage = rules.associateBy { it.packageName }
         val total = apps.sumOf { usage[it.packageName] ?: 0 }
         var rows = apps.map { app ->
@@ -73,13 +95,27 @@ class UsageViewModel @Inject constructor(
             AppSort.NAME -> rows.sortedBy { it.app.label.lowercase() }
             AppSort.INSTALLED -> rows.sortedByDescending { it.app.installedAtMillis }
         }
-        UsageUiState(loading = false, totalMinutes = total, query = q, sort = selectedSort, rows = rows)
+        UsageUiState(
+            loading = false,
+            totalMinutes = total,
+            query = q,
+            sort = selectedSort,
+            rows = rows,
+            watchedApps = rules.count { it.watched },
+            watchShotsToday = todayShots,
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UsageUiState())
 
     fun setQuery(value: String) { query.value = value }
     fun setSort(value: AppSort) { sort.value = value }
 
-    fun saveRule(app: InstalledApp, dailyLimitMinutes: Int?, blocked: Boolean, schedule: List<TimeWindow>) {
+    fun saveRule(
+        app: InstalledApp,
+        dailyLimitMinutes: Int?,
+        blocked: Boolean,
+        schedule: List<TimeWindow>,
+        watchEverySeconds: Int,
+    ) {
         viewModelScope.launch {
             appRulesRepository.saveAppRule(
                 childId,
@@ -89,6 +125,7 @@ class UsageViewModel @Inject constructor(
                     dailyLimitMinutes = dailyLimitMinutes,
                     blocked = blocked,
                     schedule = schedule,
+                    watchEverySeconds = watchEverySeconds,
                 ),
             )
             Celebrations.saved()

@@ -20,7 +20,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -83,6 +86,12 @@ import java.util.Locale
 
 private val LIMIT_OPTIONS = listOf(null, 15, 30, 60, 120, 180)
 
+/** How often a supervised app is captured: seconds between shots, and its label. */
+private val WATCH_OPTIONS = listOf(300 to "Every 5 min", 60 to "1 a minute", 30 to "2 a minute", 15 to "4 a minute")
+private const val DEFAULT_WATCH_SECONDS = 60
+
+private enum class Access { ALLOWED, WATCHED, BLOCKED }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UsageScreen(
@@ -90,6 +99,8 @@ fun UsageScreen(
     embedded: Boolean = false,
     /** Package whose rule sheet to open once (from a blocked-app alert). */
     openApp: String? = null,
+    /** Opens the watched-app screenshots, for one app or (null) all of them. */
+    onOpenWatched: (packageName: String?) -> Unit = {},
     viewModel: UsageViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -185,6 +196,11 @@ fun UsageScreen(
                 verticalArrangement = Arrangement.spacedBy(Spacing.sm),
             ) {
                 val maxMinutes = state.rows.maxOfOrNull { it.minutes }?.coerceAtLeast(1) ?: 1
+                if (state.watchedApps > 0) {
+                    item(key = "watched") {
+                        WatchedCard(apps = state.watchedApps, shotsToday = state.watchShotsToday) { onOpenWatched(null) }
+                    }
+                }
                 items(state.rows, key = { it.app.packageName }) { row ->
                     AppCard(
                         modifier = if (row === state.rows.first()) Modifier.tourTarget("activity.app") else Modifier,
@@ -206,9 +222,13 @@ fun UsageScreen(
             RuleEditor(
                 app = current.app,
                 rule = current.rule,
-                onSave = { limit, blocked, schedule ->
-                    viewModel.saveRule(current.app, limit, blocked, schedule)
+                onSave = { limit, blocked, schedule, watchEvery ->
+                    viewModel.saveRule(current.app, limit, blocked, schedule, watchEvery)
                     editing = null
+                },
+                onViewShots = {
+                    editing = null
+                    onOpenWatched(current.app.packageName)
                 },
                 onRemove = {
                     viewModel.clearRule(current.app.packageName)
@@ -277,11 +297,30 @@ private fun AppCard(
                 )
                 if (row.rule?.blocked == true) {
                     StatusChip(text = "Blocked", color = AppTheme.colors.destructive)
+                } else if (row.rule?.watched == true) {
+                    StatusChip(text = "Supervised", color = AppTheme.colors.gold)
                 } else if (row.rule?.dailyLimitMinutes != null) {
                     StatusChip(text = "Limited", color = AppTheme.colors.accent)
                 }
             }
         }
+    }
+}
+
+/** Top of the list while any app is watched: opens all its screenshots. */
+@Composable
+private fun WatchedCard(apps: Int, shotsToday: Int, onClick: () -> Unit) {
+    CupertinoCard(onClick = onClick) {
+        CupertinoListRow(
+            title = "Supervised apps",
+            subtitle = "${if (apps == 1) "1 app" else "$apps apps"} · " +
+                if (shotsToday == 1) "1 screenshot today" else "$shotsToday screenshots today",
+            leadingIcon = Icons.Filled.Visibility,
+            showDivider = false,
+            trailing = {
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = AppTheme.colors.secondaryLabel)
+            },
+        )
     }
 }
 
@@ -305,10 +344,21 @@ private fun EmptyApps(hasQuery: Boolean) {
 private fun RuleEditor(
     app: InstalledApp,
     rule: AppRule?,
-    onSave: (dailyLimitMinutes: Int?, blocked: Boolean, schedule: List<TimeWindow>) -> Unit,
+    onSave: (dailyLimitMinutes: Int?, blocked: Boolean, schedule: List<TimeWindow>, watchEverySeconds: Int) -> Unit,
     onRemove: () -> Unit,
+    onViewShots: () -> Unit,
 ) {
-    var blocked by remember { mutableStateOf(rule?.blocked ?: false) }
+    var access by remember {
+        mutableStateOf(
+            when {
+                rule?.blocked == true -> Access.BLOCKED
+                (rule?.watchEverySeconds ?: 0) > 0 -> Access.WATCHED
+                else -> Access.ALLOWED
+            },
+        )
+    }
+    val blocked = access == Access.BLOCKED
+    var watchEvery by remember { mutableStateOf(rule?.watchEverySeconds?.takeIf { it > 0 } ?: DEFAULT_WATCH_SECONDS) }
     var limit by remember { mutableStateOf(rule?.dailyLimitMinutes) }
     var windows by remember {
         mutableStateOf<List<Pair<Int, Int>>>(
@@ -331,13 +381,56 @@ private fun RuleEditor(
             Text(app.label.ifBlank { app.packageName }, style = MaterialTheme.typography.headlineMedium)
         }
 
+        val accessOptions = listOf(
+            Triple(Access.ALLOWED, "Allowed", "Usable within the limit and hours below."),
+            Triple(Access.WATCHED, "Supervised", "Allowed, and Shield sends you screenshots of it at random moments. Your child is told."),
+            Triple(Access.BLOCKED, "Blocked", "Always off-limits."),
+        )
         CupertinoCard(modifier = Modifier.tourTarget("rule.block")) {
-            CupertinoListRow(
-                title = "Block completely",
-                subtitle = "Always off-limits",
-                showDivider = false,
-                trailing = { CupertinoSwitch(checked = blocked, onCheckedChange = { blocked = it }) },
+            Column {
+                accessOptions.forEachIndexed { index, (option, title, subtitle) ->
+                    CupertinoListRow(
+                        title = title,
+                        subtitle = subtitle,
+                        showDivider = index < accessOptions.lastIndex,
+                        onClick = { access = option },
+                        trailing = {
+                            if (option == access) {
+                                Icon(Icons.Filled.Check, contentDescription = "Selected", tint = AppTheme.colors.accent)
+                            }
+                        },
+                    )
+                }
+            }
+        }
+
+        if (access == Access.WATCHED) {
+            Text("Screenshots", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Taken only while the app is open, at a random moment in each interval.",
+                style = MaterialTheme.typography.bodySmall,
+                color = AppTheme.colors.secondaryLabel,
             )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                WATCH_OPTIONS.forEach { (seconds, label) ->
+                    FilterChip(
+                        selected = watchEvery == seconds,
+                        onClick = { watchEvery = seconds },
+                        label = { Text(label) },
+                        modifier = Modifier.padding(vertical = 2.dp),
+                    )
+                }
+            }
+            if (rule?.watched == true) {
+                CupertinoCard {
+                    CupertinoListRow(
+                        title = "View screenshots",
+                        leadingIcon = Icons.Filled.Visibility,
+                        showDivider = false,
+                        onClick = onViewShots,
+                    )
+                }
+            }
         }
 
         if (!blocked) {
@@ -403,7 +496,7 @@ private fun RuleEditor(
                 // them while blocked — RuleEvaluator short-circuits on `blocked`).
                 val schedule = windows.filter { it.first != it.second }
                     .map { TimeWindow(it.first, it.second, setOf(1, 2, 3, 4, 5, 6, 7)) }
-                onSave(limit, blocked, schedule)
+                onSave(limit, blocked, schedule, if (access == Access.WATCHED) watchEvery else 0)
             },
             modifier = Modifier.tourTarget("rule.save"),
         )

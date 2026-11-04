@@ -280,6 +280,24 @@ service cloud.firestore {
           && request.resource.data.get('atMillis', 0) is int;
       }
 
+      // Watched-app screenshots: the child adds sealed shots (which app, and the
+      // image); the family reads them, a parent may delete them, and a TTL policy
+      // on expireAt removes them after a few days. Never edited.
+      match /watchShots/{shotId} {
+        allow read: if canRead();
+        allow delete: if isParent();
+        allow create: if isChild()
+          && request.resource.data.keys().hasOnly(['enc', 'e', 'data', 'capturedAtMillis', 'expireAt'])
+          && request.resource.data.enc == true
+          && request.resource.data.e is string
+          && request.resource.data.e.size() < 4096
+          && request.resource.data.data is string
+          && request.resource.data.data.size() < 900000
+          && request.resource.data.capturedAtMillis is int
+          && request.resource.data.expireAt is timestamp
+          && request.resource.data.expireAt < request.time + duration.value(4, 'd');
+      }
+
       // On-demand commands (screenshot, location refresh, permission ask): a
       // parent writes them; the child reports screenshot progress.
       match /commands/{docId} {

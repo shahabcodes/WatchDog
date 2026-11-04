@@ -245,11 +245,13 @@ private fun Thumbnail(shot: LocalShot, onClick: () -> Unit) {
 
 /** Full-screen, swipeable viewer with zoom, share and delete. */
 @Composable
-private fun ScreenshotViewer(
+internal fun ScreenshotViewer(
     shots: List<LocalShot>,
     startIndex: Int,
     onClose: () -> Unit,
     onDelete: (LocalShot) -> Unit,
+    /** A line shown with the page count (e.g. which app, and when). */
+    caption: ((LocalShot) -> String)? = null,
 ) {
     if (shots.isEmpty()) {
         LaunchedEffect(Unit) { onClose() }
@@ -301,13 +303,15 @@ private fun ScreenshotViewer(
                     IconButton(onClick = onClose) {
                         Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White)
                     }
+                    val current = shots.getOrNull(pagerState.currentPage)
+                    val count = "${(pagerState.currentPage + 1).coerceAtMost(shots.size)} / ${shots.size}"
                     Text(
-                        "${(pagerState.currentPage + 1).coerceAtMost(shots.size)} / ${shots.size}",
+                        if (caption != null && current != null) "${caption(current)}  ·  $count" else count,
                         color = Color.White,
                         style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
                         modifier = Modifier.weight(1f),
                     )
-                    val current = shots.getOrNull(pagerState.currentPage)
                     IconButton(onClick = { current?.let { saveToGallery(context, it) } }) {
                         Icon(Icons.Filled.SaveAlt, contentDescription = "Save to gallery", tint = Color.White)
                     }

@@ -8,7 +8,7 @@ import {
   initializeTestEnvironment,
 } from "@firebase/rules-unit-testing";
 import {
-  collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where,
+  Timestamp, collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where,
 } from "firebase/firestore";
 
 const CHILD = "child1";
@@ -233,6 +233,28 @@ describe("attacks are refused", () => {
     await assertFails(deleteDoc(doc(child(), path)));
     await assertFails(deleteDoc(doc(stranger(), path)));
   });
+  it("watchShots stay sealed, short-lived, unedited and private to the family", async () => {
+    const path = `children/${CHILD}/watchShots/w1`;
+    const soon = () => Timestamp.fromMillis(Date.now() + 3 * 86400000);
+    const ok = () => ({ enc: true, e: "sealed", data: "img", capturedAtMillis: 1, expireAt: soon() });
+    // Which app was watched must never reach the server in plaintext.
+    await assertFails(setDoc(doc(child(), path), { ...ok(), label: "TikTok" }));
+    await assertFails(setDoc(doc(child(), path), { ...ok(), enc: false }));
+    await assertFails(setDoc(doc(child(), path), { ...ok(), e: "x".repeat(4096) }));
+    await assertFails(setDoc(doc(child(), path), { ...ok(), data: "x".repeat(900000) }));
+    // Kept for days, not forever.
+    await assertFails(setDoc(doc(child(), path), { ...ok(), expireAt: Timestamp.fromMillis(Date.now() + 30 * 86400000) }));
+    await assertFails(setDoc(doc(parent(), path), ok()));
+    await assertFails(setDoc(doc(stranger(), path), ok()));
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), path), ok());
+    });
+    await assertFails(getDoc(doc(stranger(), path)));
+    await assertFails(getDocs(collection(stranger(), `children/${CHILD}/watchShots`)));
+    await assertFails(updateDoc(doc(child(), path), { data: "other" }));
+    await assertFails(deleteDoc(doc(child(), path)));
+    await assertFails(deleteDoc(doc(stranger(), path)));
+  });
 });
 
 describe("legitimate app writes still work", () => {
@@ -298,6 +320,18 @@ describe("legitimate app writes still work", () => {
     await assertSucceeds(getDoc(doc(parent(), `children/${CHILD}/blockAttempts/b1`)));
     await assertSucceeds(getDocs(collection(parent(), `children/${CHILD}/blockAttempts`)));
     await assertSucceeds(deleteDoc(doc(parent(), `children/${CHILD}/blockAttempts/b1`)));
+  });
+  it("watchShots: child adds a sealed shot, parent reads and deletes it", async () => {
+    const path = `children/${CHILD}/watchShots/w2`;
+    await assertSucceeds(setDoc(doc(child(), path), {
+      enc: true, e: "sealed", data: "img", capturedAtMillis: 1, expireAt: Timestamp.fromMillis(Date.now() + 3 * 86400000),
+    }));
+    // An app that hid its screen: no image.
+    await assertSucceeds(setDoc(doc(child(), `children/${CHILD}/watchShots/w3`), {
+      enc: true, e: "sealed", data: "", capturedAtMillis: 2, expireAt: Timestamp.fromMillis(Date.now() + 3 * 86400000),
+    }));
+    await assertSucceeds(getDocs(query(collection(parent(), `children/${CHILD}/watchShots`), where("capturedAtMillis", ">", 0))));
+    await assertSucceeds(deleteDoc(doc(parent(), path)));
   });
   it("parent clears events, screenshots and reviewed apps", async () => {
     await env.withSecurityRulesDisabled(async (ctx) => {

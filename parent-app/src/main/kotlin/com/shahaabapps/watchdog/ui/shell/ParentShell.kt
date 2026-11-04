@@ -467,7 +467,21 @@ fun ParentShell(
                 childArg + navArgument("app") { type = NavType.StringType; nullable = true; defaultValue = null },
             ) { entry ->
                 // ?app= comes from a blocked-app alert: open that app's rule sheet.
-                UsageScreen(onBack = { }, embedded = true, openApp = entry.arguments?.getString("app"))
+                UsageScreen(
+                    onBack = { },
+                    embedded = true,
+                    openApp = entry.arguments?.getString("app"),
+                    onOpenWatched = { pkg ->
+                        val app = pkg?.let { "?app=${android.net.Uri.encode(it)}" }.orEmpty()
+                        navController.navigate("watched/$currentChildId$app") { launchSingleTop = true }
+                    },
+                )
+            }
+            composable(
+                "watched/{childId}?app={app}",
+                childArg + navArgument("app") { type = NavType.StringType; nullable = true; defaultValue = null },
+            ) {
+                com.shahaabapps.watchdog.feature.watch.WatchShotsScreen(onBack = { navController.popBackStack() })
             }
             composable("settings") {
                 SettingsScreen(

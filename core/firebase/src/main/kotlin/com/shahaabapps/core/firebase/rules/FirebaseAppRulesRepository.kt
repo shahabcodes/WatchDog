@@ -55,6 +55,7 @@ class FirebaseAppRulesRepository @Inject constructor(
                 .put("l", rule.appLabel)
                 .put("dl", rule.dailyLimitMinutes ?: -1)
                 .put("b", rule.blocked)
+                .put("w", rule.watchEverySeconds)
                 .put(
                     "sch",
                     JSONArray().apply {
@@ -83,6 +84,7 @@ class FirebaseAppRulesRepository @Inject constructor(
                         "appLabel" to rule.appLabel,
                         "dailyLimitMinutes" to rule.dailyLimitMinutes,
                         "blocked" to rule.blocked,
+                        "watchEverySeconds" to rule.watchEverySeconds,
                         "updatedAtMillis" to System.currentTimeMillis(),
                         "schedule" to rule.schedule.map { window ->
                             mapOf(
@@ -239,6 +241,7 @@ class FirebaseAppRulesRepository @Inject constructor(
                 schedule = schedule,
                 blocked = json.optBoolean("b", false),
                 updatedAtMillis = updatedAt,
+                watchEverySeconds = json.optInt("w", 0).coerceAtLeast(0),
             )
         }
         @Suppress("UNCHECKED_CAST")
@@ -260,6 +263,7 @@ class FirebaseAppRulesRepository @Inject constructor(
             schedule = schedule,
             blocked = getBoolean("blocked") ?: false,
             updatedAtMillis = updatedAt,
+            watchEverySeconds = (get("watchEverySeconds") as? Long)?.toInt()?.coerceAtLeast(0) ?: 0,
         )
     }
 

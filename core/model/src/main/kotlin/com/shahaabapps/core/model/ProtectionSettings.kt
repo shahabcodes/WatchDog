@@ -21,8 +21,12 @@ data class ProtectionSettings(
     val pinSalt: String = "",
     val pinHash: String = "",
     val legacyPin: String = "",
-    /** When true, newly installed apps are auto-blocked until the parent approves. */
-    val blockNewApps: Boolean = false,
+    /**
+     * When true (the default), newly installed apps are supervised (a screenshot
+     * every minute) until the parent reviews them. Kept under its old name; older
+     * Shield versions block them instead.
+     */
+    val blockNewApps: Boolean = true,
     /**
      * When true, Shield keeps the child out of the Settings pages that switch it
      * off (its accessibility toggle, Usage Access, App info). Independent of

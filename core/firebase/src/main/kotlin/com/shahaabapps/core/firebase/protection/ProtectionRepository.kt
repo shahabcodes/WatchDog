@@ -77,7 +77,7 @@ class FirebaseProtectionRepository @Inject constructor(
                     pinSalt = snapshot?.getString("pinSalt") ?: "",
                     pinHash = snapshot?.getString("pinHash") ?: "",
                     legacyPin = snapshot?.getString("pin") ?: "",
-                    blockNewApps = snapshot?.getBoolean("blockNewApps") ?: false,
+                    blockNewApps = snapshot?.getBoolean("blockNewApps") ?: true,
                     lockSettings = snapshot?.getBoolean("lockSettings")
                         ?: (snapshot?.getBoolean("uninstallBlocked") ?: false),
                     pinSet = snapshot?.getBoolean("hasPin") ?: false,
@@ -101,7 +101,7 @@ class FirebaseProtectionRepository @Inject constructor(
                     pinSalt = snapshot.getString("pinSalt") ?: "",
                     pinHash = snapshot.getString("pinHash") ?: "",
                     legacyPin = snapshot.getString("pin") ?: "",
-                    blockNewApps = snapshot.getBoolean("blockNewApps") ?: false,
+                    blockNewApps = snapshot.getBoolean("blockNewApps") ?: true,
                     lockSettings = snapshot.getBoolean("lockSettings")
                         ?: (snapshot.getBoolean("uninstallBlocked") ?: false),
                     pinSet = snapshot.getBoolean("hasPin") ?: false,

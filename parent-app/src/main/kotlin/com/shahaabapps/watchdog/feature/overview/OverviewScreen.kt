@@ -252,8 +252,9 @@ fun OverviewScreen(
                     DashSection("New apps to review") {
                         PendingAppsCard(
                             apps = pendingApps,
+                            onKeepSupervised = { pendingVm.keepSupervised(it) },
                             onAllow = { pendingVm.allow(it) },
-                            onKeepBlocked = { pendingVm.keepBlocked(it) },
+                            onBlock = { pendingVm.keepBlocked(it) },
                         )
                     }
                 }
@@ -1786,8 +1787,9 @@ private fun DashSection(title: String, content: @Composable () -> Unit) {
 @Composable
 private fun PendingAppsCard(
     apps: List<com.shahaabapps.core.model.PendingApp>,
+    onKeepSupervised: (String) -> Unit,
     onAllow: (String) -> Unit,
-    onKeepBlocked: (String) -> Unit,
+    onBlock: (String) -> Unit,
 ) {
     CupertinoCard {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
@@ -1806,15 +1808,21 @@ private fun PendingAppsCard(
                         Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
                             Text(app.label.ifBlank { app.packageName }, style = MaterialTheme.typography.bodyLarge)
                             Text(
-                                "Just installed · blocked for now",
+                                "Just installed · supervised for now, a screenshot a minute",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = AppTheme.colors.secondaryLabel,
                             )
                         }
                     }
+                    CupertinoPrimaryButton(text = "Keep supervised", onClick = { onKeepSupervised(app.packageName) })
                     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                        CupertinoPrimaryButton(text = "Allow", onClick = { onAllow(app.packageName) }, modifier = Modifier.weight(1f))
-                        CupertinoTextButton(text = "Keep blocked", onClick = { onKeepBlocked(app.packageName) }, modifier = Modifier.weight(1f))
+                        CupertinoTextButton(text = "Allow", onClick = { onAllow(app.packageName) }, modifier = Modifier.weight(1f))
+                        CupertinoTextButton(
+                            text = "Block",
+                            onClick = { onBlock(app.packageName) },
+                            destructive = true,
+                            modifier = Modifier.weight(1f),
+                        )
                     }
                 }
             }
@@ -1955,8 +1963,8 @@ private fun ProtectionEditor(
         }
         CupertinoCard {
             CupertinoListRow(
-                title = "Block new apps",
-                subtitle = "Newly installed apps are blocked until you approve them",
+                title = "Supervise new apps",
+                subtitle = "Newly installed apps work straight away, with a screenshot every minute, until you review them",
                 showDivider = false,
                 trailing = { CupertinoSwitch(checked = blockNewApps, onCheckedChange = { blockNewApps = it }) },
             )

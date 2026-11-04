@@ -27,7 +27,22 @@ class PendingAppsViewModel @Inject constructor(
     val pending: StateFlow<List<PendingApp>> = pendingAppsRepository.observe(childId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    /** Allow the app: remove its block and clear it from review. */
+    /** Keep supervising it (a screenshot a minute) as a lasting rule, and clear it from review. */
+    fun keepSupervised(packageName: String) {
+        val label = pending.value.firstOrNull { it.packageName == packageName }?.label ?: packageName
+        viewModelScope.launch {
+            val saved = appRulesRepository.saveAppRule(
+                childId,
+                com.shahaabapps.core.model.AppRule(packageName = packageName, appLabel = label, watchEverySeconds = 60),
+            )
+            if (saved is com.shahaabapps.core.common.AppResult.Success) {
+                pendingAppsRepository.remove(childId, packageName)
+                answerRequestsFor(packageName, approved = true)
+            }
+        }
+    }
+
+    /** Allow the app fully (no screenshots): clear any rule and clear it from review. */
     fun allow(packageName: String) {
         viewModelScope.launch {
             appRulesRepository.deleteAppRule(childId, packageName)

@@ -8,6 +8,7 @@ import com.shahaabapps.core.firebase.request.RequestRepository
 import com.shahaabapps.core.model.GeofenceEvent
 import com.shahaabapps.core.model.RequestStatus
 import com.shahaabapps.core.model.TimeRequest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -33,6 +34,7 @@ class AlertsViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val geofenceRepository: GeofenceRepository,
     private val requestRepository: RequestRepository,
+    private val appRulesRepository: com.shahaabapps.core.firebase.rules.AppRulesRepository,
 ) : ViewModel() {
 
     private val childId: String = checkNotNull(savedStateHandle["childId"])
@@ -49,6 +51,24 @@ class AlertsViewModel @Inject constructor(
 
     fun respond(requestId: String, approved: Boolean, grantUntilMillis: Long = 0L) {
         viewModelScope.launch { requestRepository.respond(childId, requestId, approved, grantUntilMillis) }
+    }
+
+    /**
+     * Approve supervised access: the app becomes Supervised (unblocked, a screenshot
+     * every [watchEverySeconds]); its limit and hours are kept. The rule is saved
+     * before the approval, so Shield reopens the app with the new rule in place.
+     */
+    fun approveSupervised(request: TimeRequest, watchEverySeconds: Int) {
+        viewModelScope.launch {
+            val current = runCatching { appRulesRepository.observeAppRules(childId).first() }.getOrDefault(emptyList())
+                .firstOrNull { it.packageName == request.appPackage }
+            val rule = (current ?: com.shahaabapps.core.model.AppRule(packageName = request.appPackage))
+                .copy(appLabel = current?.appLabel?.ifBlank { null } ?: request.appLabel, blocked = false, watchEverySeconds = watchEverySeconds)
+            val saved = appRulesRepository.saveAppRule(childId, rule)
+            if (saved is com.shahaabapps.core.common.AppResult.Success) {
+                requestRepository.respond(childId, request.id, true, 0L)
+            }
+        }
     }
 
     // Join events with the current geofences so each alert shows the saved

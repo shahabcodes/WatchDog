@@ -71,6 +71,11 @@ class BlockActivity : ComponentActivity() {
                     label = label,
                     reason = reason,
                     onAsk = { askParent(variant, pkg, label) },
+                    onAskSupervised = if (variant == BlockVariant.BLOCKED && pkg.isNotBlank()) {
+                        { send(TimeRequest(kind = RequestKind.SUPERVISED_ACCESS, appPackage = pkg, appLabel = label)) }
+                    } else {
+                        null
+                    },
                     onDismiss = ::goHome,
                 )
             }
@@ -104,8 +109,11 @@ class BlockActivity : ComponentActivity() {
     }
 
     private fun askParent(variant: BlockVariant, pkg: String, label: String) {
+        send(askRequestFor(variant, pkg, label))
+    }
+
+    private fun send(request: TimeRequest) {
         val childId = authRepository.currentUserIdOrNull() ?: return
-        val request = askRequestFor(variant, pkg, label)
         lifecycleScope.launch { runCatching { requestRepository.create(childId, request) } }
     }
 
@@ -168,6 +176,8 @@ private fun BlockContent(
     label: String,
     reason: String,
     onAsk: () -> Unit,
+    /** Blocked apps only: ask to use it with supervision (the parent gets screenshots). */
+    onAskSupervised: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
     val navy = Color(0xFF00133F)
@@ -233,6 +243,23 @@ private fun BlockContent(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(askLabel, color = if (bedtime) navy else Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            }
+            if (onAskSupervised != null) {
+                Spacer(Modifier.height(10.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(Color(0xFFDCE6FF))
+                        .clickable { asked = true; onAskSupervised() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Ask to use it supervised", color = navy, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text("Your parent would see screenshots of it", color = sub, fontSize = 12.sp)
+                    }
+                }
             }
         }
         Spacer(Modifier.height(10.dp))

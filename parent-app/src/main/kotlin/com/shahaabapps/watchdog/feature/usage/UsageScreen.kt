@@ -124,7 +124,7 @@ fun UsageScreen(
         if (embedded) {
             Column(modifier = Modifier.padding(start = Spacing.lg, end = Spacing.lg, top = Spacing.md, bottom = Spacing.sm)) {
                 Text(
-                    "Activity",
+                    "Apps",
                     fontFamily = AppFonts.display,
                     fontSize = 30.sp,
                     fontWeight = FontWeight.ExtraBold,
@@ -170,6 +170,22 @@ fun UsageScreen(
                 modifier = Modifier.tourTarget("activity.search"),
             )
             Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+            ) {
+                AppFilter.entries.forEach { f ->
+                    FilterChip(
+                        selected = state.filter == f,
+                        onClick = { viewModel.setFilter(f) },
+                        label = { Text(f.label) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = AppTheme.colors.accent,
+                            selectedLabelColor = Color.White,
+                        ),
+                    )
+                }
+            }
+            Row(
                 modifier = Modifier.fillMaxWidth().tourTarget("activity.sort").horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
             ) {
@@ -189,7 +205,7 @@ fun UsageScreen(
 
         when {
             state.loading -> LoadingView(label = "Loading apps…", modifier = Modifier.padding(top = Spacing.xl))
-            state.rows.isEmpty() -> EmptyApps(hasQuery = state.query.isNotBlank())
+            state.rows.isEmpty() -> EmptyApps(hasQuery = state.query.isNotBlank() || state.filter != AppFilter.ALL)
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(start = Spacing.lg, end = Spacing.lg, top = Spacing.sm, bottom = Spacing.lg),
@@ -222,8 +238,9 @@ fun UsageScreen(
             RuleEditor(
                 app = current.app,
                 rule = current.rule,
+                newApp = current.newApp && current.rule == null,
                 onSave = { limit, blocked, schedule, watchEvery ->
-                    viewModel.saveRule(current.app, limit, blocked, schedule, watchEvery)
+                    viewModel.saveRule(current.app, limit, blocked, schedule, watchEvery, clearReview = current.newApp)
                     editing = null
                 },
                 onViewShots = {
@@ -295,12 +312,12 @@ private fun AppCard(
                     fontWeight = FontWeight.SemiBold,
                     color = AppTheme.colors.secondaryLabel,
                 )
-                if (row.rule?.blocked == true) {
+                if (row.blocked) {
                     StatusChip(text = "Blocked", color = AppTheme.colors.destructive)
-                } else if (row.rule?.watched == true) {
-                    StatusChip(text = "Supervised", color = AppTheme.colors.gold)
-                } else if (row.rule?.dailyLimitMinutes != null) {
-                    StatusChip(text = "Limited", color = AppTheme.colors.accent)
+                } else if (row.supervised) {
+                    StatusChip(text = if (row.newApp && row.rule == null) "New · Supervised" else "Supervised", color = AppTheme.colors.gold)
+                } else if (row.restricted) {
+                    StatusChip(text = "Restricted", color = AppTheme.colors.accent)
                 }
             }
         }
@@ -327,7 +344,7 @@ private fun WatchedCard(apps: Int, shotsToday: Int, onClick: () -> Unit) {
 @Composable
 private fun EmptyApps(hasQuery: Boolean) {
     CupertinoCard(modifier = Modifier.padding(horizontal = Spacing.lg).tourTarget("activity.waiting")) {
-        Text(if (hasQuery) "No apps match your search" else "Waiting for app list", style = MaterialTheme.typography.bodyLarge)
+        Text(if (hasQuery) "No apps match" else "Waiting for app list", style = MaterialTheme.typography.bodyLarge)
         if (!hasQuery) {
             Text(
                 "Open Shield on the child's phone — its apps appear here.",
@@ -344,6 +361,8 @@ private fun EmptyApps(hasQuery: Boolean) {
 private fun RuleEditor(
     app: InstalledApp,
     rule: AppRule?,
+    /** Just installed and awaiting review: supervised until a rule is saved. */
+    newApp: Boolean,
     onSave: (dailyLimitMinutes: Int?, blocked: Boolean, schedule: List<TimeWindow>, watchEverySeconds: Int) -> Unit,
     onRemove: () -> Unit,
     onViewShots: () -> Unit,
@@ -352,7 +371,7 @@ private fun RuleEditor(
         mutableStateOf(
             when {
                 rule?.blocked == true -> Access.BLOCKED
-                (rule?.watchEverySeconds ?: 0) > 0 -> Access.WATCHED
+                (rule?.watchEverySeconds ?: 0) > 0 || newApp -> Access.WATCHED
                 else -> Access.ALLOWED
             },
         )

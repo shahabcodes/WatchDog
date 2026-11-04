@@ -25,18 +25,36 @@ enum class AppSort(val label: String) {
     INSTALLED("Installed on"),
 }
 
-/** One app row: the app, today's usage minutes, and its rule (if any). */
+/** Which apps the list shows. */
+enum class AppFilter(val label: String) {
+    ALL("All apps"),
+    RESTRICTED("Restricted"),
+    BLOCKED("Blocked"),
+    SUPERVISED("Supervised"),
+}
+
+/**
+ * One app row: the app, today's usage minutes, and its rule (if any). [newApp]: just
+ * installed and awaiting review, so Shield supervises it until the parent decides.
+ */
 data class AppRow(
     val app: InstalledApp,
     val minutes: Int,
     val rule: AppRule?,
-)
+    val newApp: Boolean = false,
+) {
+    val blocked: Boolean get() = rule?.blocked == true
+    val supervised: Boolean get() = !blocked && (rule?.watched == true || (rule == null && newApp))
+    /** A daily limit or allowed hours (not blocked outright). */
+    val restricted: Boolean get() = !blocked && rule != null && (rule.dailyLimitMinutes != null || rule.schedule.isNotEmpty())
+}
 
 data class UsageUiState(
     val loading: Boolean = true,
     val totalMinutes: Int = 0,
     val query: String = "",
     val sort: AppSort = AppSort.USED,
+    val filter: AppFilter = AppFilter.ALL,
     val rows: List<AppRow> = emptyList(),
     /** How many apps are watched, and their screenshots on this phone from today. */
     val watchedApps: Int = 0,
@@ -48,6 +66,7 @@ class UsageViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     usageRepository: UsageRepository,
     private val appRulesRepository: AppRulesRepository,
+    private val pendingAppsRepository: com.shahaabapps.core.firebase.protection.PendingAppsRepository,
     watchShotSync: com.shahaabapps.watchdog.feature.watch.WatchShotSync,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
     private val authRepository: com.shahaabapps.core.firebase.auth.AuthRepository,
@@ -58,6 +77,7 @@ class UsageViewModel @Inject constructor(
 
     private val query = MutableStateFlow("")
     private val sort = MutableStateFlow(AppSort.USED)
+    private val filter = MutableStateFlow(AppFilter.ALL)
     /** Today's watched-app screenshots stored on this phone; refreshed as new ones arrive. */
     private val shotsToday = MutableStateFlow(0)
 
@@ -78,14 +98,26 @@ class UsageViewModel @Inject constructor(
     val uiState: StateFlow<UsageUiState> = combine(
         usageRepository.observeUsage(childId, today),
         appRulesRepository.observeInstalledApps(childId),
-        appRulesRepository.observeAppRules(childId),
-        query,
+        combine(appRulesRepository.observeAppRules(childId), pendingAppsRepository.observe(childId)) { r, p -> r to p },
+        combine(query, filter) { a, b -> a to b },
         combine(sort, shotsToday) { a, b -> a to b },
-    ) { usage, apps, rules, q, (selectedSort, todayShots) ->
+    ) { usage, apps, (rules, pending), (q, selectedFilter), (selectedSort, todayShots) ->
         val rulesByPackage = rules.associateBy { it.packageName }
+        val newApps = pending.map { it.packageName }.toSet()
         val total = apps.sumOf { usage[it.packageName] ?: 0 }
-        var rows = apps.map { app ->
-            AppRow(app = app, minutes = usage[app.packageName] ?: 0, rule = rulesByPackage[app.packageName])
+        val allRows = apps.map { app ->
+            AppRow(
+                app = app,
+                minutes = usage[app.packageName] ?: 0,
+                rule = rulesByPackage[app.packageName],
+                newApp = app.packageName in newApps,
+            )
+        }
+        var rows = when (selectedFilter) {
+            AppFilter.ALL -> allRows
+            AppFilter.RESTRICTED -> allRows.filter { it.restricted }
+            AppFilter.BLOCKED -> allRows.filter { it.blocked }
+            AppFilter.SUPERVISED -> allRows.filter { it.supervised }
         }
         if (q.isNotBlank()) {
             rows = rows.filter { it.app.label.contains(q, ignoreCase = true) }
@@ -100,14 +132,16 @@ class UsageViewModel @Inject constructor(
             totalMinutes = total,
             query = q,
             sort = selectedSort,
+            filter = selectedFilter,
             rows = rows,
-            watchedApps = rules.count { it.watched },
+            watchedApps = allRows.count { it.supervised },
             watchShotsToday = todayShots,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UsageUiState())
 
     fun setQuery(value: String) { query.value = value }
     fun setSort(value: AppSort) { sort.value = value }
+    fun setFilter(value: AppFilter) { filter.value = value }
 
     fun saveRule(
         app: InstalledApp,
@@ -115,9 +149,11 @@ class UsageViewModel @Inject constructor(
         blocked: Boolean,
         schedule: List<TimeWindow>,
         watchEverySeconds: Int,
+        /** A new app awaiting review: the saved rule is the parent's decision. */
+        clearReview: Boolean = false,
     ) {
         viewModelScope.launch {
-            appRulesRepository.saveAppRule(
+            val saved = appRulesRepository.saveAppRule(
                 childId,
                 AppRule(
                     packageName = app.packageName,
@@ -128,6 +164,9 @@ class UsageViewModel @Inject constructor(
                     watchEverySeconds = watchEverySeconds,
                 ),
             )
+            if (clearReview && saved is com.shahaabapps.core.common.AppResult.Success) {
+                pendingAppsRepository.remove(childId, app.packageName)
+            }
             Celebrations.saved()
         }
     }

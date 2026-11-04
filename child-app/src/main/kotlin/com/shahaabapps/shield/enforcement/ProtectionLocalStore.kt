@@ -40,7 +40,7 @@ object ProtectionLocalStore {
         prefs(context).edit().putBoolean(KEY_BLOCK_NEW_APPS, value).apply()
     }
 
-    fun isBlockNewApps(context: Context): Boolean = prefs(context).getBoolean(KEY_BLOCK_NEW_APPS, false)
+    fun isBlockNewApps(context: Context): Boolean = prefs(context).getBoolean(KEY_BLOCK_NEW_APPS, true)
 
     /** Parent's "Block pop-up and split-screen view" choice (kept for offline use). */
     fun setMultiWindowBlock(context: Context, value: MultiWindowBlock) {

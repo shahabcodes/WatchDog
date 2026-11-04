@@ -157,7 +157,13 @@ class EnforcementService : AccessibilityService() {
             },
             intervalFor = { pkg ->
                 val rule = rulesByPackage[pkg]
-                if (supervised && rule != null && rule.watched) rule.watchEverySeconds else 0
+                when {
+                    !supervised -> 0
+                    rule != null && rule.watched -> rule.watchEverySeconds
+                    // A new app awaiting review is supervised until the parent decides.
+                    rule == null && pkg in pendingPackages -> NEW_APP_WATCH_SECONDS
+                    else -> 0
+                }
             },
             labelFor = ::appLabelFor,
             grab = { onResult -> grabScreen(WATCH_MAX_WIDTH, WATCH_QUALITY, onResult = onResult) },
@@ -281,6 +287,8 @@ class EnforcementService : AccessibilityService() {
         var focusUntil = 0L
         for (r in requests) {
             if (r.status != RequestStatus.APPROVED) continue
+            // Approving supervised access changes the app's rule instead (Supervised).
+            if (r.kind == RequestKind.SUPERVISED_ACCESS) continue
             val base = if (r.respondedAtMillis > 0) r.respondedAtMillis else r.createdAtMillis
             if (base <= 0L) continue
             // The parent can set an explicit end when approving; otherwise use the
@@ -306,7 +314,7 @@ class EnforcementService : AccessibilityService() {
     private fun grantDurationMs(r: TimeRequest): Long {
         val minutes = when (r.kind) {
             RequestKind.MORE_TIME, RequestKind.EXTEND_BEDTIME -> if (r.minutes > 0) r.minutes else 15
-            RequestKind.UNLOCK_APP, RequestKind.USE_IN_SCHOOL -> if (r.minutes > 0) r.minutes else 60
+            RequestKind.UNLOCK_APP, RequestKind.USE_IN_SCHOOL, RequestKind.SUPERVISED_ACCESS -> if (r.minutes > 0) r.minutes else 60
         }
         return minutes * 60_000L
     }
@@ -320,8 +328,9 @@ class EnforcementService : AccessibilityService() {
             pm.getApplicationInfo(pkg, 0).loadLabel(pm).toString()
         }.getOrDefault(pkg)
         serviceScope.launch {
-            // Blocked via the pending list (see pendingPackages); app rules are
-            // parent-only, so the parent's "Keep blocked" writes the real rule.
+            // Supervised via the pending list (see pendingPackages) until a parent
+            // reviews it; app rules are parent-only, so the parent's choice writes
+            // the lasting rule.
             pendingPackages = pendingPackages + pkg
             pendingAppsRepository.add(childId, PendingApp(pkg, label, System.currentTimeMillis()))
         }
@@ -432,10 +441,6 @@ class EnforcementService : AccessibilityService() {
                 "This app isn't allowed to be installed from outside the Play Store.",
                 BlockAttemptReason.INSTALL_GUARD,
             )
-        }
-
-        if (packageName in pendingPackages && !appAllowed) {
-            return BlockDecision(appLabelFor(packageName), "This new app is waiting for a parent to review it.", BlockAttemptReason.REVIEW)
         }
 
         val rule = rulesByPackage[packageName] ?: return null
@@ -827,6 +832,8 @@ class EnforcementService : AccessibilityService() {
         private const val SHOT_QUALITY = 80
         private const val WATCH_MAX_WIDTH = 720
         private const val WATCH_QUALITY = 60
+        /** A new app awaiting review: one screenshot a minute. */
+        private const val NEW_APP_WATCH_SECONDS = 60
 
         /** How often the app in front is re-checked while it stays open. */
         private const val RECHECK_MS = 20_000L

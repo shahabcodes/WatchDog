@@ -354,7 +354,8 @@ exports.triggerPermissionRequest = onDocumentWritten(
 );
 
 /**
- * When the child auto-blocks a newly installed app, push a review prompt to the
+ * When a newly installed app is held for review (supervised; older Shield
+ * versions block it instead), push a review prompt to the
  * linked parents.
  *
  * Firestore trigger: children/{childId}/pendingApps/{pkg}
@@ -378,7 +379,7 @@ exports.notifyNewApp = onDocumentCreated(
       clip(child.profile && child.profile.name, 60, "your child");
 
     const title = `New app on ${childName}'s phone`;
-    const body = `${label} was just installed and we've blocked it. Tap to allow it or keep it blocked.`;
+    const body = `${label} was just installed. It's supervised (a screenshot a minute) until you decide. Tap to review it.`;
 
     const tokenDocs = [];
     for (const parentId of parents) {
@@ -443,6 +444,7 @@ exports.notifyChildRequest = onDocumentCreated(
     switch (data.kind) {
       case "UNLOCK_APP": title = `${childName} wants to unlock ${appLabel}`; break;
       case "USE_IN_SCHOOL": title = `${childName} wants ${appLabel} during school`; break;
+      case "SUPERVISED_ACCESS": title = `${childName} asks to use ${appLabel} with supervision`; break;
       case "EXTEND_BEDTIME":
         title = minutes > 0 ? `${childName} wants ${minutes} more min before bedtime` : `${childName} wants to extend bedtime`;
         break;

@@ -95,7 +95,14 @@ fun AlertsScreen(
         deepLinkHandled = true
     }
 
-    approveReq?.let { req ->
+    approveReq?.takeIf { it.kind == com.shahaabapps.core.model.RequestKind.SUPERVISED_ACCESS }?.let { req ->
+        ApproveSupervisedDialog(
+            request = req,
+            onApprove = { every -> viewModel.approveSupervised(req, every); approveReq = null },
+            onDismiss = { approveReq = null },
+        )
+    }
+    approveReq?.takeIf { it.kind != com.shahaabapps.core.model.RequestKind.SUPERVISED_ACCESS }?.let { req ->
         ApproveRequestDialog(
             request = req,
             onApprove = { grantUntil -> viewModel.respond(req.id, true, grantUntil); approveReq = null },
@@ -205,6 +212,37 @@ fun AlertsScreen(
  * a fixed duration from now ("For a while"), or until a specific clock time today
  * ("Until a time"). Produces an absolute wall-clock end the child enforces.
  */
+/** Approving supervised access: the app becomes Supervised; pick how often to capture. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ApproveSupervisedDialog(
+    request: TimeRequest,
+    onApprove: (watchEverySeconds: Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var every by remember { mutableStateOf(60) }
+    com.shahaabapps.core.ui.components.AppDialog(
+        onDismiss = onDismiss,
+        title = "Allow it supervised?",
+        icon = Icons.Filled.CheckCircle,
+        confirmText = "Allow supervised",
+        onConfirm = { onApprove(every) },
+    ) {
+        Text(
+            "${request.appLabel.ifBlank { "The app" }} will be unblocked and set to Supervised: Shield sends you " +
+                "screenshots of it at random moments while it's open. You can change this in Apps any time.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = AppTheme.colors.secondaryLabel,
+        )
+        Spacer(Modifier.height(Spacing.md))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            listOf(300 to "Every 5 min", 60 to "1 a minute", 30 to "2 a minute", 15 to "4 a minute").forEach { (s, label) ->
+                FilterChip(selected = every == s, onClick = { every = s }, label = { Text(label) })
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun ApproveRequestDialog(

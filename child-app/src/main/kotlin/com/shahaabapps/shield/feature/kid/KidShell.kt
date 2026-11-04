@@ -81,6 +81,7 @@ private val TRACK = Color(0xFFDDE3EF)
 private enum class KidTab(val label: String, val icon: ImageVector) {
     HOME("Home", Icons.Filled.Home),
     TIME("My time", Icons.Filled.Schedule),
+    APPS("My apps", Icons.Filled.Apps),
     ME("Me", Icons.Filled.Person),
 }
 
@@ -106,6 +107,7 @@ fun KidShell(
             when (tab) {
                 KidTab.HOME -> KidHome(child = child, state = state, onSeeApps = { tab = KidTab.TIME })
                 KidTab.TIME -> KidTime(state = state)
+                KidTab.APPS -> KidMyApps()
                 KidTab.ME -> KidMe(child = child, onSettings = { showSettings = true })
             }
         }
@@ -487,7 +489,7 @@ private fun SeeRow(icon: ImageVector, title: String, detail: String, last: Boole
 }
 
 @Composable
-private fun KidSeg(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+internal fun KidSeg(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
         modifier = modifier
             .height(40.dp)

@@ -1,7 +1,10 @@
 package com.shahaabapps.core.model
 
-/** What the child is asking their parent for. */
-enum class RequestKind { MORE_TIME, UNLOCK_APP, EXTEND_BEDTIME, USE_IN_SCHOOL }
+/**
+ * What the child is asking their parent for. SUPERVISED_ACCESS: use a blocked app
+ * with supervision; approving makes the app Supervised (a lasting rule change).
+ */
+enum class RequestKind { MORE_TIME, UNLOCK_APP, EXTEND_BEDTIME, USE_IN_SCHOOL, SUPERVISED_ACCESS }
 
 /** Where the request stands. */
 enum class RequestStatus { PENDING, APPROVED, DENIED }
@@ -15,7 +18,7 @@ enum class RequestStatus { PENDING, APPROVED, DENIED }
 data class TimeRequest(
     val id: String = "",
     val kind: RequestKind = RequestKind.MORE_TIME,
-    /** For UNLOCK_APP / USE_IN_SCHOOL: which app. Blank otherwise. */
+    /** For UNLOCK_APP / USE_IN_SCHOOL / SUPERVISED_ACCESS: which app. Blank otherwise. */
     val appPackage: String = "",
     val appLabel: String = "",
     /** Extra minutes requested (MORE_TIME / EXTEND_BEDTIME). */
@@ -38,5 +41,6 @@ data class TimeRequest(
             RequestKind.UNLOCK_APP -> "to unlock ${appLabel.ifBlank { "an app" }}"
             RequestKind.EXTEND_BEDTIME -> "to stay up $minutes more minutes"
             RequestKind.USE_IN_SCHOOL -> "to use ${appLabel.ifBlank { "an app" }} during school"
+            RequestKind.SUPERVISED_ACCESS -> "to use ${appLabel.ifBlank { "an app" }} with supervision (you get screenshots)"
         }
 }

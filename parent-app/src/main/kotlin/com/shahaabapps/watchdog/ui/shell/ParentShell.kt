@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Group
@@ -122,9 +123,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private enum class Tab(val route: String, val label: String, val icon: ImageVector) {
-    OVERVIEW("overview", "Home", Icons.Filled.GridView),
+    OVERVIEW("overview", "Dashboard", Icons.Filled.GridView),
     MAP("map", "Map", Icons.Filled.Map),
-    SCREENTIME("screentime", "Activity", Icons.Filled.BarChart),
+    SCREENTIME("screentime", "Apps", Icons.Filled.Apps),
 }
 
 @Composable

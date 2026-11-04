@@ -30,7 +30,7 @@ object Walkthrough {
         step(HOME, "home.verify", "Finish securing", "Tap \"Verify\", then scan the code from Shield → Me → Settings → \"Show secure code\" on your child's phone. The banner goes once it's verified."),
         step(HOME, "home.hero", "The live map", "Where your child is right now. Tap it to open the Map tab, or swipe down on Home for a fresh location."),
         step(HOME, "home.status", "Status at a glance", "\"Online\" or \"Offline\", the place they're at (or \"Outside known areas\"), their battery and when it last updated."),
-        step(HOME, "nav.bar", "Getting around", "\"Home\" is the dashboard, \"Map\" shows places and live location, \"Activity\" shows screen time. All three follow the child you picked."),
+        step(HOME, "nav.bar", "Getting around", "\"Dashboard\" is the overview, \"Map\" shows places and live location, \"Apps\" shows screen time and app rules. All three follow the child you picked."),
         step(HOME, "home.ring", "Ring", "Type a message if you like, then tap \"Ring now\". Their phone plays a loud alarm, even on silent, and shows your message."),
         step(HOME, "home.locate", "Locate", "Jumps to the Map tab. It doesn't ask the phone for a new location."),
         step(HOME, "home.refresh", "Refresh", "Asks your child's phone for a fresh, precise location. It may arrive a moment after the spinner stops."),
@@ -45,8 +45,8 @@ object Walkthrough {
         // ---- Home cards ----
         step(HOME, "home.protectionIncomplete", "Protection incomplete", "Appears when something is off on your child's phone, like app blocking or a fake-location app. Most fixes are in Shield → Me → SET UP."),
         step(HOME, "home.locationHealth", "Location health", "A green tick means location is updating normally. An orange icon explains the problem and how to fix it on their phone."),
-        step(HOME, "home.screentime", "Screen time today", "Today's total compared with yesterday, and the top apps. Open Activity for every app."),
-        step(HOME, "home.pendingApps", "New apps to review", "New apps stay blocked until you decide. Tap \"Allow\" or \"Keep blocked\"."),
+        step(HOME, "home.screentime", "Screen time today", "Today's total compared with yesterday, and the top apps. Open Apps for every app."),
+        step(HOME, "home.pendingApps", "New apps to review", "New apps work straight away but are supervised, with a screenshot every minute, until you decide. Tap \"Keep supervised\", \"Allow\" or \"Block\"."),
         step(HOME, "shot.capture", "See their screen", "Tap \"Capture\" for a snapshot of what's on their screen now. It needs the phone online and Accessibility on for Shield."),
         step(HOME, "shot.gallery", "Your screenshots", "Tap one to open it full screen. \"Save all\" copies them to Pictures/WatchDog; they're kept on this phone for 14 days."),
         step(HOME, "home.focusCard", "Focus modes", "Your Bedtime and School schedules at a glance. Tap to edit them."),
@@ -77,7 +77,7 @@ object Walkthrough {
         step(MAP, "today.fit", "Fit and recenter", "Fit the whole day on screen, or fly back to your child.", scene = "map.today"),
 
         // ---- Activity ----
-        step(ACTIVITY, "activity.total", "Screen time today", "Today's total for the child you picked on Home, updated as Shield reports usage."),
+        step(ACTIVITY, "activity.total", "Screen time today", "Today's total for the child you picked on the Dashboard, updated as Shield reports usage."),
         step(ACTIVITY, "activity.search", "Find an app", "Type in \"Search apps\" to find one by name."),
         step(ACTIVITY, "activity.sort", "Sort the list", "Sort by \"Used time\", \"Name\" or \"Installed on\", which also shows each app's install date."),
         step(ACTIVITY, "activity.app", "Apps and rules", "Each card shows today's time. \"Blocked\" or \"Limited\" marks an app with a rule; tap an app to set one."),

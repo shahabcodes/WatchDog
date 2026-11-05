@@ -47,6 +47,8 @@ const RECONNECT_QUIET_MS = 10 * 60 * 1000;
 // Events older than this (e.g. recorded offline, synced late) are recorded in
 // history but don't trigger a push — the alert would be stale/misleading.
 const STALE_EVENT_MS = 3 * 60 * 1000;
+// Screenshot requests this close together share one capture (one push, one shot).
+const SCREENSHOT_REPEAT_MS = 10 * 1000;
 
 /**
  * When a screenshot doc is deleted (the parent downloaded it locally), delete the
@@ -257,8 +259,17 @@ exports.triggerScreenshot = onDocumentWritten(
     if (!nonce) return;
     // Only act on fresh requests (ignore backfills / replays).
     if (Date.now() - nonce > 2 * 60 * 1000) return;
-
     const childId = event.params.childId;
+    // A second request within a few seconds of the last one (double tap, a second
+    // parent phone) rides on the capture already under way: no second push.
+    const before = event.data.before && event.data.before.data();
+    const prevNonce = before ? Number(before.nonce) || 0 : 0;
+    if (prevNonce && nonce > prevNonce && nonce - prevNonce < SCREENSHOT_REPEAT_MS) {
+      await require("./trace").serverDiag("INFO", "push",
+        `triggerScreenshot skipped repeat ${Math.round((nonce - prevNonce) / 1000)}s after the last`, childId);
+      return;
+    }
+
     // The child registers its token under its own user id (uid === childId).
     const toks = await db.collection(`users/${childId}/fcmTokens`).get();
     const tokens = toks.docs.map((d) => d.id);

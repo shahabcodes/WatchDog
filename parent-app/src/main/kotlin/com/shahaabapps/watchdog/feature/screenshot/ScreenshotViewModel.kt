@@ -62,6 +62,9 @@ class ScreenshotViewModel @Inject constructor(
 
     private var timeoutJob: Job? = null
 
+    /** When the current request was sent (this phone's clock; only for "done in Ns"). */
+    private var requestedAt: Long = 0L
+
     // Guards against downloading the same screenshot twice while in flight.
     private val inFlight = Collections.synchronizedSet(mutableSetOf<Long>())
 
@@ -77,6 +80,7 @@ class ScreenshotViewModel @Inject constructor(
                 _captureState.value = when {
                     s.startsWith("capturing") -> { armTimeout(PROGRESS_TIMEOUT_MS); CaptureState.Working("Capturing the screen…") }
                     s.startsWith("ok") -> { armTimeout(PROGRESS_TIMEOUT_MS); CaptureState.Working("Receiving…") }
+                    s.startsWith("hidden") -> fail("The app on screen hides its content from screenshots (for example banking or video apps).")
                     s.contains("upload failed") -> fail("Couldn't upload the screenshot. Check the child's connection.")
                     s.contains("decode") -> fail("The device captured the screen but couldn't process it.")
                     s.contains("takescreenshot") -> fail("The device couldn't capture the screen right now.")
@@ -105,6 +109,10 @@ class ScreenshotViewModel @Inject constructor(
                                 refresh()
                                 // This is the capture the parent was waiting on — done.
                                 if (waiting && millis > newestShotAtRequest) {
+                                    com.shahaabapps.core.common.Diag.info(
+                                        "screenshot",
+                                        "arrived in ${(System.currentTimeMillis() - requestedAt) / 1000}s",
+                                    )
                                     waiting = false
                                     timeoutJob?.cancel()
                                     _captureState.value = CaptureState.Idle
@@ -120,6 +128,10 @@ class ScreenshotViewModel @Inject constructor(
     }
 
     fun request() {
+        // One capture at a time: a second tap while one is on its way would only
+        // wake the child's phone again for the same screen.
+        if (waiting) return
+        requestedAt = System.currentTimeMillis()
         statusAtRequest = lastStatusAt
         newestShotAtRequest = _shots.value.maxOfOrNull { it.capturedAtMillis } ?: 0L
         waiting = true
@@ -156,6 +168,12 @@ class ScreenshotViewModel @Inject constructor(
     }
 
     private fun fail(message: String): CaptureState.Error {
+        if (waiting) {
+            com.shahaabapps.core.common.Diag.warn(
+                "screenshot",
+                "failed after ${(System.currentTimeMillis() - requestedAt) / 1000}s: $message",
+            )
+        }
         waiting = false
         timeoutJob?.cancel()
         val state = CaptureState.Error(message)

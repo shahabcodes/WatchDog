@@ -596,9 +596,15 @@ class EnforcementService : AccessibilityService() {
         val childId = authRepository.currentUserIdOrNull() ?: return
         val recent = TrustedClock.now() - nonce < REQUEST_FRESH_MS
         if (nonce > lastScreenshotNonce && recent) {
+            // A repeat request seconds after the last one shares that capture.
+            val repeat = nonce - lastScreenshotNonce < SCREENSHOT_REPEAT_MS
             lastScreenshotNonce = nonce
             getSharedPreferences("screenshot_state", Context.MODE_PRIVATE)
                 .edit().putLong("last_nonce", nonce).apply()
+            if (repeat) {
+                com.shahaabapps.core.common.Diag.info("screenshot", "repeat request shares the last capture")
+                return
+            }
             captureScreenshot(childId)
         }
     }
@@ -610,17 +616,31 @@ class EnforcementService : AccessibilityService() {
      */
     @RequiresApi(Build.VERSION_CODES.R)
     private fun captureScreenshot(childId: String) {
+        val started = android.os.SystemClock.elapsedRealtime()
+        fun took() = "${(android.os.SystemClock.elapsedRealtime() - started) / 1000}s"
         serviceScope.launch { screenshotRepository.reportStatus(childId, "capturing") }
         grabScreen(SHOT_MAX_WIDTH, SHOT_QUALITY, onError = { error ->
+            com.shahaabapps.core.common.Diag.warn("screenshot", "capture failed after ${took()}: $error")
             serviceScope.launch { screenshotRepository.reportStatus(childId, error) }
-        }) { bytes, _ ->
+        }) { bytes, hidden ->
             serviceScope.launch {
-                if (bytes == null) return@launch
+                if (bytes == null) {
+                    if (hidden) {
+                        // A secure window (banking, DRM video): say so instead of "failed".
+                        com.shahaabapps.core.common.Diag.info("screenshot", "app on screen hides it")
+                        screenshotRepository.reportStatus(childId, "hidden")
+                    }
+                    return@launch
+                }
                 when (val r = screenshotRepository.uploadScreenshot(childId, bytes)) {
-                    is com.shahaabapps.core.common.AppResult.Success ->
+                    is com.shahaabapps.core.common.AppResult.Success -> {
+                        com.shahaabapps.core.common.Diag.info("screenshot", "sent ${bytes.size / 1024}KB in ${took()}")
                         screenshotRepository.reportStatus(childId, "ok ${bytes.size}b")
-                    is com.shahaabapps.core.common.AppResult.Failure ->
+                    }
+                    is com.shahaabapps.core.common.AppResult.Failure -> {
+                        com.shahaabapps.core.common.Diag.warn("screenshot", "upload failed after ${took()}: ${r.error.message}")
                         screenshotRepository.reportStatus(childId, "upload failed: ${r.error.message}")
+                    }
                 }
             }
         }
@@ -653,8 +673,9 @@ class EnforcementService : AccessibilityService() {
                     override fun onFailure(errorCode: Int) {
                         if (errorCode == ERROR_TAKE_SCREENSHOT_SECURE_WINDOW) {
                             mainHandler.post { onResult(null, true) }
+                        } else {
+                            onError("takeScreenshot failed: $errorCode")
                         }
-                        onError("takeScreenshot failed: $errorCode")
                     }
                 },
             )
@@ -825,6 +846,8 @@ class EnforcementService : AccessibilityService() {
         // Only honour a screenshot request this fresh, so stale requests aren't
         // replayed when the service (re)starts.
         private const val REQUEST_FRESH_MS = 2 * 60_000L
+        /** Requests this close together share one capture (matches the server). */
+        private const val SCREENSHOT_REPEAT_MS = 10_000L
 
         // On-demand screenshots: sharp enough to read. Watched-app shots are smaller
         // (sent often): about 50 KB each.

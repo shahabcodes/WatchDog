@@ -68,6 +68,9 @@ internal class WindowGuard(
         val mode: Mode,
         var closeAttempts: Int = 0,
         var lastCloseAt: Long = 0L,
+        /** No close control was found, so Home was pressed (once per window). */
+        var homeAt: Long = 0L,
+        var homeChecked: Boolean = false,
     )
 
     private val windowManager = service.getSystemService(WindowManager::class.java)
@@ -217,18 +220,76 @@ internal class WindowGuard(
 
     private fun removeAll() = shown.keys.toList().forEach(::remove)
 
-    /** Tries to close the window a few times (controls may appear late), then leaves the cover. */
+    /**
+     * Tries to close the window a few times (controls may appear late). When no close
+     * control turns up, presses Home once: that leaves split screen and puts pop-ups
+     * away, so the child isn't left staring at the cover. If the window is still on
+     * screen after that, the cover stays.
+     */
     private fun maybeClose(app: AppWindow, all: List<AccessibilityWindowInfo>) {
         val s = shown[app.window.id] ?: return
         val now = SystemClock.uptimeMillis()
-        if (s.closeAttempts >= MAX_CLOSE_ATTEMPTS || now - s.lastCloseAt < CLOSE_RETRY_MS) return
-        s.closeAttempts++
-        s.lastCloseAt = now
-        val clicked = runCatching { close(app, all) }.getOrNull()
-        when {
-            clicked != null -> Diag.info("enforce", "${app.mode.diag} closed via $clicked")
-            s.closeAttempts == 1 -> Diag.info("enforce", "${app.mode.diag} close button not found, keeping cover")
+        if (s.homeAt > 0L) {
+            if (!s.homeChecked && now - s.homeAt >= HOME_SETTLE_MS) {
+                s.homeChecked = true
+                Diag.info("enforce", "${app.mode.diag} still on screen after Home, keeping cover")
+            }
+            return
         }
+        if (now - s.lastCloseAt < CLOSE_RETRY_MS) return
+        if (s.closeAttempts < MAX_CLOSE_ATTEMPTS) {
+            s.closeAttempts++
+            s.lastCloseAt = now
+            val clicked = runCatching { close(app, all) }.getOrNull()
+            if (clicked != null) Diag.info("enforce", "${app.mode.diag} closed via $clicked")
+            return
+        }
+        // Out of close attempts. PiP has its own Dismiss and a pinned app can't go
+        // Home, so those keep the cover.
+        if (app.mode == Mode.PIP || app.mode == Mode.PINNED) {
+            if (s.closeAttempts == MAX_CLOSE_ATTEMPTS) {
+                s.closeAttempts++
+                Diag.info("enforce", "${app.mode.diag} close button not found, keeping cover")
+            }
+            return
+        }
+        s.homeAt = now
+        val ids = runCatching { systemIdsNear(app, all) }.getOrDefault("")
+        val went = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
+        Diag.info("enforce", "${app.mode.diag} close button not found, pressed Home=$went near=[$ids]")
+    }
+
+    /**
+     * System-drawn view ids around the window (never the app's own), to learn the
+     * caption / close controls of phones we can't close yet.
+     */
+    private fun systemIdsNear(app: AppWindow, all: List<AccessibilityWindowInfo>): String {
+        val area = Rect(app.bounds).apply { inset(-captionSlop, -captionSlop) }
+        val ids = LinkedHashSet<String>()
+        for (w in all) {
+            if (w.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD ||
+                w.type == AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY
+            ) continue
+            if (!Rect.intersects(Rect().also(w::getBoundsInScreen), area)) continue
+            val root = w.root ?: continue
+            val queue = ArrayDeque<AccessibilityNodeInfo>().apply { add(root) }
+            var visited = 0
+            while (queue.isNotEmpty()) {
+                val node = queue.removeFirst()
+                if (visited < MAX_NODES && ids.size < MAX_LOGGED_IDS) {
+                    visited++
+                    val id = node.viewIdResourceName.orEmpty()
+                    if (SYSTEM_ID_PREFIXES.any { id.startsWith(it) } &&
+                        Rect.intersects(Rect().also(node::getBoundsInScreen), area)
+                    ) {
+                        ids += id.substringAfter(":id/")
+                    }
+                    for (i in 0 until node.childCount) node.getChild(i)?.let(queue::add)
+                }
+                node.release()
+            }
+        }
+        return ids.joinToString(",")
     }
 
     /**
@@ -433,11 +494,14 @@ internal class WindowGuard(
         private const val FULL_FRACTION_W = 0.9f
         private const val FULL_FRACTION_H = 0.8f
         private const val DECISION_TTL_MS = 3_000L
-        private const val MAX_CLOSE_ATTEMPTS = 3
+        private const val MAX_CLOSE_ATTEMPTS = 2
         /** Shown on a pinned app's cover: Samsung's unpin gestures (buttons and gestures). */
         private const val UNPIN_HINT = "This app is pinned. To leave it, touch and hold Back and Recents together " +
             "(with gesture navigation, swipe up and hold)."
         private const val CLOSE_RETRY_MS = 4_000L
+        /** After pressing Home, how long before a window still showing is logged. */
+        private const val HOME_SETTLE_MS = 3_000L
+        private const val MAX_LOGGED_IDS = 12
         private const val MAX_NODES = 300
 
         private val CLOSE_LABELS = setOf("close", "close app", "close window", "dismiss")

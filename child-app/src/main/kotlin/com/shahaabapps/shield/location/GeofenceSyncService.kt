@@ -574,7 +574,7 @@ class GeofenceSyncService : Service() {
                     if (now - since >= DWELL_DELAY_MS) {
                         dwellSince.remove(g.id)
                         GeofenceStateStore.setInside(this, g.id, true)
-                        if (wantsEnter) reportTransition(childId, g, GeofenceTransition.ENTER, lat, lng, now)
+                        if (wantsEnter) reportTransition(childId, g, GeofenceTransition.ENTER, lat, lng, now, acc, distToCenter)
                     }
                 }
                 inside -> { // confidently back inside → cancel any pending exit
@@ -590,7 +590,7 @@ class GeofenceSyncService : Service() {
                         if (now - since >= EXIT_CONFIRM_MS) {
                             exitSince.remove(g.id)
                             GeofenceStateStore.setInside(this, g.id, false)
-                            if (wantsExit) reportTransition(childId, g, GeofenceTransition.EXIT, lat, lng, now)
+                            if (wantsExit) reportTransition(childId, g, GeofenceTransition.EXIT, lat, lng, now, acc, distToCenter)
                         }
                     }
                     // In the hysteresis band (not confidently beyond): keep any pending
@@ -600,7 +600,23 @@ class GeofenceSyncService : Service() {
         }
     }
 
-    private fun reportTransition(childId: String, g: Geofence, transition: GeofenceTransition, lat: Double, lng: Double, now: Long) {
+    private fun reportTransition(
+        childId: String,
+        g: Geofence,
+        transition: GeofenceTransition,
+        lat: Double,
+        lng: Double,
+        now: Long,
+        accuracy: Float,
+        distanceMeters: Double,
+    ) {
+        // src=check: this backup check (not Android's geofencing) saw the move. The
+        // place id, fix accuracy and distance from the centre explain a wrong alert;
+        // the place name and coordinates are never logged.
+        com.shahaabapps.core.common.Diag.info(
+            "geofence",
+            "$transition place=${g.id} src=check acc=${accuracy.toInt()}m dist=${distanceMeters.toInt()}m radius=${g.radiusMeters.toInt()}m",
+        )
         scope.launch {
             runCatching {
                 geofenceRepository.reportEvent(
@@ -614,6 +630,8 @@ class GeofenceSyncService : Service() {
                         timestampMillis = now,
                     ),
                 )
+            }.onFailure {
+                com.shahaabapps.core.common.Diag.warn("geofence", "$transition place=${g.id} not reported: ${it.message}")
             }
         }
     }

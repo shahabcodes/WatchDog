@@ -102,7 +102,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
     }
 
     private suspend fun report(childId: String, geofenceId: String, transition: GeofenceTransition, lat: Double, lng: Double, now: Long) {
-        com.shahaabapps.core.common.Diag.info("geofence", "$transition place=$geofenceId")
+        com.shahaabapps.core.common.Diag.info("geofence", "$transition place=$geofenceId src=os")
         geofenceRepository.reportEvent(
             childId,
             GeofenceEvent(geofenceId = geofenceId, transition = transition, latitude = lat, longitude = lng, timestampMillis = now),

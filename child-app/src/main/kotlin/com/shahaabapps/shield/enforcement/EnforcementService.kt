@@ -143,6 +143,9 @@ class EnforcementService : AccessibilityService() {
         )
     }
 
+    /** Keeps the child off Shield's own Settings pages while they're locked. */
+    private val settingsGuard by lazy { SettingsGuard(this) { ownAppLabel } }
+
     /** "Supervised" apps: random screenshots while one is in use (API 30+). */
     private val watchCapturer by lazy {
         WatchCapturer(
@@ -341,6 +344,11 @@ class EnforcementService : AccessibilityService() {
             // A pop-up / split / PiP window appeared, moved or closed.
             AccessibilityEvent.TYPE_WINDOWS_CHANGED -> { requestWindowScan(); return }
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> Unit
+            // Only subscribed while Settings is open (SettingsGuard).
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
+                event.packageName?.toString()?.let(settingsGuard::onContentChanged)
+                return
+            }
             else -> return
         }
         val packageName = event.packageName?.toString() ?: return
@@ -350,7 +358,7 @@ class EnforcementService : AccessibilityService() {
         // Uninstall protection runs independently of app-limit enforcement.
         val eventText = event.text.joinToString(" ").ifBlank { null }
         guardUninstall(packageName, className, eventText)
-        guardSettings(packageName, className)
+        settingsGuard.onWindowState(packageName)
 
         // Refresh which apps sit in a pop-up / split / PiP first, so an app opened
         // straight into one is covered in place, not blocked full-screen beneath it.
@@ -741,45 +749,6 @@ class EnforcementService : AccessibilityService() {
         startActivity(intent)
     }
 
-    /**
-     * While the parent's "Lock Shield's settings" is on (and no PIN unlock window is open), keep the child out
-     * of the Settings pages that switch Shield off without uninstalling it: its
-     * accessibility toggle, Usage Access, and its App info page (Force stop,
-     * permissions, storage). Detected from the window's text, so it only triggers
-     * on pages that show Shield's name — other apps' settings stay reachable.
-     */
-    private fun guardSettings(packageName: String, className: String?) {
-        if (!ProtectionLocalStore.isLockSettings(this) || ProtectionLocalStore.isUnlocked(this)) return
-        if (!ProtectionLocalStore.isSettingsPackage(packageName)) return
-        val text = windowText()
-        if (ProtectionLocalStore.isProtectedSettingsScreen(className, text, ownAppLabel)) {
-            com.shahaabapps.core.common.Diag.info("guard", "settings page bounced (${className.orEmpty().substringAfterLast('.')})")
-            performGlobalAction(GLOBAL_ACTION_HOME)
-            android.widget.Toast.makeText(
-                this,
-                "$ownAppLabel settings are locked. Ask a parent to unlock them.",
-                android.widget.Toast.LENGTH_SHORT,
-            ).show()
-        }
-    }
-
-    /** Visible text of the active window (bounded), for the Settings guard. */
-    private fun windowText(): String {
-        val root = runCatching { rootInActiveWindow }.getOrNull() ?: return ""
-        val sb = StringBuilder()
-        val queue = ArrayDeque<android.view.accessibility.AccessibilityNodeInfo>()
-        queue.add(root)
-        var visited = 0
-        while (queue.isNotEmpty() && visited < MAX_NODES) {
-            val node = queue.removeFirst()
-            visited++
-            node.text?.let { sb.append(it).append('\n') }
-            node.contentDescription?.let { sb.append(it).append('\n') }
-            for (i in 0 until node.childCount) node.getChild(i)?.let { queue.add(it) }
-        }
-        return sb.toString()
-    }
-
     /** Re-checks the app in front every [RECHECK_MS] (limits/bedtime mid-use, Settings pages). */
     private fun startRecheckLoop() {
         recheckJob?.cancel()
@@ -791,7 +760,7 @@ class EnforcementService : AccessibilityService() {
                     ?: lastForegroundPackage ?: continue
                 runCatching {
                     scanWindows()
-                    guardSettings(front, null)
+                    settingsGuard.recheck()
                     enforce(front)
                 }
             }
@@ -830,6 +799,7 @@ class EnforcementService : AccessibilityService() {
         runCatching { watchCapturer.stop() }
         mainHandler.removeCallbacksAndMessages(null)
         runCatching { windowGuard.clear() }
+        runCatching { settingsGuard.clear() }
         super.onDestroy()
         if (instance === this) instance = null
         runCatching { unregisterReceiver(packageAddedReceiver) }
@@ -875,8 +845,6 @@ class EnforcementService : AccessibilityService() {
             "com.google.android.apps.safetyhub",
             "com.samsung.android.emergency",
         )
-        /** Upper bound on nodes read for the Settings guard. */
-        private const val MAX_NODES = 400
         /** Overlays that aren't "the app in front" (shade, keyboards). */
         private val TRANSIENT_PACKAGES = setOf(
             "com.android.systemui",

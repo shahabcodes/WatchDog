@@ -92,10 +92,18 @@ object ProtectionLocalStore {
         return text.contains(ownLabel, ignoreCase = true)
     }
 
-    /** Settings-type apps (incl. the permission controller that hosts app permissions). */
+    /**
+     * Settings-type apps: Settings, the permission controller (app permissions) and
+     * accessibility apps — Samsung hosts its Accessibility pages, with each
+     * service's switch, in its own com.samsung.accessibility app.
+     */
     fun isSettingsPackage(packageName: String): Boolean =
         packageName.contains("settings", ignoreCase = true) ||
-            packageName.contains("permissioncontroller", ignoreCase = true)
+            packageName.contains("permissioncontroller", ignoreCase = true) ||
+            isAccessibilityPackage(packageName)
+
+    fun isAccessibilityPackage(packageName: String): Boolean =
+        packageName.contains("accessibility", ignoreCase = true)
 
     /**
      * A Settings page that would switch Shield off without uninstalling it: its

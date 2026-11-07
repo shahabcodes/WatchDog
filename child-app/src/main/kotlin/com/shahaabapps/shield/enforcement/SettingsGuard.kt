@@ -50,6 +50,17 @@ internal class SettingsGuard(
     private var contentEvents = false
     private var fastLoop = false
 
+    /** One stretch of Settings on screen, logged when it ends (what was seen, what caught it). */
+    private var visit = 0
+    private var inVisit = false
+    private var visitStartAt = 0L
+    private var visitContentEvents = 0
+    private var visitCovered = false
+    private val visitPages = LinkedHashSet<String>()
+
+    /** Right after a page opens its text is often still loading: look again shortly. */
+    private val settleCheck = Runnable { check("settle") }
+
     private val fastRunnable = object : Runnable {
         override fun run() {
             val settingsShowing = check("loop")
@@ -73,11 +84,14 @@ internal class SettingsGuard(
         setContentEvents(true)
         startFastLoop()
         check("open")
+        handler.removeCallbacks(settleCheck)
+        for (delay in SETTLE_CHECKS_MS) handler.postDelayed(settleCheck, delay)
     }
 
     /** Something on screen changed (only delivered while Settings is open). */
     fun onContentChanged(packageName: String) {
         if (!ProtectionLocalStore.isSettingsPackage(packageName)) return
+        visitContentEvents++
         val now = SystemClock.uptimeMillis()
         if (now - lastCheckAt < CONTENT_CHECK_MIN_MS) return
         check("content")
@@ -93,6 +107,7 @@ internal class SettingsGuard(
         handler.removeCallbacksAndMessages(null)
         fastLoop = false
         removeCover("service stopped")
+        endVisit()
         setContentEvents(false)
     }
 
@@ -113,11 +128,42 @@ internal class SettingsGuard(
         lastCheckAt = SystemClock.uptimeMillis()
         if (!active()) {
             removeCover("unlocked")
+            endVisit()
             return false
         }
         val found = runCatching { findProtectedPage() }.getOrNull() ?: Found(false, null)
-        if (found.page != null) showCover(via, found.page) else removeCover("page gone")
+        if (found.settingsShowing && !inVisit) {
+            inVisit = true
+            visit++
+            visitStartAt = lastCheckAt
+            visitContentEvents = 0
+            visitCovered = false
+            visitPages.clear()
+        }
+        if (found.page != null) {
+            visitCovered = true
+            showCover(via, found.page)
+        } else {
+            removeCover("page gone")
+        }
+        if (!found.settingsShowing) endVisit()
         return found.settingsShowing
+    }
+
+    /**
+     * Logs what a Settings visit showed (packages and page classes, never page text),
+     * how many on-screen-change events came in, and whether a page was covered, so a
+     * missed page can be traced.
+     */
+    private fun endVisit() {
+        if (!inVisit) return
+        inVisit = false
+        val secs = (SystemClock.uptimeMillis() - visitStartAt) / 1000.0
+        Diag.info(
+            "guard",
+            "settings visit #$visit ${"%.1f".format(secs)}s covered=$visitCovered " +
+                "contentEvents=$visitContentEvents pages=[${visitPages.joinToString(",")}]",
+        )
     }
 
     private class Found(val settingsShowing: Boolean, val page: String?)
@@ -143,9 +189,15 @@ internal class SettingsGuard(
                 if (!ProtectionLocalStore.isSettingsPackage(pkg)) continue
                 settingsShowing = true
                 val cls = root.className?.toString()
-                if (ProtectionLocalStore.isProtectedSettingsScreen(cls, textOf(root), label)) {
-                    return Found(true, cls.orEmpty().substringAfterLast('.').ifBlank { pkg })
-                }
+                val page = "${pkg.substringAfterLast('.')}/${cls.orEmpty().substringAfterLast('.')}"
+                if (visitPages.size < MAX_VISIT_PAGES) visitPages += page
+                val text = textOf(root)
+                // Accessibility apps (Samsung's) list each service with its switch:
+                // any of their pages that shows Shield's name is guarded.
+                val protected = ProtectionLocalStore.isProtectedSettingsScreen(cls, text, label) ||
+                    (ProtectionLocalStore.isAccessibilityPackage(pkg) && label.isNotBlank() &&
+                        text.contains(label, ignoreCase = true))
+                if (protected) return Found(true, page)
             }
             return Found(settingsShowing, null)
         } finally {
@@ -285,7 +337,10 @@ internal class SettingsGuard(
 
     companion object {
         /** Re-check interval while Settings is on screen or the cover is up. */
-        private const val FAST_CHECK_MS = 500L
+        private const val FAST_CHECK_MS = 250L
+        /** Extra looks after a page opens, while its content loads. */
+        private val SETTLE_CHECKS_MS = longArrayOf(60L, 150L, 300L)
+        private const val MAX_VISIT_PAGES = 6
         /** On-screen changes come in bursts: check at most this often. */
         private const val CONTENT_CHECK_MIN_MS = 150L
         /** Press Home again this often while the page is still showing. */

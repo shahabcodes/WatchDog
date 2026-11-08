@@ -62,6 +62,9 @@ internal class SettingsGuard(
     /** Right after a page opens its text is often still loading: look again shortly. */
     private val settleCheck = Runnable { check("settle") }
 
+    /** A change that came in during the throttle gap is looked at as soon as the gap ends. */
+    private val trailingContentCheck = Runnable { check("content") }
+
     private val fastRunnable = object : Runnable {
         override fun run() {
             val settingsShowing = check("loop")
@@ -94,7 +97,12 @@ internal class SettingsGuard(
         if (!ProtectionLocalStore.isSettingsPackage(packageName)) return
         visitContentEvents++
         val now = SystemClock.uptimeMillis()
-        if (now - lastCheckAt < CONTENT_CHECK_MIN_MS) return
+        val wait = CONTENT_CHECK_MIN_MS - (now - lastCheckAt)
+        handler.removeCallbacks(trailingContentCheck)
+        if (wait > 0) {
+            handler.postDelayed(trailingContentCheck, wait)
+            return
+        }
         check("content")
     }
 
@@ -184,7 +192,16 @@ internal class SettingsGuard(
         try {
             for (w in windows) {
                 if (w.type != AccessibilityWindowInfo.TYPE_APPLICATION) continue
-                w.root?.let(roots::add)
+                val root = w.root ?: continue
+                val pkg = root.packageName?.toString()
+                // A Settings window titled "Shield" is one of Shield's own pages.
+                if (pkg != null && ProtectionLocalStore.isSettingsPackage(pkg) && label.isNotBlank() &&
+                    w.title?.toString()?.trim()?.equals(label, ignoreCase = true) == true
+                ) {
+                    root.release()
+                    return Found(true, "${pkg.substringAfterLast('.')}/title")
+                }
+                roots.add(root)
             }
             for (root in roots) {
                 val pkg = root.packageName?.toString() ?: continue
@@ -203,6 +220,11 @@ internal class SettingsGuard(
                     // A row titled exactly "Shield" with a switch on the page (its
                     // accessibility, notification or permission switch).
                     (scan.exactLabel && scan.hasSwitch) ||
+                    // A page titled "Shield" (its name among the first few texts, or
+                    // on a small page): Shield's switch page while it is still loading,
+                    // before its switch and description appear.
+                    (scan.labelIndex in 0 until TITLE_TEXTS) ||
+                    (scan.exactLabel && scan.nodes <= SMALL_PAGE_NODES) ||
                     // Accessibility apps (Samsung's) list each service with its switch:
                     // any of their pages that shows Shield's name is guarded.
                     (ProtectionLocalStore.isAccessibilityPackage(pkg) && named)
@@ -213,7 +235,7 @@ internal class SettingsGuard(
                     Diag.info(
                         "guard",
                         "settings page shows Shield but not covered ($page) exactRow=${scan.exactLabel} " +
-                            "switch=${scan.hasSwitch} nodes=${scan.nodes}",
+                            "switch=${scan.hasSwitch} labelAt=${scan.labelIndex} nodes=${scan.nodes}",
                     )
                 }
             }
@@ -265,7 +287,14 @@ internal class SettingsGuard(
             .onSuccess { contentEvents = on }
     }
 
-    private class PageScan(val text: String, val exactLabel: Boolean, val hasSwitch: Boolean, val nodes: Int)
+    private class PageScan(
+        val text: String,
+        val exactLabel: Boolean,
+        val hasSwitch: Boolean,
+        val nodes: Int,
+        /** Position of the first text reading exactly the label among the page's texts, or -1. */
+        val labelIndex: Int,
+    )
 
     /**
      * Visible text of a window (bounded), whether a node reads exactly [label], and
@@ -278,13 +307,19 @@ internal class SettingsGuard(
         var visited = 0
         var exact = false
         var switch = false
+        var texts = 0
+        var labelIndex = -1
         while (queue.isNotEmpty()) {
             val node = queue.removeFirst()
             if (visited < MAX_NODES) {
                 visited++
                 node.text?.let {
                     sb.append(it).append('\n')
-                    if (label.isNotBlank() && it.toString().trim().equals(label, ignoreCase = true)) exact = true
+                    if (label.isNotBlank() && it.toString().trim().equals(label, ignoreCase = true)) {
+                        if (!exact) labelIndex = texts
+                        exact = true
+                    }
+                    if (it.isNotBlank()) texts++
                 }
                 node.contentDescription?.let { sb.append(it).append('\n') }
                 if (!switch && (node.isCheckable || node.className?.toString()?.contains("Switch", ignoreCase = true) == true)) {
@@ -294,7 +329,7 @@ internal class SettingsGuard(
             }
             if (node !== root) node.release()
         }
-        return PageScan(sb.toString(), exact, switch, visited)
+        return PageScan(sb.toString(), exact, switch, visited, labelIndex)
     }
 
     /** The start of Shield's accessibility description, shown on its switch page. */
@@ -384,6 +419,10 @@ internal class SettingsGuard(
         /** Press Home again this often while the page is still showing. */
         private const val HOME_REPEAT_MS = 2_000L
         private const val MAX_NODES = 400
+        /** A page whose first texts include exactly "Shield" is titled with it. */
+        private const val TITLE_TEXTS = 3
+        /** Shield's switch page while loading had 12 nodes; lists of apps have far more. */
+        private const val SMALL_PAGE_NODES = 30
 
         @Suppress("DEPRECATION")
         private fun AccessibilityNodeInfo.release() {

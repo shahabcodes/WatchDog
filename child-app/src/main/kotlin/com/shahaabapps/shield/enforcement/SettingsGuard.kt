@@ -57,6 +57,7 @@ internal class SettingsGuard(
     private var visitContentEvents = 0
     private var visitCovered = false
     private val visitPages = LinkedHashSet<String>()
+    private val uncoveredLogged = HashSet<String>()
 
     /** Right after a page opens its text is often still loading: look again shortly. */
     private val settleCheck = Runnable { check("settle") }
@@ -139,6 +140,7 @@ internal class SettingsGuard(
             visitContentEvents = 0
             visitCovered = false
             visitPages.clear()
+            uncoveredLogged.clear()
         }
         if (found.page != null) {
             visitCovered = true
@@ -191,13 +193,29 @@ internal class SettingsGuard(
                 val cls = root.className?.toString()
                 val page = "${pkg.substringAfterLast('.')}/${cls.orEmpty().substringAfterLast('.')}"
                 if (visitPages.size < MAX_VISIT_PAGES) visitPages += page
-                val text = textOf(root)
-                // Accessibility apps (Samsung's) list each service with its switch:
-                // any of their pages that shows Shield's name is guarded.
+                val scan = scan(root, label)
+                val text = scan.text
+                val named = label.isNotBlank() && text.contains(label, ignoreCase = true)
                 val protected = ProtectionLocalStore.isProtectedSettingsScreen(cls, text, label) ||
-                    (ProtectionLocalStore.isAccessibilityPackage(pkg) && label.isNotBlank() &&
-                        text.contains(label, ignoreCase = true))
+                    // Shield's own switch page: its title is just "Shield", then the
+                    // switch and Shield's description, none of the words above.
+                    (descriptionHint.isNotBlank() && text.contains(descriptionHint, ignoreCase = true)) ||
+                    // A row titled exactly "Shield" with a switch on the page (its
+                    // accessibility, notification or permission switch).
+                    (scan.exactLabel && scan.hasSwitch) ||
+                    // Accessibility apps (Samsung's) list each service with its switch:
+                    // any of their pages that shows Shield's name is guarded.
+                    (ProtectionLocalStore.isAccessibilityPackage(pkg) && named)
                 if (protected) return Found(true, page)
+                // Shield's name on a page left open: log it once per visit, so a
+                // missed switch page can be traced (no page text is logged).
+                if (named && uncoveredLogged.add(page)) {
+                    Diag.info(
+                        "guard",
+                        "settings page shows Shield but not covered ($page) exactRow=${scan.exactLabel} " +
+                            "switch=${scan.hasSwitch} nodes=${scan.nodes}",
+                    )
+                }
             }
             return Found(settingsShowing, null)
         } finally {
@@ -247,23 +265,42 @@ internal class SettingsGuard(
             .onSuccess { contentEvents = on }
     }
 
-    /** Visible text of a window (bounded). */
-    private fun textOf(root: AccessibilityNodeInfo): String {
+    private class PageScan(val text: String, val exactLabel: Boolean, val hasSwitch: Boolean, val nodes: Int)
+
+    /**
+     * Visible text of a window (bounded), whether a node reads exactly [label], and
+     * whether the page has a switch / checkbox.
+     */
+    private fun scan(root: AccessibilityNodeInfo, label: String): PageScan {
         val sb = StringBuilder()
         val queue = ArrayDeque<AccessibilityNodeInfo>()
         queue.add(root)
         var visited = 0
+        var exact = false
+        var switch = false
         while (queue.isNotEmpty()) {
             val node = queue.removeFirst()
             if (visited < MAX_NODES) {
                 visited++
-                node.text?.let { sb.append(it).append('\n') }
+                node.text?.let {
+                    sb.append(it).append('\n')
+                    if (label.isNotBlank() && it.toString().trim().equals(label, ignoreCase = true)) exact = true
+                }
                 node.contentDescription?.let { sb.append(it).append('\n') }
+                if (!switch && (node.isCheckable || node.className?.toString()?.contains("Switch", ignoreCase = true) == true)) {
+                    switch = true
+                }
                 for (i in 0 until node.childCount) node.getChild(i)?.let(queue::add)
             }
             if (node !== root) node.release()
         }
-        return sb.toString()
+        return PageScan(sb.toString(), exact, switch, visited)
+    }
+
+    /** The start of Shield's accessibility description, shown on its switch page. */
+    private val descriptionHint: String by lazy {
+        runCatching { service.getString(com.shahaabapps.shield.R.string.accessibility_description) }
+            .getOrDefault("").take(DESCRIPTION_HINT_CHARS)
     }
 
     private fun params() = WindowManager.LayoutParams(
@@ -341,6 +378,7 @@ internal class SettingsGuard(
         /** Extra looks after a page opens, while its content loads. */
         private val SETTLE_CHECKS_MS = longArrayOf(60L, 150L, 300L)
         private const val MAX_VISIT_PAGES = 6
+        private const val DESCRIPTION_HINT_CHARS = 40
         /** On-screen changes come in bursts: check at most this often. */
         private const val CONTENT_CHECK_MIN_MS = 150L
         /** Press Home again this often while the page is still showing. */

@@ -49,6 +49,8 @@ internal class SettingsGuard(
     private var lastCheckAt = 0L
     private var contentEvents = false
     private var fastLoop = false
+    /** A cover put up from the event alone stays this long even if the page can't be read yet. */
+    private var holdUntil = 0L
 
     /** One stretch of Settings on screen, logged when it ends (what was seen, what caught it). */
     private var visit = 0
@@ -77,8 +79,12 @@ internal class SettingsGuard(
         }
     }
 
-    /** A window opened or changed (any app). */
-    fun onWindowState(packageName: String) {
+    /**
+     * A window opened or changed (any app). [className] and [eventText] (often the
+     * page title) come with the event, so an Accessibility page can be covered
+     * before its contents can be read, which on Samsung takes a few seconds.
+     */
+    fun onWindowState(packageName: String, className: String? = null, eventText: String? = null) {
         if (!ProtectionLocalStore.isSettingsPackage(packageName)) {
             // Left Settings (Home, another app): drop the cover once no page shows.
             if (cover != null || fastLoop) check("left")
@@ -87,6 +93,11 @@ internal class SettingsGuard(
         if (!active()) return
         setContentEvents(true)
         startFastLoop()
+        val instant = instantPage(packageName, className, eventText)
+        if (instant != null) {
+            holdUntil = SystemClock.uptimeMillis() + HOLD_MS
+            showCover("event", instant)
+        }
         check("open")
         handler.removeCallbacks(settleCheck)
         for (delay in SETTLE_CHECKS_MS) handler.postDelayed(settleCheck, delay)
@@ -153,7 +164,7 @@ internal class SettingsGuard(
         if (found.page != null) {
             visitCovered = true
             showCover(via, found.page)
-        } else {
+        } else if (!found.settingsShowing || lastCheckAt >= holdUntil) {
             removeCover("page gone")
         }
         if (!found.settingsShowing) endVisit()
@@ -194,9 +205,11 @@ internal class SettingsGuard(
                 if (w.type != AccessibilityWindowInfo.TYPE_APPLICATION) continue
                 val root = w.root ?: continue
                 val pkg = root.packageName?.toString()
-                // A Settings window titled "Shield" is one of Shield's own pages.
-                if (pkg != null && ProtectionLocalStore.isSettingsPackage(pkg) && label.isNotBlank() &&
-                    w.title?.toString()?.trim()?.equals(label, ignoreCase = true) == true
+                // A Settings window titled "Shield" (one of Shield's own pages) or
+                // "Accessibility" / "Installed apps" (the locked section).
+                val title = w.title?.toString()?.trim()?.lowercase()
+                if (pkg != null && ProtectionLocalStore.isSettingsPackage(pkg) && title != null &&
+                    ((label.isNotBlank() && title == label.lowercase()) || title in sectionTitles)
                 ) {
                     root.release()
                     return Found(true, "${pkg.substringAfterLast('.')}/title")
@@ -214,6 +227,12 @@ internal class SettingsGuard(
                 val text = scan.text
                 val named = label.isNotBlank() && text.contains(label, ignoreCase = true)
                 val protected = ProtectionLocalStore.isProtectedSettingsScreen(cls, text, label) ||
+                    // The whole Accessibility section is locked: Samsung's accessibility
+                    // app, any page titled "Accessibility" / "Installed apps", or an
+                    // Accessibility page class.
+                    ProtectionLocalStore.isAccessibilityPackage(pkg) ||
+                    scan.firstTexts.any { it in sectionTitles } ||
+                    (cls != null && cls.contains("Accessibility", ignoreCase = true)) ||
                     // Shield's own switch page: its title is just "Shield", then the
                     // switch and Shield's description, none of the words above.
                     (descriptionHint.isNotBlank() && text.contains(descriptionHint, ignoreCase = true)) ||
@@ -224,10 +243,7 @@ internal class SettingsGuard(
                     // on a small page): Shield's switch page while it is still loading,
                     // before its switch and description appear.
                     (scan.labelIndex in 0 until TITLE_TEXTS) ||
-                    (scan.exactLabel && scan.nodes <= SMALL_PAGE_NODES) ||
-                    // Accessibility apps (Samsung's) list each service with its switch:
-                    // any of their pages that shows Shield's name is guarded.
-                    (ProtectionLocalStore.isAccessibilityPackage(pkg) && named)
+                    (scan.exactLabel && scan.nodes <= SMALL_PAGE_NODES)
                 if (protected) return Found(true, page)
                 // Shield's name on a page left open: log it once per visit, so a
                 // missed switch page can be traced (no page text is logged).
@@ -294,6 +310,8 @@ internal class SettingsGuard(
         val nodes: Int,
         /** Position of the first text reading exactly the label among the page's texts, or -1. */
         val labelIndex: Int,
+        /** The page's first few texts (trimmed, lower case): its title is among them. */
+        val firstTexts: List<String>,
     )
 
     /**
@@ -309,6 +327,7 @@ internal class SettingsGuard(
         var switch = false
         var texts = 0
         var labelIndex = -1
+        val firstTexts = ArrayList<String>(TITLE_TEXTS)
         while (queue.isNotEmpty()) {
             val node = queue.removeFirst()
             if (visited < MAX_NODES) {
@@ -319,7 +338,10 @@ internal class SettingsGuard(
                         if (!exact) labelIndex = texts
                         exact = true
                     }
-                    if (it.isNotBlank()) texts++
+                    if (it.isNotBlank()) {
+                        if (texts < TITLE_TEXTS) firstTexts += it.toString().trim().lowercase()
+                        texts++
+                    }
                 }
                 node.contentDescription?.let { sb.append(it).append('\n') }
                 if (!switch && (node.isCheckable || node.className?.toString()?.contains("Switch", ignoreCase = true) == true)) {
@@ -329,7 +351,40 @@ internal class SettingsGuard(
             }
             if (node !== root) node.release()
         }
-        return PageScan(sb.toString(), exact, switch, visited, labelIndex)
+        return PageScan(sb.toString(), exact, switch, visited, labelIndex, firstTexts)
+    }
+
+    /**
+     * Page titles of the locked Accessibility section, lower case: English, plus the
+     * phone's own wording read from the Settings app (so other languages match).
+     */
+    private val sectionTitles: Set<String> by lazy {
+        val titles = HashSet(SECTION_TITLES_EN)
+        runCatching {
+            val res = service.packageManager.getResourcesForApplication(SETTINGS_PACKAGE)
+            for (name in SETTINGS_TITLE_RES) {
+                @Suppress("DiscouragedApi")
+                val id = res.getIdentifier(name, "string", SETTINGS_PACKAGE)
+                if (id == 0) continue
+                runCatching { res.getString(id).trim().lowercase() }.getOrNull()
+                    ?.takeIf { it.isNotBlank() && it.length <= 40 }
+                    ?.let(titles::add)
+            }
+        }
+        titles
+    }
+
+    /** A page the window event alone shows is in the locked section, or Shield's own. */
+    private fun instantPage(pkg: String, className: String?, eventText: String?): String? {
+        val short = pkg.substringAfterLast('.')
+        if (ProtectionLocalStore.isAccessibilityPackage(pkg)) return "$short/app"
+        if (className != null && className.contains("Accessibility", ignoreCase = true)) {
+            return "$short/${className.substringAfterLast('.')}"
+        }
+        val text = eventText?.trim()?.lowercase() ?: return null
+        val label = ownLabel().lowercase()
+        if ((label.isNotBlank() && text == label) || text in sectionTitles) return "$short/eventTitle"
+        return null
     }
 
     /** The start of Shield's accessibility description, shown on its switch page. */
@@ -423,6 +478,18 @@ internal class SettingsGuard(
         private const val TITLE_TEXTS = 3
         /** Shield's switch page while loading had 12 nodes; lists of apps have far more. */
         private const val SMALL_PAGE_NODES = 30
+        private const val HOLD_MS = 1_500L
+        private const val SETTINGS_PACKAGE = "com.android.settings"
+        private val SECTION_TITLES_EN = setOf(
+            "accessibility", "installed apps", "installed services", "downloaded apps",
+            "downloaded services", "accessibility shortcuts",
+        )
+        /** Settings' own string names for those titles (AOSP and Samsung). */
+        private val SETTINGS_TITLE_RES = listOf(
+            "accessibility_settings", "accessibility_settings_title", "accessibility_title",
+            "accessibility_installed_service_title", "accessibility_services_title",
+            "accessibility_installed_apps", "accessibility_downloaded_services",
+        )
 
         @Suppress("DEPRECATION")
         private fun AccessibilityNodeInfo.release() {

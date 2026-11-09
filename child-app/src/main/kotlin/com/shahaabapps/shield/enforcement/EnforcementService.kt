@@ -358,7 +358,7 @@ class EnforcementService : AccessibilityService() {
         // Uninstall protection runs independently of app-limit enforcement.
         val eventText = event.text.joinToString(" ").ifBlank { null }
         guardUninstall(packageName, className, eventText)
-        settingsGuard.onWindowState(packageName)
+        settingsGuard.onWindowState(packageName, className, eventText)
 
         // Refresh which apps sit in a pop-up / split / PiP first, so an app opened
         // straight into one is covered in place, not blocked full-screen beneath it.

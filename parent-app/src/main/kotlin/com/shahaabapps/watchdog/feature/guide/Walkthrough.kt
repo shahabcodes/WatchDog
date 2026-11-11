@@ -46,7 +46,7 @@ object Walkthrough {
         step(HOME, "home.protectionIncomplete", "Protection incomplete", "Appears when something is off on your child's phone, like app blocking or a fake-location app. Most fixes are in Shield → Me → SET UP."),
         step(HOME, "home.locationHealth", "Location health", "A green tick means location is updating normally. An orange icon explains the problem and how to fix it on their phone."),
         step(HOME, "home.screentime", "Screen time today", "Today's total compared with yesterday, and the top apps. Open Apps for every app."),
-        step(HOME, "home.pendingApps", "New apps to review", "New apps work straight away but are supervised, with a screenshot every minute, until you decide. Tap \"Keep supervised\", \"Allow\" or \"Block\"."),
+        step(HOME, "home.pendingApps", "New apps to review", "New apps are blocked or supervised (your choice in Protection) until you decide. Tap \"Keep supervised\", \"Allow\" or \"Block\"."),
         step(HOME, "shot.capture", "See their screen", "Tap \"Capture\" for a snapshot of what's on their screen now. It needs the phone online and Accessibility on for Shield."),
         step(HOME, "shot.gallery", "Your screenshots", "Tap one to open it full screen. \"Save all\" copies them to Pictures/WatchDog; they're kept on this phone for 14 days."),
         step(HOME, "home.focusCard", "Focus modes", "Your Bedtime and School schedules at a glance. Tap to edit them."),

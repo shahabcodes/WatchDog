@@ -13,6 +13,7 @@ object ProtectionLocalStore {
     private const val KEY_BLOCKED = "blocked"
     private const val KEY_UNLOCK_UNTIL = "unlock_until"
     private const val KEY_BLOCK_NEW_APPS = "block_new_apps"
+    private const val KEY_NEW_APPS_BLOCKED = "new_apps_blocked"
     private const val KEY_LOCK_SETTINGS = "lock_settings"
     private const val KEY_MULTI_WINDOW_BLOCK = "multi_window_block"
 
@@ -41,6 +42,13 @@ object ProtectionLocalStore {
     }
 
     fun isBlockNewApps(context: Context): Boolean = prefs(context).getBoolean(KEY_BLOCK_NEW_APPS, true)
+
+    /** New apps awaiting review are blocked (true) or supervised (false). */
+    fun setNewAppsBlocked(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_NEW_APPS_BLOCKED, value).apply()
+    }
+
+    fun isNewAppsBlocked(context: Context): Boolean = prefs(context).getBoolean(KEY_NEW_APPS_BLOCKED, false)
 
     /** Parent's "Block pop-up and split-screen view" choice (kept for offline use). */
     fun setMultiWindowBlock(context: Context, value: MultiWindowBlock) {

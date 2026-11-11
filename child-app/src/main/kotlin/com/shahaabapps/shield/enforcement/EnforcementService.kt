@@ -163,8 +163,9 @@ class EnforcementService : AccessibilityService() {
                 when {
                     !supervised -> 0
                     rule != null && rule.watched -> rule.watchEverySeconds
-                    // A new app awaiting review is supervised until the parent decides.
-                    rule == null && pkg in pendingPackages -> NEW_APP_WATCH_SECONDS
+                    // A new app awaiting review is supervised until the parent decides
+                    // (unless the parent chose to block new apps instead).
+                    rule == null && pkg in pendingPackages && !newAppsBlocked() -> NEW_APP_WATCH_SECONDS
                     else -> 0
                 }
             },
@@ -258,6 +259,7 @@ class EnforcementService : AccessibilityService() {
             protectionRepository.observeConfirmed(childId).collectLatest { settings ->
                 ProtectionLocalStore.setBlocked(this@EnforcementService, settings.uninstallBlocked)
                 ProtectionLocalStore.setBlockNewApps(this@EnforcementService, settings.blockNewApps)
+                ProtectionLocalStore.setNewAppsBlocked(this@EnforcementService, settings.newAppsBlocked)
                 ProtectionLocalStore.setLockSettings(this@EnforcementService, settings.lockSettings)
                 ProtectionLocalStore.setMultiWindowBlock(this@EnforcementService, settings.multiWindowBlock)
                 multiWindowBlock = settings.multiWindowBlock
@@ -322,6 +324,10 @@ class EnforcementService : AccessibilityService() {
         return minutes * 60_000L
     }
 
+    /** Held-for-review apps are blocked, not supervised (parent's choice). */
+    private fun newAppsBlocked(): Boolean =
+        ProtectionLocalStore.isBlockNewApps(this) && ProtectionLocalStore.isNewAppsBlocked(this)
+
     private fun handleNewApp(pkg: String) {
         val childId = authRepository.currentUserIdOrNull() ?: return
         val pm = packageManager
@@ -336,6 +342,8 @@ class EnforcementService : AccessibilityService() {
             // the lasting rule.
             pendingPackages = pendingPackages + pkg
             pendingAppsRepository.add(childId, PendingApp(pkg, label, System.currentTimeMillis()))
+            // Blocked mode: if the new app is already in front, block it now.
+            if (newAppsBlocked() && lastForegroundPackage == pkg) enforce(pkg)
         }
     }
 
@@ -451,7 +459,19 @@ class EnforcementService : AccessibilityService() {
             )
         }
 
-        val rule = rulesByPackage[packageName] ?: return null
+        val rule = rulesByPackage[packageName]
+        if (rule == null) {
+            // A new app awaiting review, while the parent chose to block new apps:
+            // blocked until they decide (an approved ask lets it through meanwhile).
+            if (packageName in pendingPackages && newAppsBlocked() && !appAllowed) {
+                return BlockDecision(
+                    appLabelFor(packageName),
+                    "This new app is waiting for your parent to allow it.",
+                    BlockAttemptReason.REVIEW,
+                )
+            }
+            return null
+        }
         // A parent-approved unlock / more-time lets this app through its rule
         // (hard block or daily limit) until the grant expires.
         if (appAllowed) return null

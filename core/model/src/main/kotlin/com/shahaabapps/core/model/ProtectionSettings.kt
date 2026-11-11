@@ -28,6 +28,11 @@ data class ProtectionSettings(
      */
     val blockNewApps: Boolean = true,
     /**
+     * With [blockNewApps] on: new apps are blocked (not supervised) until the
+     * parent reviews them. Older Shield versions ignore it and supervise.
+     */
+    val newAppsBlocked: Boolean = false,
+    /**
      * When true, Shield keeps the child out of the Settings pages that switch it
      * off (its accessibility toggle, Usage Access, App info). Independent of
      * [uninstallBlocked]; if a parent never chose, it follows [uninstallBlocked].

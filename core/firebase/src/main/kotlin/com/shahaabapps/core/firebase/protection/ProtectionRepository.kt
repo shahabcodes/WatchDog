@@ -44,6 +44,8 @@ interface ProtectionRepository {
         lockSettings: Boolean,
         multiWindowBlock: MultiWindowBlock,
         newPin: String?,
+        /** With [blockNewApps]: block new apps until reviewed, instead of supervising them. */
+        newAppsBlocked: Boolean = false,
     ): AppResult<Unit>
 
     /** Parent: moves an old readable PIN hash to the server-only store. */
@@ -78,6 +80,7 @@ class FirebaseProtectionRepository @Inject constructor(
                     pinHash = snapshot?.getString("pinHash") ?: "",
                     legacyPin = snapshot?.getString("pin") ?: "",
                     blockNewApps = snapshot?.getBoolean("blockNewApps") ?: true,
+                    newAppsBlocked = snapshot?.getBoolean("newAppsBlocked") ?: false,
                     lockSettings = snapshot?.getBoolean("lockSettings")
                         ?: (snapshot?.getBoolean("uninstallBlocked") ?: false),
                     pinSet = snapshot?.getBoolean("hasPin") ?: false,
@@ -102,6 +105,7 @@ class FirebaseProtectionRepository @Inject constructor(
                     pinHash = snapshot.getString("pinHash") ?: "",
                     legacyPin = snapshot.getString("pin") ?: "",
                     blockNewApps = snapshot.getBoolean("blockNewApps") ?: true,
+                    newAppsBlocked = snapshot.getBoolean("newAppsBlocked") ?: false,
                     lockSettings = snapshot.getBoolean("lockSettings")
                         ?: (snapshot.getBoolean("uninstallBlocked") ?: false),
                     pinSet = snapshot.getBoolean("hasPin") ?: false,
@@ -119,12 +123,14 @@ class FirebaseProtectionRepository @Inject constructor(
         lockSettings: Boolean,
         multiWindowBlock: MultiWindowBlock,
         newPin: String?,
+        newAppsBlocked: Boolean,
     ): AppResult<Unit> =
         runCatchingResult {
             com.shahaabapps.core.common.Diag.action("protection.save", "childId=$childId")
             val base = mutableMapOf<String, Any>(
                 "uninstallBlocked" to uninstallBlocked,
                 "blockNewApps" to blockNewApps,
+                "newAppsBlocked" to newAppsBlocked,
                 "lockSettings" to lockSettings,
                 "multiWindowBlock" to multiWindowBlock.wire,
                 "updatedAtMillis" to System.currentTimeMillis(),

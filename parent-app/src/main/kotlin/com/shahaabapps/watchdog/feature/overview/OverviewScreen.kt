@@ -252,6 +252,7 @@ fun OverviewScreen(
                     DashSection("New apps to review") {
                         PendingAppsCard(
                             apps = pendingApps,
+                            newAppsBlocked = protection.blockNewApps && protection.newAppsBlocked,
                             onKeepSupervised = { pendingVm.keepSupervised(it) },
                             onAllow = { pendingVm.allow(it) },
                             onBlock = { pendingVm.keepBlocked(it) },
@@ -404,8 +405,8 @@ fun OverviewScreen(
             ProtectionEditor(
                 initialAlerts = protectionAlerts,
                 initial = protection,
-                onSave = { uninstallBlocked, blockNewApps, lockSettings, multiWindowBlock, newPin, alerts ->
-                    protectionVm.save(uninstallBlocked, blockNewApps, lockSettings, multiWindowBlock, newPin, alerts)
+                onSave = { uninstallBlocked, blockNewApps, newAppsBlocked, lockSettings, multiWindowBlock, newPin, alerts ->
+                    protectionVm.save(uninstallBlocked, blockNewApps, lockSettings, multiWindowBlock, newPin, alerts, newAppsBlocked)
                     showProtectionSheet = false
                 },
             )
@@ -1787,6 +1788,8 @@ private fun DashSection(title: String, content: @Composable () -> Unit) {
 @Composable
 private fun PendingAppsCard(
     apps: List<com.shahaabapps.core.model.PendingApp>,
+    /** New apps are held blocked (not supervised) until reviewed. */
+    newAppsBlocked: Boolean,
     onKeepSupervised: (String) -> Unit,
     onAllow: (String) -> Unit,
     onBlock: (String) -> Unit,
@@ -1808,7 +1811,11 @@ private fun PendingAppsCard(
                         Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
                             Text(app.label.ifBlank { app.packageName }, style = MaterialTheme.typography.bodyLarge)
                             Text(
-                                "Just installed · supervised for now, a screenshot a minute",
+                                if (newAppsBlocked) {
+                                    "Just installed · blocked until you decide"
+                                } else {
+                                    "Just installed · supervised for now, a screenshot a minute"
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = AppTheme.colors.secondaryLabel,
                             )
@@ -1870,6 +1877,7 @@ private fun ProtectionEditor(
     onSave: (
         uninstallBlocked: Boolean,
         blockNewApps: Boolean,
+        newAppsBlocked: Boolean,
         lockSettings: Boolean,
         multiWindowBlock: com.shahaabapps.core.model.MultiWindowBlock,
         newPin: String?,
@@ -1881,6 +1889,7 @@ private fun ProtectionEditor(
     var alerts by remember { mutableStateOf(initialAlerts) }
     var pin by remember { mutableStateOf("") }
     var blockNewApps by remember { mutableStateOf(initial.blockNewApps) }
+    var newAppsBlocked by remember { mutableStateOf(initial.newAppsBlocked) }
     var multiWindowBlock by remember { mutableStateOf(initial.multiWindowBlock) }
     // The stored PIN is hashed, so we can't reveal it — we only know whether one
     // is set. Keep it, or switch to "reset" to enter a new one. With no PIN set
@@ -1961,13 +1970,45 @@ private fun ProtectionEditor(
                 trailing = { CupertinoSwitch(checked = lockSettings, onCheckedChange = { lockSettings = it }) },
             )
         }
+        Text("New apps", style = MaterialTheme.typography.titleMedium)
         CupertinoCard {
-            CupertinoListRow(
-                title = "Supervise new apps",
-                subtitle = "Newly installed apps work straight away, with a screenshot every minute, until you review them",
-                showDivider = false,
-                trailing = { CupertinoSwitch(checked = blockNewApps, onCheckedChange = { blockNewApps = it }) },
-            )
+            Column {
+                val newAppOptions = listOf(
+                    Triple(
+                        "Block until reviewed",
+                        "Newly installed apps stay blocked until you allow them",
+                        { blockNewApps = true; newAppsBlocked = true },
+                    ),
+                    Triple(
+                        "Supervise until reviewed",
+                        "They work straight away, with a screenshot every minute, until you review them",
+                        { blockNewApps = true; newAppsBlocked = false },
+                    ),
+                    Triple(
+                        "Allow",
+                        "They work straight away with no review",
+                        { blockNewApps = false },
+                    ),
+                )
+                val selected = when {
+                    !blockNewApps -> 2
+                    newAppsBlocked -> 0
+                    else -> 1
+                }
+                newAppOptions.forEachIndexed { index, (title, subtitle, choose) ->
+                    CupertinoListRow(
+                        title = title,
+                        subtitle = subtitle,
+                        showDivider = index < newAppOptions.lastIndex,
+                        onClick = choose,
+                        trailing = {
+                            if (index == selected) {
+                                Icon(Icons.Filled.Check, contentDescription = "Selected", tint = AppTheme.colors.accent)
+                            }
+                        },
+                    )
+                }
+            }
         }
         MultiWindowBlockPicker(multiWindowBlock) { multiWindowBlock = it }
         Text("Alerts", style = MaterialTheme.typography.titleMedium)
@@ -2000,7 +2041,7 @@ private fun ProtectionEditor(
                 // Only send a new PIN when the parent actually entered one; otherwise
                 // keep the stored hash (toggling protection off keeps the PIN).
                 val newPin = if (blocked && resetting) pin else null
-                onSave(blocked, blockNewApps, lockSettings, multiWindowBlock, newPin, alerts)
+                onSave(blocked, blockNewApps, newAppsBlocked, lockSettings, multiWindowBlock, newPin, alerts)
             },
         )
     }

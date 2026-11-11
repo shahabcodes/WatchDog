@@ -39,6 +39,7 @@ data class MyAppsState(
 
 @HiltViewModel
 class MyAppsViewModel @Inject constructor(
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
     authRepository: AuthRepository,
     appRulesRepository: AppRulesRepository,
     pendingAppsRepository: PendingAppsRepository,
@@ -66,8 +67,14 @@ class MyAppsViewModel @Inject constructor(
                 fun app(pkg: String, fallback: String, detail: String) = byPkg[pkg]?.let {
                     MyApp(pkg, it.label.ifBlank { fallback.ifBlank { pkg } }, it.icon, detail, pkg in asked)
                 }
+                val ruledPkgs = rules.map { it.packageName }.toSet()
+                val newBlocked = com.shahaabapps.shield.enforcement.ProtectionLocalStore.isBlockNewApps(context) &&
+                    com.shahaabapps.shield.enforcement.ProtectionLocalStore.isNewAppsBlocked(context)
+                val newApps = pending.filter { it.packageName !in ruledPkgs }
                 val blocked = rules.filter { it.blocked }
-                    .mapNotNull { app(it.packageName, it.appLabel, "Always blocked") }
+                    .mapNotNull { app(it.packageName, it.appLabel, "Always blocked") } +
+                    (if (newBlocked) newApps else emptyList())
+                        .mapNotNull { app(it.packageName, it.label, "New app: blocked until your parent allows it") }
                 val restricted = rules.filter { !it.blocked && (it.dailyLimitMinutes != null || it.schedule.isNotEmpty()) }
                     .mapNotNull { r ->
                         val parts = buildList {
@@ -84,7 +91,7 @@ class MyAppsViewModel @Inject constructor(
                 val ruled = rules.map { it.packageName }.toSet()
                 val supervised = rules.filter { it.watched }
                     .mapNotNull { app(it.packageName, it.appLabel, "Your parent sees screenshots of it, ${often(it.watchEverySeconds)}") } +
-                    pending.filter { it.packageName !in ruled }
+                    (if (newBlocked) emptyList() else pending.filter { it.packageName !in ruled })
                         .mapNotNull { app(it.packageName, it.label, "New app: your parent sees screenshots of it until they decide") }
                 MyAppsState(
                     blocked = blocked.sortedBy { it.label.lowercase() },

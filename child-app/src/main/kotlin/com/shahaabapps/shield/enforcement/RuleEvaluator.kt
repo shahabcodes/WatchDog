@@ -26,12 +26,12 @@ object RuleEvaluator {
         if (rule.schedule.isNotEmpty()) {
             val minuteOfDay = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
             val isoDayOfWeek = toIsoDayOfWeek(now.get(Calendar.DAY_OF_WEEK))
-            val insideAnyWindow = rule.schedule.any { window ->
-                isoDayOfWeek in window.daysOfWeek &&
-                    minuteOfDay >= window.startMinuteOfDay &&
-                    minuteOfDay < window.endMinuteOfDay
+            val insideAnyWindow = rule.schedule.any { it.contains(isoDayOfWeek, minuteOfDay) }
+            if (rule.scheduleBlocks) {
+                if (insideAnyWindow) return Decision(true, "Blocked at this time", BlockAttemptReason.HOURS)
+            } else if (!insideAnyWindow) {
+                return Decision(true, "Outside allowed hours", BlockAttemptReason.HOURS)
             }
-            if (!insideAnyWindow) return Decision(true, "Outside allowed hours", BlockAttemptReason.HOURS)
         }
 
         val limit = rule.dailyLimitMinutes

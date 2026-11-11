@@ -239,8 +239,11 @@ fun UsageScreen(
                 app = current.app,
                 rule = current.rule,
                 newApp = current.newApp && current.rule == null,
-                onSave = { limit, blocked, schedule, watchEvery ->
-                    viewModel.saveRule(current.app, limit, blocked, schedule, watchEvery, clearReview = current.newApp)
+                onSave = { limit, blocked, schedule, watchEvery, scheduleBlocks ->
+                    viewModel.saveRule(
+                        current.app, limit, blocked, schedule, watchEvery,
+                        scheduleBlocks = scheduleBlocks, clearReview = current.newApp,
+                    )
                     editing = null
                 },
                 onViewShots = {
@@ -363,7 +366,13 @@ private fun RuleEditor(
     rule: AppRule?,
     /** Just installed and awaiting review: supervised until a rule is saved. */
     newApp: Boolean,
-    onSave: (dailyLimitMinutes: Int?, blocked: Boolean, schedule: List<TimeWindow>, watchEverySeconds: Int) -> Unit,
+    onSave: (
+        dailyLimitMinutes: Int?,
+        blocked: Boolean,
+        schedule: List<TimeWindow>,
+        watchEverySeconds: Int,
+        scheduleBlocks: Boolean,
+    ) -> Unit,
     onRemove: () -> Unit,
     onViewShots: () -> Unit,
 ) {
@@ -384,6 +393,7 @@ private fun RuleEditor(
             rule?.schedule?.map { it.startMinuteOfDay to it.endMinuteOfDay } ?: emptyList(),
         )
     }
+    var scheduleBlocks by remember { mutableStateOf(rule?.scheduleBlocks == true) }
     var editing by remember { mutableStateOf<Pair<Int, Boolean>?>(null) }
     var confirmRemove by remember { mutableStateOf(false) }
 
@@ -465,9 +475,29 @@ private fun RuleEditor(
                 }
             }
 
-            Text("Allowed hours", style = MaterialTheme.typography.titleMedium)
+            Text("Hours", style = MaterialTheme.typography.titleMedium)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                FilterChip(
+                    selected = !scheduleBlocks,
+                    onClick = { scheduleBlocks = false },
+                    label = { Text("Allowed hours") },
+                    modifier = Modifier.padding(vertical = 2.dp),
+                )
+                FilterChip(
+                    selected = scheduleBlocks,
+                    onClick = { scheduleBlocks = true },
+                    label = { Text("Blocked hours") },
+                    modifier = Modifier.padding(vertical = 2.dp),
+                )
+            }
             Text(
-                "The app works only during these times. Add as many windows as you like; leave empty to allow all day.",
+                if (scheduleBlocks) {
+                    "The app is blocked during these times and works the rest of the day. " +
+                        "Add as many as you like; an end before the start runs overnight."
+                } else {
+                    "The app works only during these times. Add as many as you like; " +
+                        "an end before the start runs overnight. Leave empty to allow all day."
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = AppTheme.colors.secondaryLabel,
             )
@@ -515,7 +545,7 @@ private fun RuleEditor(
                 // them while blocked — RuleEvaluator short-circuits on `blocked`).
                 val schedule = windows.filter { it.first != it.second }
                     .map { TimeWindow(it.first, it.second, setOf(1, 2, 3, 4, 5, 6, 7)) }
-                onSave(limit, blocked, schedule, if (access == Access.WATCHED) watchEvery else 0)
+                onSave(limit, blocked, schedule, if (access == Access.WATCHED) watchEvery else 0, scheduleBlocks)
             },
             modifier = Modifier.tourTarget("rule.save"),
         )

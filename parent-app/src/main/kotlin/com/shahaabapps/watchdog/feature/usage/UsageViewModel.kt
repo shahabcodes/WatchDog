@@ -45,7 +45,7 @@ data class AppRow(
 ) {
     val blocked: Boolean get() = rule?.blocked == true
     val supervised: Boolean get() = !blocked && (rule?.watched == true || (rule == null && newApp))
-    /** A daily limit or allowed hours (not blocked outright). */
+    /** A daily limit or allowed / blocked hours (not blocked outright). */
     val restricted: Boolean get() = !blocked && rule != null && (rule.dailyLimitMinutes != null || rule.schedule.isNotEmpty())
 }
 
@@ -149,6 +149,8 @@ class UsageViewModel @Inject constructor(
         blocked: Boolean,
         schedule: List<TimeWindow>,
         watchEverySeconds: Int,
+        /** [schedule] holds blocked hours, not allowed hours. */
+        scheduleBlocks: Boolean = false,
         /** A new app awaiting review: the saved rule is the parent's decision. */
         clearReview: Boolean = false,
     ) {
@@ -162,6 +164,7 @@ class UsageViewModel @Inject constructor(
                     blocked = blocked,
                     schedule = schedule,
                     watchEverySeconds = watchEverySeconds,
+                    scheduleBlocks = scheduleBlocks,
                 ),
             )
             if (clearReview && saved is com.shahaabapps.core.common.AppResult.Success) {

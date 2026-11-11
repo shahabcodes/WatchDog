@@ -72,7 +72,12 @@ class MyAppsViewModel @Inject constructor(
                     .mapNotNull { r ->
                         val parts = buildList {
                             r.dailyLimitMinutes?.let { add("${usage[r.packageName] ?: 0}m of ${formatLimit(it)} today") }
-                            if (r.schedule.isNotEmpty()) add("Open " + r.schedule.joinToString(", ") { "${clock(it.startMinuteOfDay)} – ${clock(it.endMinuteOfDay)}" })
+                            if (r.schedule.isNotEmpty()) {
+                                add(
+                                    (if (r.scheduleBlocks) "Closed " else "Open ") +
+                                        r.schedule.joinToString(", ") { "${clock(it.startMinuteOfDay)} – ${clock(it.endMinuteOfDay)}" },
+                                )
+                            }
                         }
                         app(r.packageName, r.appLabel, parts.joinToString(" · "))
                     }

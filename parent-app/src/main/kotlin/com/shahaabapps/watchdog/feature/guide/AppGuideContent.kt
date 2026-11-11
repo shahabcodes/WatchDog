@@ -216,7 +216,7 @@ object AppGuideContent {
                 step("Today's total", "The top of the screen shows \"Screen time today\" for the child you picked on the Dashboard. It updates as Shield reports usage."),
                 step("Filter", "Show \"All apps\", or only \"Restricted\" (a daily limit or hours), \"Blocked\" or \"Supervised\" apps."),
                 step("Find an app", "Type in \"Search apps\", or sort the list with \"Used time\", \"Name\" or \"Installed on\". \"Installed on\" also shows each app's install date."),
-                step("Read the cards", "Each card shows today's time with a bar. \"Blocked\" means the app is blocked, \"Supervised\" that it sends you screenshots, and \"Restricted\" that it has a daily limit or allowed hours."),
+                step("Read the cards", "Each card shows today's time with a bar. \"Blocked\" means the app is blocked, \"Supervised\" that it sends you screenshots, and \"Restricted\" that it has a daily limit, or allowed or blocked hours."),
                 step("On the Dashboard too", "The Dashboard compares \"Screen time today\" with yesterday and lists the top 5 apps. \"THIS WEEK\" shows a 7-day chart with the daily average."),
                 step("Empty list?", "If you see \"Waiting for app list\", open Shield on your child's phone so it sends its list of apps."),
             ),

@@ -183,7 +183,7 @@ class WatchdogMessagingService : FirebaseMessagingService() {
         private fun reasonText(reason: BlockAttemptReason): String = when (reason) {
             BlockAttemptReason.BLOCKED -> "Blocked by you"
             BlockAttemptReason.LIMIT -> "Daily limit reached"
-            BlockAttemptReason.HOURS -> "Outside allowed hours"
+            BlockAttemptReason.HOURS -> "Not allowed at this time"
             BlockAttemptReason.BEDTIME -> "Bedtime"
             BlockAttemptReason.SCHOOL -> "School"
             BlockAttemptReason.REVIEW -> "Waiting for your review"

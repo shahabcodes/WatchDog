@@ -35,16 +35,20 @@ enum class AppFilter(val label: String) {
 
 /**
  * One app row: the app, today's usage minutes, and its rule (if any). [newApp]: just
- * installed and awaiting review, so Shield supervises it until the parent decides.
+ * installed and awaiting review, so Shield blocks it ([newAppsBlocked]) or
+ * supervises it until the parent decides.
  */
 data class AppRow(
     val app: InstalledApp,
     val minutes: Int,
     val rule: AppRule?,
     val newApp: Boolean = false,
+    val newAppsBlocked: Boolean = false,
 ) {
-    val blocked: Boolean get() = rule?.blocked == true
-    val supervised: Boolean get() = !blocked && (rule?.watched == true || (rule == null && newApp))
+    /** Awaiting review with no rule of its own yet. */
+    val reviewing: Boolean get() = rule == null && newApp
+    val blocked: Boolean get() = rule?.blocked == true || (reviewing && newAppsBlocked)
+    val supervised: Boolean get() = !blocked && (rule?.watched == true || reviewing)
     /** A daily limit or allowed / blocked hours (not blocked outright). */
     val restricted: Boolean get() = !blocked && rule != null && (rule.dailyLimitMinutes != null || rule.schedule.isNotEmpty())
 }
@@ -67,6 +71,7 @@ class UsageViewModel @Inject constructor(
     usageRepository: UsageRepository,
     private val appRulesRepository: AppRulesRepository,
     private val pendingAppsRepository: com.shahaabapps.core.firebase.protection.PendingAppsRepository,
+    protectionRepository: com.shahaabapps.core.firebase.protection.ProtectionRepository,
     watchShotSync: com.shahaabapps.watchdog.feature.watch.WatchShotSync,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
     private val authRepository: com.shahaabapps.core.firebase.auth.AuthRepository,
@@ -98,10 +103,14 @@ class UsageViewModel @Inject constructor(
     val uiState: StateFlow<UsageUiState> = combine(
         usageRepository.observeUsage(childId, today),
         appRulesRepository.observeInstalledApps(childId),
-        combine(appRulesRepository.observeAppRules(childId), pendingAppsRepository.observe(childId)) { r, p -> r to p },
+        combine(
+            appRulesRepository.observeAppRules(childId),
+            pendingAppsRepository.observe(childId),
+            protectionRepository.observe(childId),
+        ) { r, p, prot -> Triple(r, p, prot.blockNewApps && prot.newAppsBlocked) },
         combine(query, filter) { a, b -> a to b },
         combine(sort, shotsToday) { a, b -> a to b },
-    ) { usage, apps, (rules, pending), (q, selectedFilter), (selectedSort, todayShots) ->
+    ) { usage, apps, (rules, pending, newAppsBlocked), (q, selectedFilter), (selectedSort, todayShots) ->
         val rulesByPackage = rules.associateBy { it.packageName }
         val newApps = pending.map { it.packageName }.toSet()
         val total = apps.sumOf { usage[it.packageName] ?: 0 }
@@ -111,6 +120,7 @@ class UsageViewModel @Inject constructor(
                 minutes = usage[app.packageName] ?: 0,
                 rule = rulesByPackage[app.packageName],
                 newApp = app.packageName in newApps,
+                newAppsBlocked = newAppsBlocked,
             )
         }
         var rows = when (selectedFilter) {

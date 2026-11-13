@@ -238,7 +238,8 @@ fun UsageScreen(
             RuleEditor(
                 app = current.app,
                 rule = current.rule,
-                newApp = current.newApp && current.rule == null,
+                newApp = current.reviewing,
+                newAppBlocked = current.reviewing && current.newAppsBlocked,
                 onSave = { limit, blocked, schedule, watchEvery, scheduleBlocks ->
                     viewModel.saveRule(
                         current.app, limit, blocked, schedule, watchEvery,
@@ -316,9 +317,9 @@ private fun AppCard(
                     color = AppTheme.colors.secondaryLabel,
                 )
                 if (row.blocked) {
-                    StatusChip(text = "Blocked", color = AppTheme.colors.destructive)
+                    StatusChip(text = if (row.reviewing) "New · Blocked" else "Blocked", color = AppTheme.colors.destructive)
                 } else if (row.supervised) {
-                    StatusChip(text = if (row.newApp && row.rule == null) "New · Supervised" else "Supervised", color = AppTheme.colors.gold)
+                    StatusChip(text = if (row.reviewing) "New · Supervised" else "Supervised", color = AppTheme.colors.gold)
                 } else if (row.restricted) {
                     StatusChip(text = "Restricted", color = AppTheme.colors.accent)
                 }
@@ -366,6 +367,8 @@ private fun RuleEditor(
     rule: AppRule?,
     /** Just installed and awaiting review: supervised until a rule is saved. */
     newApp: Boolean,
+    /** Awaiting review and held blocked (the parent's new-apps choice). */
+    newAppBlocked: Boolean = false,
     onSave: (
         dailyLimitMinutes: Int?,
         blocked: Boolean,
@@ -379,7 +382,7 @@ private fun RuleEditor(
     var access by remember {
         mutableStateOf(
             when {
-                rule?.blocked == true -> Access.BLOCKED
+                rule?.blocked == true || newAppBlocked -> Access.BLOCKED
                 (rule?.watchEverySeconds ?: 0) > 0 || newApp -> Access.WATCHED
                 else -> Access.ALLOWED
             },

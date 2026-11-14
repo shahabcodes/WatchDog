@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Watch Dog</string>
+    <string name="widget_map_desc">Where your child is, on a live map</string>
+    <string name="widget_apps_desc">Apps your children installed recently</string>
+    <string name="widget_requests_desc">Requests from your children, with Approve and Not now</string>
 </resources>

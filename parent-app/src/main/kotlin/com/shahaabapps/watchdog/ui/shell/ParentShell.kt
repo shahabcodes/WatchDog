@@ -305,6 +305,11 @@ fun ParentShell(
             onDeepLinkHandled()
             return@LaunchedEffect
         }
+        if (link.action == com.shahaabapps.watchdog.messaging.WatchdogMessagingService.ACTION_OPEN_MAP) {
+            switchTab("${Tab.MAP.route}/${link.childId}")
+            onDeepLinkHandled()
+            return@LaunchedEffect
+        }
         if (link.action == com.shahaabapps.watchdog.messaging.WatchdogMessagingService.ACTION_APP_RULES) {
             // A blocked-app alert: that child's Activity tab, on the app's rule sheet.
             val app = link.appPackage?.let { "?app=${android.net.Uri.encode(it)}" }.orEmpty()

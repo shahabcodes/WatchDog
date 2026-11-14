@@ -1,4 +1,5 @@
 [versions]
+glance = "1.1.1"
 # Build tooling
 agp = "8.8.0"
 kotlin = "2.1.0"
@@ -49,6 +50,7 @@ androidxJunit = "1.2.1"
 espresso = "3.6.1"
 
 [libraries]
+androidx-glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
 # --- Gradle plugins exposed as libraries for build-logic convention module ---
 android-gradlePlugin = { group = "com.android.tools.build", name = "gradle", version.ref = "agp" }
 kotlin-gradlePlugin = { group = "org.jetbrains.kotlin", name = "kotlin-gradle-plugin", version.ref = "kotlin" }

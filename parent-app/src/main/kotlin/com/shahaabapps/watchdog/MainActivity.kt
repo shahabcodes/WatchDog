@@ -59,6 +59,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStop() {
+        super.onStop()
+        // Leaving Watch Dog: bring the home-screen widgets up to date (or clear them
+        // after a sign-out).
+        com.shahaabapps.watchdog.widget.WidgetRefreshWorker.refreshNow(this)
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -68,6 +75,12 @@ class MainActivity : ComponentActivity() {
     private fun parseDeepLink(intent: Intent?): RequestDeepLink? {
         intent ?: return null
         val childId = intent.getStringExtra(WatchdogMessagingService.EXTRA_CHILD_ID) ?: return null
+        if (intent.getStringExtra(WatchdogMessagingService.EXTRA_ACTION) == WatchdogMessagingService.ACTION_OPEN_MAP) {
+            // The map widget: that child on the Map tab.
+            intent.removeExtra(WatchdogMessagingService.EXTRA_CHILD_ID)
+            intent.removeExtra(WatchdogMessagingService.EXTRA_ACTION)
+            return RequestDeepLink(childId = childId, requestId = "", action = WatchdogMessagingService.ACTION_OPEN_MAP)
+        }
         if (intent.getStringExtra(WatchdogMessagingService.EXTRA_ACTION) == WatchdogMessagingService.ACTION_APP_RULES) {
             // Blocked-app alert (a content tap, so it already dismissed itself).
             val appPackage = intent.getStringExtra(WatchdogMessagingService.EXTRA_APP_PACKAGE)

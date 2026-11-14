@@ -53,6 +53,7 @@ class WatchdogMessagingService : FirebaseMessagingService() {
         // notification with Approve/Reject buttons that deep-link into the app.
         if (message.data["type"] == "request") {
             handleRequestPush(message.data)
+            com.shahaabapps.watchdog.widget.WidgetRefreshWorker.refreshNow(this)
             return
         }
         // The child tried a blocked app: also data-only and content-free (which
@@ -61,6 +62,8 @@ class WatchdogMessagingService : FirebaseMessagingService() {
             handleBlockAttemptPush(message.data)
             return
         }
+        // Anything else (a new app, a place alert…) may change what the widgets show.
+        com.shahaabapps.watchdog.widget.WidgetRefreshWorker.refreshNow(this)
         // Foreground messages (and other data-only messages) land here; post manually.
         val notif = message.notification
         val title = notif?.title ?: message.data["title"] ?: "Watch Dog"
@@ -156,6 +159,8 @@ class WatchdogMessagingService : FirebaseMessagingService() {
         // A blocked-app alert: opens the child's Activity tab on that app's rule.
         const val ACTION_APP_RULES = "APP_RULES"
         const val EXTRA_APP_PACKAGE = "deeplink_app_package"
+        // The map widget: opens the Map tab on that child.
+        const val ACTION_OPEN_MAP = "OPEN_MAP"
 
         fun ensureChannel(context: Context) {
             val manager = context.getSystemService(NotificationManager::class.java) ?: return

@@ -36,6 +36,10 @@ dependencies {
     // Location + geofencing (Play Services)
     implementation(libs.play.services.location)
 
+    // Home-screen widgets (map, recent apps, requests) and their background refresh
+    implementation(libs.androidx.glance.appwidget)
+    implementation(libs.androidx.work.runtime.ktx)
+
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)

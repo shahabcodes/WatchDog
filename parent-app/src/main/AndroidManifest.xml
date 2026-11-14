@@ -50,6 +50,41 @@
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@drawable/ic_launcher_monochrome" />
 
+        <!-- Home-screen widgets. -->
+        <receiver
+            android:name=".widget.ChildMapWidgetReceiver"
+            android:exported="true"
+            android:label="Family map">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_map_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.RecentAppsWidgetReceiver"
+            android:exported="true"
+            android:label="New apps">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_apps_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.RequestsWidgetReceiver"
+            android:exported="true"
+            android:label="Requests">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_requests_info" />
+        </receiver>
+
         <!-- Shares locally stored screenshots as image files. -->
         <provider
             android:name="androidx.core.content.FileProvider"

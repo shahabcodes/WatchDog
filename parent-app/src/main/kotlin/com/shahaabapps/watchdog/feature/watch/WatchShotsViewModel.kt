@@ -71,9 +71,13 @@ class WatchShotsViewModel @Inject constructor(
 
     fun select(app: String?) { selected.value = app }
 
-    fun delete(entry: WatchEntry) {
+    fun delete(entry: WatchEntry) = delete(listOf(entry))
+
+    /** Deletes these captures from this phone (they won't download again). */
+    fun delete(toDelete: Collection<WatchEntry>) {
+        if (toDelete.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
-            LocalWatchStore.delete(entry, context, parentUid, childId)
+            LocalWatchStore.delete(toDelete, context, parentUid, childId)
             entries.value = LocalWatchStore.list(context, parentUid, childId)
         }
     }

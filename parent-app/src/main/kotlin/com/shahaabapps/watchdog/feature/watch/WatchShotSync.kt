@@ -30,6 +30,10 @@ class WatchShotSync @Inject constructor(
         repository.observeAfter(childId, since).collect { records ->
             var saved = false
             for (record in records) {
+                val gone = withContext(Dispatchers.IO) {
+                    LocalWatchStore.isDeleted(context, parentUid, childId, record.capturedAtMillis)
+                }
+                if (gone) continue
                 val shot = repository.open(childId, record) ?: continue
                 val stored = withContext(Dispatchers.IO) {
                     if (LocalWatchStore.has(context, parentUid, childId, shot.packageName, shot.capturedAtMillis)) {

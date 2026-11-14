@@ -26,6 +26,18 @@ object LocalWatchStore {
     private fun childDir(context: Context, parentUid: String, childId: String): File =
         File(File(File(context.filesDir, "watchshots"), parentUid), childId)
 
+    /**
+     * Deleted captures, one empty file per capture time, kept beside the child's
+     * folder: the server still holds a shot for a few days after it arrives, and
+     * these stop it from downloading again.
+     */
+    private fun deletedDir(context: Context, parentUid: String, childId: String): File =
+        File(File(File(context.filesDir, "watchshots"), parentUid), "$childId.deleted")
+
+    /** The parent deleted the capture taken at [millis]. */
+    fun isDeleted(context: Context, parentUid: String, childId: String, millis: Long): Boolean =
+        File(deletedDir(context, parentUid, childId), millis.toString()).exists()
+
     fun has(context: Context, parentUid: String, childId: String, pkg: String, millis: Long): Boolean {
         val dir = File(childDir(context, parentUid, childId), safe(pkg))
         return File(dir, "$millis.jpg").exists() || File(dir, "$millis.hidden").exists()
@@ -38,8 +50,10 @@ object LocalWatchStore {
     }
 
     /** Newest capture time stored for this child (child's clock), 0 when none. */
-    fun newestMillis(context: Context, parentUid: String, childId: String): Long =
-        list(context, parentUid, childId).maxOfOrNull { it.capturedAtMillis } ?: 0L
+    fun newestMillis(context: Context, parentUid: String, childId: String): Long = maxOf(
+        list(context, parentUid, childId).maxOfOrNull { it.capturedAtMillis } ?: 0L,
+        deletedDir(context, parentUid, childId).listFiles()?.maxOfOrNull { it.name.toLongOrNull() ?: 0L } ?: 0L,
+    )
 
     /** All captures for this child, newest first; [pkg] narrows to one app. */
     fun list(context: Context, parentUid: String, childId: String, pkg: String? = null): List<WatchEntry> {
@@ -57,10 +71,18 @@ object LocalWatchStore {
         }.sortedByDescending { it.capturedAtMillis }
     }
 
-    fun delete(entry: WatchEntry, context: Context, parentUid: String, childId: String) {
-        val dir = File(childDir(context, parentUid, childId), safe(entry.packageName))
-        runCatching { File(dir, "${entry.capturedAtMillis}.jpg").delete() }
-        runCatching { File(dir, "${entry.capturedAtMillis}.hidden").delete() }
+    fun delete(entry: WatchEntry, context: Context, parentUid: String, childId: String) =
+        delete(listOf(entry), context, parentUid, childId)
+
+    fun delete(entries: Collection<WatchEntry>, context: Context, parentUid: String, childId: String) {
+        val root = childDir(context, parentUid, childId)
+        val deleted = deletedDir(context, parentUid, childId).apply { mkdirs() }
+        for (entry in entries) {
+            runCatching { File(deleted, entry.capturedAtMillis.toString()).createNewFile() }
+            val dir = File(root, safe(entry.packageName))
+            runCatching { File(dir, "${entry.capturedAtMillis}.jpg").delete() }
+            runCatching { File(dir, "${entry.capturedAtMillis}.hidden").delete() }
+        }
     }
 
     fun prune(context: Context, parentUid: String, childId: String) {
@@ -70,6 +92,10 @@ object LocalWatchStore {
                 val millis = f.nameWithoutExtension.toLongOrNull() ?: return@forEach
                 if (millis < cutoff) runCatching { f.delete() }
             }
+        }
+        deletedDir(context, parentUid, childId).listFiles()?.forEach { f ->
+            val millis = f.name.toLongOrNull() ?: return@forEach
+            if (millis < cutoff) runCatching { f.delete() }
         }
     }
 

@@ -1,5 +1,6 @@
 package com.shahaabapps.watchdog.ui.shell
 
+import androidx.compose.material.icons.filled.Security
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -375,25 +376,24 @@ fun ParentShell(
     }
 
     if (showMfaOffNotice) {
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { showMfaOffNotice = false },
-            title = { Text("Two-factor is off") },
-            text = {
-                Text(
-                    "You signed in with a backup code, so two-factor authentication was turned off. " +
-                        "Set it up again with your new authenticator to keep your account protected.",
-                )
+        com.shahaabapps.core.ui.components.AppDialog(
+            onDismiss = { showMfaOffNotice = false },
+            title = "Two-factor is off",
+            icon = androidx.compose.material.icons.Icons.Filled.Security,
+            confirmText = "Set up now",
+            onConfirm = {
+                showMfaOffNotice = false
+                navController.navigate("security") { launchSingleTop = true }
             },
-            confirmButton = {
-                androidx.compose.material3.TextButton(onClick = {
-                    showMfaOffNotice = false
-                    navController.navigate("security") { launchSingleTop = true }
-                }) { Text("Set up now") }
-            },
-            dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { showMfaOffNotice = false }) { Text("Later") }
-            },
-        )
+            dismissText = "Later",
+        ) {
+            Text(
+                "You signed in with a backup code, so two-factor authentication was turned off. " +
+                    "Set it up again with your new authenticator to keep your account protected.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = AppTheme.colors.secondaryLabel,
+            )
+        }
     }
 
     androidx.compose.runtime.CompositionLocalProvider(LocalTour provides tour) {

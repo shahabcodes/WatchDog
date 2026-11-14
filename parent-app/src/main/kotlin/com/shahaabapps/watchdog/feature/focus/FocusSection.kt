@@ -1,5 +1,6 @@
 package com.shahaabapps.watchdog.feature.focus
 
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -491,38 +492,37 @@ private fun TimeZonePicker(phoneZone: String, onPick: (String) -> Unit, onDismis
         val q = query.trim()
         if (q.isEmpty()) all else all.filter { it.contains(q, ignoreCase = true) || zoneCity(it).contains(q, ignoreCase = true) }
     }
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Child's time zone") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                if (phoneZone.isNotBlank()) {
+    com.shahaabapps.core.ui.components.AppDialog(
+        onDismiss = onDismiss,
+        title = "Child's time zone",
+        icon = androidx.compose.material.icons.Icons.Filled.Public,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            if (phoneZone.isNotBlank()) {
+                Text(
+                    "Use the phone's zone: ${zoneCity(phoneZone)} (${zoneOffsetLabel(phoneZone)})",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = AppTheme.colors.accent,
+                    modifier = Modifier.fillMaxWidth().clickable { onPick(phoneZone) }.padding(vertical = Spacing.sm),
+                )
+            }
+            androidx.compose.material3.OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                singleLine = true,
+                label = { Text("Search city") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.height(320.dp)) {
+                items(shown.size) { i ->
+                    val id = shown[i]
                     Text(
-                        "Use the phone's zone: ${zoneCity(phoneZone)} (${zoneOffsetLabel(phoneZone)})",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = AppTheme.colors.accent,
-                        modifier = Modifier.fillMaxWidth().clickable { onPick(phoneZone) }.padding(vertical = Spacing.sm),
+                        "${zoneCity(id)} · ${id.substringBefore('/')} (${zoneOffsetLabel(id)})",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.fillMaxWidth().clickable { onPick(id) }.padding(vertical = Spacing.sm),
                     )
                 }
-                androidx.compose.material3.OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    singleLine = true,
-                    label = { Text("Search city") },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.height(320.dp)) {
-                    items(shown.size) { i ->
-                        val id = shown[i]
-                        Text(
-                            "${zoneCity(id)} · ${id.substringBefore('/')} (${zoneOffsetLabel(id)})",
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.fillMaxWidth().clickable { onPick(id) }.padding(vertical = Spacing.sm),
-                        )
-                    }
-                }
             }
-        },
-        confirmButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+        }
+    }
 }

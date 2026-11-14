@@ -32,14 +32,12 @@ import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -118,7 +116,7 @@ fun WatchShotsScreen(
                 else -> state.selectedApp?.let(::labelOf) ?: "Supervised apps"
             },
             subtitle = if (selecting) "Tap screenshots, or a visit's box, to select more" else "Screenshots at random moments",
-            actions = {
+            actions = { Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 if (selecting) {
                     HeroIconButton(onClick = { selected = emptySet() }) {
                         Icon(Icons.Filled.Close, contentDescription = "Cancel selection", tint = Color.White)
@@ -139,7 +137,7 @@ fun WatchShotsScreen(
                         }
                     }
                 }
-            },
+            } },
         )
         if (!selecting && (state.apps.size > 1 || (state.selectedApp != null && state.apps.isNotEmpty()))) {
             Row(
@@ -216,31 +214,22 @@ fun WatchShotsScreen(
     confirm?.let { ask ->
         val n = ask.entries.size
         val what = if (n == 1) "1 screenshot" else "$n screenshots"
-        AlertDialog(
-            onDismissRequest = { confirm = null },
-            title = {
-                Text(
-                    when (ask) {
-                        is DeleteAsk.All -> if (ask.app != null) "Delete all ${ask.app} screenshots?" else "Delete all screenshots?"
-                        is DeleteAsk.Visit -> "Delete this visit?"
-                        is DeleteAsk.Selected -> "Delete $what?"
-                    },
-                )
+        com.shahaabapps.core.ui.components.ConfirmDialog(
+            title = when (ask) {
+                is DeleteAsk.All -> if (ask.app != null) "Delete all ${ask.app} screenshots?" else "Delete all screenshots?"
+                is DeleteAsk.Visit -> "Delete this visit?"
+                is DeleteAsk.Selected -> "Delete $what?"
             },
-            text = {
-                Text(
-                    (if (ask is DeleteAsk.Selected) "" else "$what will be deleted. ") +
-                        "They're removed from this phone and won't download again. This can't be undone.",
-                )
+            message = (if (ask is DeleteAsk.Selected) "" else "$what will be deleted. ") +
+                "They're removed from this phone and won't download again. This can't be undone.",
+            confirmText = "Delete",
+            destructive = true,
+            onConfirm = {
+                viewModel.delete(ask.entries)
+                selected = emptySet()
+                confirm = null
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.delete(ask.entries)
-                    selected = emptySet()
-                    confirm = null
-                }) { Text("Delete", color = AppTheme.colors.destructive) }
-            },
-            dismissButton = { TextButton(onClick = { confirm = null }) { Text("Cancel") } },
+            onDismiss = { confirm = null },
         )
     }
 }

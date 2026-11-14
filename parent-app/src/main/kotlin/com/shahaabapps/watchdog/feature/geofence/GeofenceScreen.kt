@@ -481,6 +481,27 @@ fun GeofenceScreen(
             },
         )
 
+        // No location yet: a card over the map (after a moment, so it doesn't
+        // flash while the first fix is still loading).
+        var waitedForFix by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) { kotlinx.coroutines.delay(1_500); waitedForFix = true }
+        androidx.compose.animation.AnimatedVisibility(
+            visible = waitedForFix && !historyMode && childLocation == null,
+            enter = androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.fadeOut(),
+            modifier = Modifier.align(Alignment.Center).padding(horizontal = Spacing.xl),
+        ) {
+            Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(22.dp), color = AppTheme.colors.card, shadowElevation = 6.dp) {
+                com.shahaabapps.watchdog.ui.AnimatedEmpty(
+                    anim = com.shahaabapps.watchdog.ui.Anim.PAW_PIN,
+                    title = "Waiting for a location",
+                    body = "It appears once your child's phone is online with location on.",
+                    size = 110.dp,
+                    modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+                )
+            }
+        }
+
         // Top floating controls: a Google-Maps-style back circle + category pills
         Column(
             modifier = Modifier

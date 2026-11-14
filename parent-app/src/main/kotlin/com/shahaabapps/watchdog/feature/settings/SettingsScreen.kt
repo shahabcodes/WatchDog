@@ -162,6 +162,7 @@ fun SettingsScreen(
             appName = "Watch Dog",
             tagline = "Parental controls for your family.",
             modifier = Modifier.padding(horizontal = Spacing.lg).tourTarget("settings.about"),
+            credits = { com.shahaabapps.watchdog.ui.AnimationCredits() },
         )
     }
 

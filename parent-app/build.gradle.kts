@@ -38,6 +38,7 @@ dependencies {
 
     // Home-screen widgets (map, recent apps, requests) and their background refresh
     implementation(libs.androidx.glance.appwidget)
+    implementation(libs.lottie.compose)
     implementation(libs.androidx.work.runtime.ktx)
 
     testImplementation(libs.junit)

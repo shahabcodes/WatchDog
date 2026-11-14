@@ -93,7 +93,6 @@ import com.shahaabapps.core.model.UserProfile
 import com.shahaabapps.core.ui.components.Avatar
 import com.shahaabapps.core.ui.components.CupertinoPrimaryButton
 import com.shahaabapps.core.ui.components.CupertinoTextButton
-import com.shahaabapps.core.ui.components.LoadingView
 import com.shahaabapps.core.ui.theme.AppFonts
 import com.shahaabapps.core.ui.theme.AppTheme
 import com.shahaabapps.core.ui.theme.Spacing
@@ -173,7 +172,7 @@ fun ParentShell(
 
     if (loading && children.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            LoadingView(label = "Loading your family…")
+            com.shahaabapps.watchdog.ui.PawLoading(label = "Loading your family…")
         }
         return
     }
@@ -683,12 +682,27 @@ private fun ConnectedChildScreen(childName: String?, onContinue: () -> Unit, onT
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(22.dp),
     ) {
-        Image(
-            painter = painterResource(R.drawable.ic_lighthouse_scene),
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxWidth().height(230.dp),
-        )
+        // The lighthouse, with a one-time tick and confetti burst over it.
+        var celebrating by remember { mutableStateOf(true) }
+        Box(modifier = Modifier.fillMaxWidth().height(230.dp), contentAlignment = Alignment.Center) {
+            Image(
+                painter = painterResource(R.drawable.ic_lighthouse_scene),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+            )
+            androidx.compose.animation.AnimatedVisibility(
+                visible = celebrating,
+                exit = androidx.compose.animation.fadeOut(),
+            ) {
+                com.shahaabapps.watchdog.ui.LottieAnim(
+                    anim = com.shahaabapps.watchdog.ui.Anim.CONFETTI_CHECK,
+                    loop = false,
+                    onFinished = { celebrating = false },
+                    modifier = Modifier.size(220.dp),
+                )
+            }
+        }
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("ALL SET", color = gold, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
             Text(
@@ -796,19 +810,25 @@ private fun AddChildScreen(
             } else {
                 Spacer(Modifier.height(8.dp))
             }
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    "Pair your child's phone",
-                    fontFamily = AppFonts.lighthouse,
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = (-0.7).sp,
-                    color = Color.White,
-                )
-                Text(
-                    "On the child's phone, open Shield and show its code. Point your camera at it.",
-                    fontSize = 14.sp,
-                    color = subtitle,
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Pair your child's phone",
+                        fontFamily = AppFonts.lighthouse,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = (-0.7).sp,
+                        color = Color.White,
+                    )
+                    Text(
+                        "On the child's phone, open Shield and show its code. Point your camera at it.",
+                        fontSize = 14.sp,
+                        color = subtitle,
+                    )
+                }
+                com.shahaabapps.watchdog.ui.LottieAnim(
+                    anim = com.shahaabapps.watchdog.ui.Anim.CORGI_WALK,
+                    modifier = Modifier.size(width = 120.dp, height = 96.dp),
                 )
             }
         }

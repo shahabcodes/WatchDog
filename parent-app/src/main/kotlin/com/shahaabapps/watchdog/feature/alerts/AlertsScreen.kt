@@ -77,6 +77,8 @@ fun AlertsScreen(
     var denyReq by androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf<TimeRequest?>(null)
     }
+    // A quick tick after approving, then it goes away by itself.
+    var approvedTick by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     // Open the right dialog straight away when arriving from a notification
     // Approve/Reject button — but only once, and only while the ask is still pending.
     var deepLinkHandled by androidx.compose.runtime.saveable.rememberSaveable {
@@ -98,16 +100,16 @@ fun AlertsScreen(
     approveReq?.takeIf { it.kind == com.shahaabapps.core.model.RequestKind.SUPERVISED_ACCESS }?.let { req ->
         ApproveSupervisedDialog(
             request = req,
-            onApprove = { every -> viewModel.approveSupervised(req, every); approveReq = null },
+            onApprove = { every -> viewModel.approveSupervised(req, every); approveReq = null; approvedTick = true },
             onDismiss = { approveReq = null },
         )
     }
     approveReq?.takeIf { it.kind != com.shahaabapps.core.model.RequestKind.SUPERVISED_ACCESS }?.let { req ->
         ApproveRequestDialog(
             request = req,
-            onApprove = { grantUntil -> viewModel.respond(req.id, true, grantUntil); approveReq = null },
-            onAlways = { viewModel.approveAlways(req); approveReq = null },
-            onSupervised = { every -> viewModel.approveSupervised(req, every); approveReq = null },
+            onApprove = { grantUntil -> viewModel.respond(req.id, true, grantUntil); approveReq = null; approvedTick = true },
+            onAlways = { viewModel.approveAlways(req); approveReq = null; approvedTick = true },
+            onSupervised = { every -> viewModel.approveSupervised(req, every); approveReq = null; approvedTick = true },
             onDismiss = { approveReq = null },
         )
     }
@@ -120,6 +122,24 @@ fun AlertsScreen(
             onConfirm = { viewModel.respond(req.id, false); denyReq = null },
             onDismiss = { denyReq = null },
         )
+    }
+    if (approvedTick) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { approvedTick = false }) {
+            Surface(shape = RoundedCornerShape(28.dp), color = AppTheme.colors.card) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(horizontal = 36.dp, vertical = 24.dp),
+                ) {
+                    com.shahaabapps.watchdog.ui.LottieAnim(
+                        anim = com.shahaabapps.watchdog.ui.Anim.CHECK,
+                        loop = false,
+                        onFinished = { approvedTick = false },
+                        modifier = Modifier.size(110.dp),
+                    )
+                    Text("Approved", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
     }
 
     Column(
@@ -577,15 +597,13 @@ private fun EmptyAlerts() {
         border = BorderStroke(1.dp, AppTheme.colors.separator),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Text("No alerts yet", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
-            Text(
-                "You'll see arrivals and departures here as your child moves between saved places.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = AppTheme.colors.secondaryLabel,
-                modifier = Modifier.padding(top = Spacing.xs),
-            )
-        }
+        com.shahaabapps.watchdog.ui.AnimatedEmpty(
+            anim = com.shahaabapps.watchdog.ui.Anim.CORGI_SLEEP,
+            title = "All quiet",
+            body = "No alerts yet. You'll see arrivals and departures here as your child moves between saved places, " +
+                "and their requests too.",
+            modifier = Modifier.padding(20.dp),
+        )
     }
 }
 

@@ -153,13 +153,11 @@ fun WatchShotsScreen(
         }
         if (state.sessions.isEmpty()) {
             CupertinoCard(modifier = Modifier.padding(Spacing.lg)) {
-                Text("No screenshots yet", style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    "They arrive while your child uses a supervised app and Shield is up to date. " +
+                com.shahaabapps.watchdog.ui.AnimatedEmpty(
+                    anim = com.shahaabapps.watchdog.ui.Anim.CAMERA,
+                    title = "No screenshots yet",
+                    body = "They arrive while your child uses a supervised app and Shield is up to date. " +
                         "Each one stays on the server for 3 days, so open Watch Dog at least that often.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = AppTheme.colors.secondaryLabel,
-                    modifier = Modifier.padding(top = Spacing.xs),
                 )
             }
         } else {

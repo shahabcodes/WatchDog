@@ -24,6 +24,8 @@ fun AboutSection(
     appName: String,
     tagline: String,
     modifier: Modifier = Modifier,
+    /** Extra credit lines under the map credit (e.g. the app's animations). */
+    credits: (@Composable () -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val versionLabel = remember {
@@ -60,6 +62,7 @@ fun AboutSection(
                     color = AppTheme.colors.secondaryLabel,
                     modifier = Modifier.padding(top = 4.dp),
                 )
+                credits?.invoke()
             }
         }
 

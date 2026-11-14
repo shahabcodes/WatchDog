@@ -71,7 +71,6 @@ import com.shahaabapps.core.ui.components.CupertinoTextButton
 import com.shahaabapps.core.ui.components.CupertinoTextField
 import com.shahaabapps.core.ui.components.Hero
 import com.shahaabapps.core.ui.components.HeroIconButton
-import com.shahaabapps.core.ui.components.LoadingView
 import com.shahaabapps.core.ui.components.SectionHeader
 import com.shahaabapps.core.ui.components.StatusChip
 import com.shahaabapps.core.ui.theme.AppTheme
@@ -204,7 +203,7 @@ fun UsageScreen(
         }
 
         when {
-            state.loading -> LoadingView(label = "Loading apps…", modifier = Modifier.padding(top = Spacing.xl))
+            state.loading -> com.shahaabapps.watchdog.ui.PawLoading(label = "Loading apps…", modifier = Modifier.padding(top = Spacing.xl))
             state.rows.isEmpty() -> EmptyApps(hasQuery = state.query.isNotBlank() || state.filter != AppFilter.ALL)
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -348,13 +347,13 @@ private fun WatchedCard(apps: Int, shotsToday: Int, onClick: () -> Unit) {
 @Composable
 private fun EmptyApps(hasQuery: Boolean) {
     CupertinoCard(modifier = Modifier.padding(horizontal = Spacing.lg).tourTarget("activity.waiting")) {
-        Text(if (hasQuery) "No apps match" else "Waiting for app list", style = MaterialTheme.typography.bodyLarge)
-        if (!hasQuery) {
-            Text(
-                "Open Shield on the child's phone — its apps appear here.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = AppTheme.colors.secondaryLabel,
-                modifier = Modifier.padding(top = Spacing.xs),
+        if (hasQuery) {
+            Text("No apps match", style = MaterialTheme.typography.bodyLarge)
+        } else {
+            com.shahaabapps.watchdog.ui.AnimatedEmpty(
+                anim = com.shahaabapps.watchdog.ui.Anim.CORGI_BOX,
+                title = "Waiting for app list",
+                body = "Open Shield on the child's phone — its apps appear here.",
             )
         }
     }

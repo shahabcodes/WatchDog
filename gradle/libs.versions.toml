@@ -1,5 +1,6 @@
 [versions]
 glance = "1.1.1"
+lottie = "6.7.1"
 # Build tooling
 agp = "8.8.0"
 kotlin = "2.1.0"
@@ -51,6 +52,7 @@ espresso = "3.6.1"
 
 [libraries]
 androidx-glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
+lottie-compose = { group = "com.airbnb.android", name = "lottie-compose", version.ref = "lottie" }
 # --- Gradle plugins exposed as libraries for build-logic convention module ---
 android-gradlePlugin = { group = "com.android.tools.build", name = "gradle", version.ref = "agp" }
 kotlin-gradlePlugin = { group = "org.jetbrains.kotlin", name = "kotlin-gradle-plugin", version.ref = "kotlin" }

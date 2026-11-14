@@ -106,6 +106,8 @@ fun AlertsScreen(
         ApproveRequestDialog(
             request = req,
             onApprove = { grantUntil -> viewModel.respond(req.id, true, grantUntil); approveReq = null },
+            onAlways = { viewModel.approveAlways(req); approveReq = null },
+            onSupervised = { every -> viewModel.approveSupervised(req, every); approveReq = null },
             onDismiss = { approveReq = null },
         )
     }
@@ -248,8 +250,15 @@ private fun ApproveSupervisedDialog(
 private fun ApproveRequestDialog(
     request: TimeRequest,
     onApprove: (grantUntilMillis: Long) -> Unit,
+    onAlways: () -> Unit,
+    onSupervised: (watchEverySeconds: Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    // An ask to unlock a blocked (or new) app can also be allowed for good, or
+    // allowed with screenshots, instead of for a while.
+    val lasting = request.kind == com.shahaabapps.core.model.RequestKind.UNLOCK_APP && request.appPackage.isNotBlank()
+    var choice by remember { mutableStateOf(Grant.FOR_A_TIME) }
+    var every by remember { mutableStateOf(60) }
     var untilMode by remember { mutableStateOf(false) }
     var durationMin by remember { mutableStateOf(60) }
     var untilMinute by remember { mutableStateOf<Int?>(null) }
@@ -260,20 +269,76 @@ private fun ApproveRequestDialog(
     } else {
         untilMinute?.let { minuteOfDayToFutureMillis(it) }
     }
+    val app = request.appLabel.ifBlank { "The app" }
 
     com.shahaabapps.core.ui.components.AppDialog(
         onDismiss = onDismiss,
         title = "Approve request?",
         icon = Icons.Filled.CheckCircle,
-        confirmText = "Approve",
-        confirmEnabled = grantUntil != null,
-        onConfirm = { grantUntil?.let(onApprove) },
+        confirmText = when (choice) {
+            Grant.FOR_A_TIME -> "Approve"
+            Grant.ALWAYS -> "Always allow"
+            Grant.SUPERVISED -> "Allow supervised"
+        },
+        confirmEnabled = choice != Grant.FOR_A_TIME || grantUntil != null,
+        onConfirm = {
+            when (choice) {
+                Grant.FOR_A_TIME -> grantUntil?.let(onApprove)
+                Grant.ALWAYS -> onAlways()
+                Grant.SUPERVISED -> onSupervised(every)
+            }
+        },
     ) {
         Text(
-            "Your child is asking ${request.summary}. How long should it stay available?",
+            if (lasting) "Your child is asking ${request.summary}. How should it be allowed?"
+            else "Your child is asking ${request.summary}. How long should it stay available?",
             style = MaterialTheme.typography.bodyMedium,
             color = AppTheme.colors.secondaryLabel,
         )
+        if (lasting) {
+            Spacer(Modifier.height(Spacing.md))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(AppTheme.colors.separator.copy(alpha = 0.4f))
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                ModeSeg("For a time", choice == Grant.FOR_A_TIME, Modifier.weight(1f)) { choice = Grant.FOR_A_TIME }
+                ModeSeg("Always", choice == Grant.ALWAYS, Modifier.weight(1f)) { choice = Grant.ALWAYS }
+                ModeSeg("Supervised", choice == Grant.SUPERVISED, Modifier.weight(1f)) { choice = Grant.SUPERVISED }
+            }
+        }
+        when (choice) {
+            Grant.ALWAYS -> {
+                Spacer(Modifier.height(Spacing.md))
+                Text(
+                    "$app will be unblocked for good, with no screenshots. Any daily limit or hours you set still apply. " +
+                        "You can change this in Apps any time.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.secondaryLabel,
+                )
+                return@AppDialog
+            }
+            Grant.SUPERVISED -> {
+                Spacer(Modifier.height(Spacing.md))
+                Text(
+                    "$app will be unblocked and set to Supervised: Shield sends you screenshots of it at random " +
+                        "moments while it's open. Any daily limit or hours you set still apply.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.secondaryLabel,
+                )
+                Spacer(Modifier.height(Spacing.sm))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    listOf(300 to "Every 5 min", 60 to "1 a minute", 30 to "2 a minute", 15 to "4 a minute").forEach { (s, label) ->
+                        FilterChip(selected = every == s, onClick = { every = s }, label = { Text(label) })
+                    }
+                }
+                return@AppDialog
+            }
+            Grant.FOR_A_TIME -> Unit
+        }
         Spacer(Modifier.height(Spacing.md))
         Row(
             modifier = Modifier
@@ -535,3 +600,6 @@ private fun timeLabel(millis: Long): String {
     val zdt = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault())
     return if (zdt.toLocalDate() == LocalDate.now()) zdt.format(timeFmt) else zdt.format(dateFmt)
 }
+
+/** How an app-unlock ask is approved. */
+private enum class Grant { FOR_A_TIME, ALWAYS, SUPERVISED }

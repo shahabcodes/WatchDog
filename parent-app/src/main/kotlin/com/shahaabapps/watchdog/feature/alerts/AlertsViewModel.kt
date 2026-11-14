@@ -35,6 +35,7 @@ class AlertsViewModel @Inject constructor(
     private val geofenceRepository: GeofenceRepository,
     private val requestRepository: RequestRepository,
     private val appRulesRepository: com.shahaabapps.core.firebase.rules.AppRulesRepository,
+    private val pendingAppsRepository: com.shahaabapps.core.firebase.protection.PendingAppsRepository,
 ) : ViewModel() {
 
     private val childId: String = checkNotNull(savedStateHandle["childId"])
@@ -66,6 +67,28 @@ class AlertsViewModel @Inject constructor(
                 .copy(appLabel = current?.appLabel?.ifBlank { null } ?: request.appLabel, blocked = false, watchEverySeconds = watchEverySeconds)
             val saved = appRulesRepository.saveAppRule(childId, rule)
             if (saved is com.shahaabapps.core.common.AppResult.Success) {
+                // A new app waiting for review is decided now, too.
+                runCatching { pendingAppsRepository.remove(childId, request.appPackage) }
+                requestRepository.respond(childId, request.id, true, 0L)
+            }
+        }
+    }
+
+    /**
+     * Allow the app for good: unblocked and no screenshots, keeping any daily limit
+     * or hours. A new app waiting for review is cleared from review, which allows it.
+     */
+    fun approveAlways(request: TimeRequest) {
+        viewModelScope.launch {
+            val current = runCatching { appRulesRepository.observeAppRules(childId).first() }.getOrDefault(emptyList())
+                .firstOrNull { it.packageName == request.appPackage }
+            val saved = if (current != null) {
+                appRulesRepository.saveAppRule(childId, current.copy(blocked = false, watchEverySeconds = 0))
+            } else {
+                com.shahaabapps.core.common.AppResult.Success(Unit)
+            }
+            if (saved is com.shahaabapps.core.common.AppResult.Success) {
+                runCatching { pendingAppsRepository.remove(childId, request.appPackage) }
                 requestRepository.respond(childId, request.id, true, 0L)
             }
         }

@@ -109,6 +109,22 @@ internal fun KidMyApps(viewModel: MyAppsViewModel = hiltViewModel()) {
                     Text(app.label, color = NAVY, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Text(app.detail, color = MUTED, fontSize = 12.sp)
                 }
+                if (list == MyAppsList.RESTRICTED && app.hasHours) {
+                    Spacer(Modifier.width(8.dp))
+                    if (app.askedHours) {
+                        Text("Asked", color = MUTED, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(CHIP)
+                                .clickable { viewModel.askLiftHours(app) }
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                        ) {
+                            Text("Ask to remove hours", color = NAVY2, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                    }
+                }
                 if (list == MyAppsList.BLOCKED) {
                     Spacer(Modifier.width(8.dp))
                     if (app.asked) {
@@ -126,6 +142,12 @@ internal fun KidMyApps(viewModel: MyAppsViewModel = hiltViewModel()) {
                     }
                 }
             }
+        }
+        if (list == MyAppsList.RESTRICTED && apps.any { it.hasHours }) {
+            Text(
+                "\"Ask to remove hours\" asks your parent to let you use the app at any time (any daily limit stays).",
+                color = MUTED, fontSize = 12.sp,
+            )
         }
         if (list == MyAppsList.BLOCKED && apps.isNotEmpty()) {
             Text(

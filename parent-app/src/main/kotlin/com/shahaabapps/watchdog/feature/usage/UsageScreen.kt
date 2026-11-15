@@ -21,6 +21,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Visibility
@@ -229,6 +230,7 @@ fun UsageScreen(
         }
     }
 
+    val hoursAsks by viewModel.hoursAsks.collectAsStateWithLifecycle()
     val current = editing
     if (current != null) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -239,6 +241,12 @@ fun UsageScreen(
                 rule = current.rule,
                 newApp = current.reviewing,
                 newAppBlocked = current.reviewing && current.newAppsBlocked,
+                hoursAsk = hoursAsks[current.app.packageName]?.takeIf { current.rule?.schedule?.isNotEmpty() == true },
+                onLiftHours = { req ->
+                    viewModel.liftHours(req)
+                    editing = null
+                },
+                onKeepHours = { req -> viewModel.declineHoursAsk(req) },
                 onSave = { limit, blocked, schedule, watchEvery, scheduleBlocks ->
                     viewModel.saveRule(
                         current.app, limit, blocked, schedule, watchEvery,
@@ -368,6 +376,10 @@ private fun RuleEditor(
     newApp: Boolean,
     /** Awaiting review and held blocked (the parent's new-apps choice). */
     newAppBlocked: Boolean = false,
+    /** The child asked to remove this app's hours (shown as a banner with Remove / Keep). */
+    hoursAsk: com.shahaabapps.core.model.TimeRequest? = null,
+    onLiftHours: (com.shahaabapps.core.model.TimeRequest) -> Unit = {},
+    onKeepHours: (com.shahaabapps.core.model.TimeRequest) -> Unit = {},
     onSave: (
         dailyLimitMinutes: Int?,
         blocked: Boolean,
@@ -410,6 +422,15 @@ private fun RuleEditor(
         Row(verticalAlignment = Alignment.CenterVertically) {
             AppIcon(base64 = app.icon, label = app.label, size = 44.dp, modifier = Modifier.padding(end = Spacing.md))
             Text(app.label.ifBlank { app.packageName }, style = MaterialTheme.typography.headlineMedium)
+        }
+
+        if (hoursAsk != null) {
+            HoursAskBanner(
+                hours = windows.joinToString(", ") { "${formatMinutes(it.first)} – ${formatMinutes(it.second)}" },
+                blocks = scheduleBlocks,
+                onRemove = { onLiftHours(hoursAsk) },
+                onKeep = { onKeepHours(hoursAsk) },
+            )
         }
 
         val accessOptions = listOf(
@@ -632,3 +653,33 @@ private fun formatDuration(minutes: Int): String {
 private val dateFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.getDefault())
 private fun dateLabel(millis: Long): String =
     Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate().format(dateFormatter)
+
+/** "Your child asked to remove these hours": Remove (approves) or Keep (declines). */
+@Composable
+private fun HoursAskBanner(hours: String, blocks: Boolean, onRemove: () -> Unit, onKeep: () -> Unit) {
+    CupertinoCard {
+        Column(
+            modifier = Modifier.padding(Spacing.md),
+            verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Schedule, contentDescription = null, tint = AppTheme.colors.accent)
+                Spacer(Modifier.width(Spacing.sm))
+                Text(
+                    "Your child asked to remove the set hours",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+            Text(
+                (if (blocks) "Blocked $hours. " else "Allowed only $hours. ") +
+                    "Removing them lets the app work at any time; its daily limit stays.",
+                style = MaterialTheme.typography.bodySmall,
+                color = AppTheme.colors.secondaryLabel,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                CupertinoPrimaryButton(text = "Remove hours", onClick = onRemove, modifier = Modifier.weight(1f))
+                CupertinoTextButton(text = "Keep hours", onClick = onKeep)
+            }
+        }
+    }
+}

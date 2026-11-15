@@ -3,8 +3,10 @@ package com.shahaabapps.core.model
 /**
  * What the child is asking their parent for. SUPERVISED_ACCESS: use a blocked app
  * with supervision; approving makes the app Supervised (a lasting rule change).
+ * LIFT_HOURS: remove an app's allowed/blocked hours; approving clears the rule's
+ * schedule (a lasting rule change, no time grant).
  */
-enum class RequestKind { MORE_TIME, UNLOCK_APP, EXTEND_BEDTIME, USE_IN_SCHOOL, SUPERVISED_ACCESS }
+enum class RequestKind { MORE_TIME, UNLOCK_APP, EXTEND_BEDTIME, USE_IN_SCHOOL, SUPERVISED_ACCESS, LIFT_HOURS }
 
 /** Where the request stands. */
 enum class RequestStatus { PENDING, APPROVED, DENIED }
@@ -42,5 +44,6 @@ data class TimeRequest(
             RequestKind.EXTEND_BEDTIME -> "to stay up $minutes more minutes"
             RequestKind.USE_IN_SCHOOL -> "to use ${appLabel.ifBlank { "an app" }} during school"
             RequestKind.SUPERVISED_ACCESS -> "to use ${appLabel.ifBlank { "an app" }} with supervision (you get screenshots)"
+            RequestKind.LIFT_HOURS -> "to remove the set hours on ${appLabel.ifBlank { "an app" }}"
         }
 }

@@ -29,6 +29,10 @@ data class MyApp(
     val detail: String,
     /** Blocked apps: a "use it supervised" ask is already waiting for the parent. */
     val asked: Boolean = false,
+    /** Restricted apps: the rule has allowed/blocked hours the child can ask to remove. */
+    val hasHours: Boolean = false,
+    /** A "remove the set hours" ask is already waiting for the parent. */
+    val askedHours: Boolean = false,
 )
 
 data class MyAppsState(
@@ -64,6 +68,9 @@ class MyAppsViewModel @Inject constructor(
                 val asked = requests
                     .filter { it.status == RequestStatus.PENDING && it.kind == RequestKind.SUPERVISED_ACCESS }
                     .map { it.appPackage }.toSet()
+                val askedHours = requests
+                    .filter { it.status == RequestStatus.PENDING && it.kind == RequestKind.LIFT_HOURS }
+                    .map { it.appPackage }.toSet()
                 fun app(pkg: String, fallback: String, detail: String) = byPkg[pkg]?.let {
                     MyApp(pkg, it.label.ifBlank { fallback.ifBlank { pkg } }, it.icon, detail, pkg in asked)
                 }
@@ -87,6 +94,7 @@ class MyAppsViewModel @Inject constructor(
                             }
                         }
                         app(r.packageName, r.appLabel, parts.joinToString(" · "))
+                            ?.copy(hasHours = r.schedule.isNotEmpty(), askedHours = r.packageName in askedHours)
                     }
                 val ruled = rules.map { it.packageName }.toSet()
                 val supervised = rules.filter { it.watched }
@@ -110,6 +118,19 @@ class MyAppsViewModel @Inject constructor(
                 requestRepository.create(
                     id,
                     TimeRequest(kind = RequestKind.SUPERVISED_ACCESS, appPackage = app.packageName, appLabel = app.label),
+                )
+            }
+        }
+    }
+
+    /** Ask the parent to remove this app's allowed/blocked hours. */
+    fun askLiftHours(app: MyApp) {
+        val id = childId ?: return
+        viewModelScope.launch {
+            runCatching {
+                requestRepository.create(
+                    id,
+                    TimeRequest(kind = RequestKind.LIFT_HOURS, appPackage = app.packageName, appLabel = app.label),
                 )
             }
         }

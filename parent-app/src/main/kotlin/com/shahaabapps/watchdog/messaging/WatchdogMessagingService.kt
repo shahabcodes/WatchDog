@@ -76,7 +76,13 @@ class WatchdogMessagingService : FirebaseMessagingService() {
         val requestId = data["requestId"]?.ifBlank { null } ?: return
         val title = data["title"]?.ifBlank { null } ?: "A new request"
         val body = data["body"]?.ifBlank { null } ?: "Tap to approve or deny."
-        showRequestNotification(this, childId, requestId, title, body)
+        val appPackage = data["appPackage"]?.trim()?.takeIf { PKG_RE.matches(it) }
+        if (data["kind"] == "LIFT_HOURS" && appPackage != null) {
+            // Opens the app's rule sheet, where the hours are, with Remove / Keep.
+            showLiftHoursNotification(this, childId, appPackage, requestId, title, body)
+        } else {
+            showRequestNotification(this, childId, requestId, title, body)
+        }
     }
 
     private fun handleGeofencePush(data: Map<String, String>) {
@@ -147,6 +153,7 @@ class WatchdogMessagingService : FirebaseMessagingService() {
 
         private const val KEEP_ATTEMPTS_MS = 7 * 24 * 60 * 60 * 1000L
         private const val PRUNE_EVERY_MS = 24 * 60 * 60 * 1000L
+        private val PKG_RE = Regex("""[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)+""")
         private val LINK_RE = Regex("(https?://|www\\.)\\S+", RegexOption.IGNORE_CASE)
 
         // Intent extras read by MainActivity to deep-link into the right request.
@@ -239,6 +246,43 @@ class WatchdogMessagingService : FirebaseMessagingService() {
             // One notification per child and app: a later attempt replaces it.
             val tag = "blocked:$childId:${appPackage ?: eventId}"
             runCatching { NotificationManagerCompat.from(context).notify(tag, 0, notification) }
+        }
+
+        /**
+         * A "remove the set hours" ask: a tap opens [childId]'s Activity tab on
+         * [appPackage]'s rule sheet, which shows the ask with Remove / Keep.
+         */
+        fun showLiftHoursNotification(
+            context: Context,
+            childId: String,
+            appPackage: String,
+            requestId: String,
+            title: String,
+            body: String,
+        ) {
+            ensureRequestChannel(context)
+            val intent = Intent(context, MainActivity::class.java)
+                .setAction("$ACTION_APP_RULES:$childId:$appPackage:$requestId")
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra(EXTRA_CHILD_ID, childId)
+                .putExtra(EXTRA_ACTION, ACTION_APP_RULES)
+                .putExtra(EXTRA_APP_PACKAGE, appPackage)
+            val pending = PendingIntent.getActivity(
+                context,
+                intent.action.hashCode(),
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            val notification = NotificationCompat.Builder(context, REQUEST_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_launcher_monochrome)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setContentIntent(pending)
+                .build()
+            runCatching { NotificationManagerCompat.from(context).notify(requestId.hashCode(), notification) }
         }
 
         private fun ensureRequestChannel(context: Context) {

@@ -104,7 +104,19 @@ fun AlertsScreen(
             onDismiss = { approveReq = null },
         )
     }
-    approveReq?.takeIf { it.kind != com.shahaabapps.core.model.RequestKind.SUPERVISED_ACCESS }?.let { req ->
+    approveReq?.takeIf { it.kind == com.shahaabapps.core.model.RequestKind.LIFT_HOURS }?.let { req ->
+        com.shahaabapps.core.ui.components.ConfirmDialog(
+            title = "Remove the set hours?",
+            message = "${req.appLabel.ifBlank { "The app" }} will work at any time. Its daily limit, if it has one, stays.",
+            confirmText = "Remove hours",
+            onConfirm = { viewModel.liftHours(req); approveReq = null; approvedTick = true },
+            onDismiss = { approveReq = null },
+        )
+    }
+    approveReq?.takeIf {
+        it.kind != com.shahaabapps.core.model.RequestKind.SUPERVISED_ACCESS &&
+            it.kind != com.shahaabapps.core.model.RequestKind.LIFT_HOURS
+    }?.let { req ->
         ApproveRequestDialog(
             request = req,
             onApprove = { grantUntil -> viewModel.respond(req.id, true, grantUntil); approveReq = null; approvedTick = true },

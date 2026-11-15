@@ -94,6 +94,22 @@ class AlertsViewModel @Inject constructor(
         }
     }
 
+    /** Remove the app's allowed/blocked hours (its limit and access stay), then approve. */
+    fun liftHours(request: TimeRequest) {
+        viewModelScope.launch {
+            val current = runCatching { appRulesRepository.observeAppRules(childId).first() }.getOrDefault(emptyList())
+                .firstOrNull { it.packageName == request.appPackage }
+            val saved = if (current != null) {
+                appRulesRepository.saveAppRule(childId, current.copy(schedule = emptyList(), scheduleBlocks = false))
+            } else {
+                com.shahaabapps.core.common.AppResult.Success(Unit)
+            }
+            if (saved is com.shahaabapps.core.common.AppResult.Success) {
+                requestRepository.respond(childId, request.id, true, 0L)
+            }
+        }
+    }
+
     // Join events with the current geofences so each alert shows the saved
     // place's name, and so an event whose place no longer exists (or never had
     // one) is marked unknown.

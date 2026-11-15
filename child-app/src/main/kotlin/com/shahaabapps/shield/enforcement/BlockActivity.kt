@@ -71,10 +71,15 @@ class BlockActivity : ComponentActivity() {
                     label = label,
                     reason = reason,
                     onAsk = { askParent(variant, pkg, label) },
-                    onAskSupervised = if (variant == BlockVariant.BLOCKED && pkg.isNotBlank()) {
-                        { send(TimeRequest(kind = RequestKind.SUPERVISED_ACCESS, appPackage = pkg, appLabel = label)) }
-                    } else {
-                        null
+                    second = when {
+                        pkg.isBlank() -> null
+                        isHoursBlock(reason) -> SecondAsk("Ask to remove the set hours", "So you can use it at any time") {
+                            send(TimeRequest(kind = RequestKind.LIFT_HOURS, appPackage = pkg, appLabel = label))
+                        }
+                        variant == BlockVariant.BLOCKED -> SecondAsk("Ask to use it supervised", "Your parent would see screenshots of it") {
+                            send(TimeRequest(kind = RequestKind.SUPERVISED_ACCESS, appPackage = pkg, appLabel = label))
+                        }
+                        else -> null
                     },
                     onDismiss = ::goHome,
                 )
@@ -90,7 +95,9 @@ class BlockActivity : ComponentActivity() {
                 requestRepository.observe(childId, 20).collectLatest { reqs ->
                     val approved = reqs.any { r ->
                         r.status == RequestStatus.APPROVED && r.respondedAtMillis >= shownAt &&
-                            (r.appPackage == pkg && pkg.isNotBlank() || r.kind == RequestKind.EXTEND_BEDTIME)
+                            (r.appPackage == pkg && pkg.isNotBlank() || r.kind == RequestKind.EXTEND_BEDTIME) &&
+                            // Hours lifted: the rule changes; the app opens once it's allowed.
+                            r.kind != RequestKind.LIFT_HOURS
                     }
                     if (approved) openAppAndFinish(pkg)
                 }
@@ -135,6 +142,13 @@ class BlockActivity : ComponentActivity() {
     }
 }
 
+/** A second, optional ask on the block screen (supervised use, or removing set hours). */
+private class SecondAsk(val title: String, val subtitle: String, val onClick: () -> Unit)
+
+/** Blocked by the app's allowed/blocked hours (RuleEvaluator's HOURS reasons). */
+internal fun isHoursBlock(reason: String): Boolean =
+    reason.startsWith("Blocked at this time") || reason.startsWith("Outside allowed hours")
+
 // Shared with the pop-up / split-screen cover (WindowGuard) so both say the same.
 internal enum class BlockVariant { TIMESUP, BEDTIME, SCHOOL, BLOCKED }
 
@@ -176,8 +190,8 @@ private fun BlockContent(
     label: String,
     reason: String,
     onAsk: () -> Unit,
-    /** Blocked apps only: ask to use it with supervision (the parent gets screenshots). */
-    onAskSupervised: (() -> Unit)?,
+    /** Blocked apps: ask to use it supervised; hours blocks: ask to remove the hours. */
+    second: SecondAsk?,
     onDismiss: () -> Unit,
 ) {
     val navy = Color(0xFF00133F)
@@ -244,7 +258,7 @@ private fun BlockContent(
             ) {
                 Text(askLabel, color = if (bedtime) navy else Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
-            if (onAskSupervised != null) {
+            if (second != null) {
                 Spacer(Modifier.height(10.dp))
                 Box(
                     modifier = Modifier
@@ -252,12 +266,12 @@ private fun BlockContent(
                         .height(56.dp)
                         .clip(RoundedCornerShape(18.dp))
                         .background(Color(0xFFDCE6FF))
-                        .clickable { asked = true; onAskSupervised() },
+                        .clickable { asked = true; second.onClick() },
                     contentAlignment = Alignment.Center,
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Ask to use it supervised", color = navy, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        Text("Your parent would see screenshots of it", color = sub, fontSize = 12.sp)
+                        Text(second.title, color = navy, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text(second.subtitle, color = sub, fontSize = 12.sp)
                     }
                 }
             }

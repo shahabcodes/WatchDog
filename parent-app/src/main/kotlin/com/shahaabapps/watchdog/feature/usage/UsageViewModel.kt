@@ -13,7 +13,10 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -75,6 +78,7 @@ class UsageViewModel @Inject constructor(
     watchShotSync: com.shahaabapps.watchdog.feature.watch.WatchShotSync,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
     private val authRepository: com.shahaabapps.core.firebase.auth.AuthRepository,
+    private val requestRepository: com.shahaabapps.core.firebase.request.RequestRepository,
 ) : ViewModel() {
 
     private val childId: String = checkNotNull(savedStateHandle["childId"])
@@ -149,6 +153,40 @@ class UsageViewModel @Inject constructor(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UsageUiState())
 
+    /** The child's pending "remove the set hours" asks, by app package. */
+    val hoursAsks: StateFlow<Map<String, com.shahaabapps.core.model.TimeRequest>> =
+        requestRepository.observe(childId, 30)
+            .map { list ->
+                list.filter {
+                    it.status == com.shahaabapps.core.model.RequestStatus.PENDING &&
+                        it.kind == com.shahaabapps.core.model.RequestKind.LIFT_HOURS && it.appPackage.isNotBlank()
+                }.associateBy { it.appPackage }
+            }
+            .catch { emit(emptyMap()) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    /** Approve the child's ask: the app keeps its rule but loses its hours. */
+    fun liftHours(request: com.shahaabapps.core.model.TimeRequest) {
+        viewModelScope.launch {
+            val current = runCatching { appRulesRepository.observeAppRules(childId).first() }.getOrDefault(emptyList())
+                .firstOrNull { it.packageName == request.appPackage }
+            val saved = if (current != null) {
+                appRulesRepository.saveAppRule(childId, current.copy(schedule = emptyList(), scheduleBlocks = false))
+            } else {
+                com.shahaabapps.core.common.AppResult.Success(Unit)
+            }
+            if (saved is com.shahaabapps.core.common.AppResult.Success) {
+                requestRepository.respond(childId, request.id, true, 0L)
+                Celebrations.saved()
+            }
+        }
+    }
+
+    /** Keep the hours: decline the child's ask. */
+    fun declineHoursAsk(request: com.shahaabapps.core.model.TimeRequest) {
+        viewModelScope.launch { requestRepository.respond(childId, request.id, false, 0L) }
+    }
+
     fun setQuery(value: String) { query.value = value }
     fun setSort(value: AppSort) { sort.value = value }
     fun setFilter(value: AppFilter) { filter.value = value }
@@ -179,6 +217,11 @@ class UsageViewModel @Inject constructor(
             )
             if (clearReview && saved is com.shahaabapps.core.common.AppResult.Success) {
                 pendingAppsRepository.remove(childId, app.packageName)
+            }
+            // Hours removed by hand (or the app blocked/limited without hours):
+            // a waiting "remove the hours" ask is answered yes.
+            if (schedule.isEmpty() && saved is com.shahaabapps.core.common.AppResult.Success) {
+                hoursAsks.value[app.packageName]?.let { requestRepository.respond(childId, it.id, true, 0L) }
             }
             Celebrations.saved()
         }

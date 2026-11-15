@@ -456,13 +456,17 @@ exports.notifyChildRequest = onDocumentCreated(
       case "UNLOCK_APP": title = `${childName} wants to unlock ${appLabel}`; break;
       case "USE_IN_SCHOOL": title = `${childName} wants ${appLabel} during school`; break;
       case "SUPERVISED_ACCESS": title = `${childName} asks to use ${appLabel} with supervision`; break;
+      case "LIFT_HOURS": title = `${childName} asks to remove the set hours on ${appLabel}`; break;
       case "EXTEND_BEDTIME":
         title = minutes > 0 ? `${childName} wants ${minutes} more min before bedtime` : `${childName} wants to extend bedtime`;
         break;
       default:
         title = minutes > 0 ? `${childName} is asking for ${minutes} more minutes` : `${childName} sent you a request`;
     }
-    const body = "Tap to approve or deny.";
+    const body = data.kind === "LIFT_HOURS" ? "Tap to see the app's hours." : "Tap to approve or deny.";
+    // Only a plain package name goes in the push (it opens that app's rule sheet).
+    const appPackage = typeof data.appPackage === "string" && /^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)+$/.test(data.appPackage) &&
+      data.appPackage.length <= 200 ? data.appPackage : "";
 
     const tokenDocs = [];
     for (const parentId of parents) {
@@ -486,6 +490,7 @@ exports.notifyChildRequest = onDocumentCreated(
         childName,
         kind: data.kind || "MORE_TIME",
         appLabel,
+        appPackage,
         minutes: String(minutes),
       },
       android: { priority: "high" },

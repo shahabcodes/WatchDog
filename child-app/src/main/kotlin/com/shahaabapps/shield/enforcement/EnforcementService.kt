@@ -293,7 +293,7 @@ class EnforcementService : AccessibilityService() {
         for (r in requests) {
             if (r.status != RequestStatus.APPROVED) continue
             // Approving supervised access changes the app's rule instead (Supervised).
-            if (r.kind == RequestKind.SUPERVISED_ACCESS) continue
+            if (r.kind == RequestKind.SUPERVISED_ACCESS || r.kind == RequestKind.LIFT_HOURS) continue
             val base = if (r.respondedAtMillis > 0) r.respondedAtMillis else r.createdAtMillis
             if (base <= 0L) continue
             // The parent can set an explicit end when approving; otherwise use the
@@ -319,7 +319,8 @@ class EnforcementService : AccessibilityService() {
     private fun grantDurationMs(r: TimeRequest): Long {
         val minutes = when (r.kind) {
             RequestKind.MORE_TIME, RequestKind.EXTEND_BEDTIME -> if (r.minutes > 0) r.minutes else 15
-            RequestKind.UNLOCK_APP, RequestKind.USE_IN_SCHOOL, RequestKind.SUPERVISED_ACCESS -> if (r.minutes > 0) r.minutes else 60
+            RequestKind.UNLOCK_APP, RequestKind.USE_IN_SCHOOL, RequestKind.SUPERVISED_ACCESS,
+            RequestKind.LIFT_HOURS -> if (r.minutes > 0) r.minutes else 60
         }
         return minutes * 60_000L
     }

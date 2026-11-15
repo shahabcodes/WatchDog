@@ -97,6 +97,11 @@ fun KidShell(
         SettingsScreen(onBack = { showSettings = false })
         return
     }
+    var showRules by remember { mutableStateOf(false) }
+    if (showRules) {
+        com.shahaabapps.shield.feature.rules.RulesScreen(onBack = { showRules = false })
+        return
+    }
 
     var tab by remember { mutableStateOf(KidTab.HOME) }
     val kidVm: KidViewModel = hiltViewModel()
@@ -105,10 +110,10 @@ fun KidShell(
     Column(modifier = Modifier.fillMaxSize().background(BG)) {
         Box(modifier = Modifier.weight(1f)) {
             when (tab) {
-                KidTab.HOME -> KidHome(child = child, state = state, onSeeApps = { tab = KidTab.TIME })
+                KidTab.HOME -> KidHome(child = child, state = state, onSeeApps = { tab = KidTab.TIME }, onRules = { showRules = true })
                 KidTab.TIME -> KidTime(state = state)
                 KidTab.APPS -> KidMyApps()
-                KidTab.ME -> KidMe(child = child, onSettings = { showSettings = true })
+                KidTab.ME -> KidMe(child = child, onSettings = { showSettings = true }, onRules = { showRules = true })
             }
         }
         KidBottomBar(current = tab, onSelect = { tab = it })
@@ -151,7 +156,7 @@ private fun KidBottomBar(current: KidTab, onSelect: (KidTab) -> Unit) {
 }
 
 @Composable
-private fun KidHome(child: ChildAccount, state: KidUiState, onSeeApps: () -> Unit) {
+private fun KidHome(child: ChildAccount, state: KidUiState, onSeeApps: () -> Unit, onRules: () -> Unit) {
     val askVm: AskViewModel = hiltViewModel()
     val pendingAsk by askVm.pending.collectAsStateWithLifecycle()
     val activeFocus = activeFocusLabel(state.focus)
@@ -234,7 +239,7 @@ private fun KidHome(child: ChildAccount, state: KidUiState, onSeeApps: () -> Uni
         }
 
         // Downtime schedule (bedtime / school) so the day is predictable.
-        ScheduleCard(focus = state.focus)
+        ScheduleCard(focus = state.focus, onRules = onRules)
 
         // Ask for more time — only when a time limit actually applies.
         val hasTimeLimit = state.apps.any { it.limitMinutes != null } ||
@@ -350,7 +355,7 @@ private fun KidTime(state: KidUiState) {
 }
 
 @Composable
-private fun KidMe(child: ChildAccount, onSettings: () -> Unit) {
+private fun KidMe(child: ChildAccount, onSettings: () -> Unit, onRules: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -394,6 +399,17 @@ private fun KidMe(child: ChildAccount, onSettings: () -> Unit) {
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(CARD).clickable(onClick = onRules).padding(16.dp),
+        ) {
+            Icon(Icons.Filled.Lock, contentDescription = null, tint = NAVY2)
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text("Rules from your parent", color = NAVY, fontWeight = FontWeight.SemiBold)
+                Text("Everything they set for this phone", color = MUTED, fontSize = 12.sp)
+            }
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(CARD).clickable(onClick = onSettings).padding(16.dp),
         ) {
             Icon(Icons.Filled.Settings, contentDescription = null, tint = NAVY2)
@@ -419,7 +435,7 @@ private fun MiniStat(value: String, label: String, modifier: Modifier = Modifier
 
 /** Shows the child's scheduled downtime (bedtime / school) so the day is predictable. */
 @Composable
-private fun ScheduleCard(focus: com.shahaabapps.core.model.FocusSettings) {
+private fun ScheduleCard(focus: com.shahaabapps.core.model.FocusSettings, onRules: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(CARD).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -435,6 +451,13 @@ private fun ScheduleCard(focus: com.shahaabapps.core.model.FocusSettings) {
                 ScheduleRow(Icons.Filled.Bedtime, "Bedtime", focus.bedtime.startMinute, focus.bedtime.endMinute, focus.bedtime.days)
             }
         }
+        Text(
+            "See all rules",
+            color = NAVY2,
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.sp,
+            modifier = Modifier.clickable(onClick = onRules).padding(vertical = 2.dp),
+        )
     }
 }
 

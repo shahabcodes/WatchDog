@@ -28,6 +28,7 @@ class FirebaseGeofenceRepository @Inject constructor(
     private val e2ee: E2eeManager,
     private val authRepository: AuthRepository,
     @ApplicationContext private val context: Context,
+    private val kids: com.shahaabapps.core.firebase.child.KidDirectory,
 ) : GeofenceRepository {
 
     override fun observeGeofences(childId: String): Flow<List<Geofence>> = callbackFlow {
@@ -42,7 +43,13 @@ class FirebaseGeofenceRepository @Inject constructor(
         awaitClose { registration.remove() }
     }
 
-    override suspend fun saveGeofence(childId: String, geofence: Geofence): AppResult<Unit> =
+    override suspend fun saveGeofence(childId: String, geofence: Geofence, shared: Boolean): AppResult<Unit> {
+        // One id for every phone, so the place is the same place on each.
+        val withId = if (geofence.id.isBlank()) geofence.copy(id = geofences(childId).document().id) else geofence
+        return kids.fanOut(childId, shared) { saveOne(it, withId) }
+    }
+
+    private suspend fun saveOne(childId: String, geofence: Geofence): AppResult<Unit> =
         runCatchingResult {
             com.shahaabapps.core.common.Diag.action("geofence.saveGeofence", "childId=$childId")
             val doc = if (geofence.id.isBlank()) geofences(childId).document()
@@ -79,7 +86,10 @@ class FirebaseGeofenceRepository @Inject constructor(
             doc.set(data).await()
         }
 
-    override suspend fun deleteGeofence(childId: String, geofenceId: String): AppResult<Unit> =
+    override suspend fun deleteGeofence(childId: String, geofenceId: String, shared: Boolean): AppResult<Unit> =
+        kids.fanOut(childId, shared) { deleteOne(it, geofenceId) }
+
+    private suspend fun deleteOne(childId: String, geofenceId: String): AppResult<Unit> =
         runCatchingResult {
             com.shahaabapps.core.common.Diag.action("geofence.deleteGeofence", "childId=$childId geofenceId=$geofenceId")
             geofences(childId).document(geofenceId).delete().await()
@@ -161,7 +171,7 @@ class FirebaseGeofenceRepository @Inject constructor(
             snap.documents.forEach { doc ->
                 if (doc.getBoolean("enc") == true) return@forEach
                 val gf = doc.toGeofence(childId, viewerUid) ?: return@forEach
-                saveGeofence(childId, gf) // re-saves sealed to the same doc id
+                saveOne(childId, gf) // re-saves sealed to the same doc id
             }
         }
     }

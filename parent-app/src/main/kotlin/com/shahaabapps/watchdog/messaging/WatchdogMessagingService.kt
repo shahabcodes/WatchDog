@@ -31,6 +31,7 @@ class WatchdogMessagingService : FirebaseMessagingService() {
 
     @Inject lateinit var tokenRepository: MessagingTokenRepository
     @Inject lateinit var authRepository: AuthRepository
+    @Inject lateinit var kidDirectory: com.shahaabapps.core.firebase.child.KidDirectory
     @Inject lateinit var geofenceRepository: GeofenceRepository
     @Inject lateinit var blockAttemptRepository: BlockAttemptRepository
 
@@ -52,7 +53,12 @@ class WatchdogMessagingService : FirebaseMessagingService() {
         // A child's "ask" (unlock an app, more time…): post an interactive
         // notification with Approve/Reject buttons that deep-link into the app.
         if (message.data["type"] == "request") {
-            handleRequestPush(message.data)
+            // A child with several phones: say which phone asked, when it's known.
+            val phone = message.data["childId"]?.let { kidDirectory.labelOf(it) }.orEmpty()
+            val data = if (message.data["multiPhone"] == "1" && phone.isNotEmpty()) {
+                message.data + ("title" to "${message.data["title"].orEmpty()} (on $phone)")
+            } else message.data
+            handleRequestPush(data)
             com.shahaabapps.watchdog.widget.WidgetRefreshWorker.refreshNow(this)
             return
         }

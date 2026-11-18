@@ -17,9 +17,10 @@ interface AppRulesRepository {
     /** Rules currently set for a child. */
     fun observeAppRules(childId: String): Flow<List<AppRule>>
 
-    suspend fun saveAppRule(childId: String, rule: AppRule): AppResult<Unit>
+    /** Saves [rule]; when [shared], to every phone of the child (see KidDirectory). */
+    suspend fun saveAppRule(childId: String, rule: AppRule, shared: Boolean = true): AppResult<Unit>
 
-    suspend fun deleteAppRule(childId: String, packageName: String): AppResult<Unit>
+    suspend fun deleteAppRule(childId: String, packageName: String, shared: Boolean = true): AppResult<Unit>
 
     /** Child app reports its launchable apps so the parent can pick from them. */
     suspend fun reportInstalledApps(childId: String, apps: List<InstalledApp>): AppResult<Unit>

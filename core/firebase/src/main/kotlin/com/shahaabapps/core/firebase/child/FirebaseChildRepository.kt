@@ -30,6 +30,7 @@ class FirebaseChildRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val e2ee: E2eeManager,
     private val authRepository: AuthRepository,
+    private val kidDirectory: KidDirectory,
 ) : ChildRepository {
 
     override fun observeChild(childId: String): Flow<ChildAccount?> = callbackFlow {
@@ -212,6 +213,22 @@ class FirebaseChildRepository @Inject constructor(
             Unit
         }
 
+    override suspend fun mergeChildren(childIds: List<String>, name: String): AppResult<String> =
+        runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("child.mergeChildren", "phones=${childIds.size}")
+            val data = functions.getHttpsCallable("mergeChildren")
+                .callSafely(name = "mergeChildren", data = hashMapOf("childIds" to childIds, "name" to name))
+                .getData() as? Map<*, *>
+            requireNotNull(data?.get("kidId") as? String) { "No kid returned" }
+        }
+
+    override suspend fun unmergeChild(childId: String): AppResult<Unit> =
+        runCatchingResult {
+            com.shahaabapps.core.common.Diag.action("child.unmergeChild", "childId=$childId")
+            functions.getHttpsCallable("unmergeChild").callSafely(name = "unmergeChild", data = hashMapOf("childId" to childId))
+            Unit
+        }
+
     override suspend fun heartbeat(
         childId: String,
         model: String,
@@ -367,6 +384,10 @@ class FirebaseChildRepository @Inject constructor(
         @Suppress("UNCHECKED_CAST")
         val deviceMap = get(FIELD_DEVICE) as? Map<String, Any?> ?: emptyMap()
 
+        val kid = KidDirectory.parseKid(this)
+        kidDirectory.record(id, kid)
+        val device = deviceInfo(id, viewerUid, deviceMap)
+        kidDirectory.rememberLabel(id, device.model)
         return ChildAccount(
             childId = id,
             profile = UserProfile(
@@ -378,7 +399,8 @@ class FirebaseChildRepository @Inject constructor(
             ),
             pairingCode = getString(FIELD_PAIRING_CODE) ?: "",
             linkedParents = linkedParents,
-            device = deviceInfo(id, viewerUid, deviceMap),
+            device = device,
+            kid = kid,
         )
     }
 

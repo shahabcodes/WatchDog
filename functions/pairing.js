@@ -278,14 +278,17 @@ exports.unlinkChild = onCall(async (request) => {
   if (!parentId) throw new HttpsError("unauthenticated", "Sign in required.");
   const childId = requireId((request.data || {}).childId, "child");
   const ref = db().doc(`children/${childId}`);
-  await db().runTransaction(async (tx) => {
+  const orphaned = await db().runTransaction(async (tx) => {
     const snap = await tx.get(ref);
-    if (!snap.exists) return;
+    if (!snap.exists) return false;
     const parents = snap.get("linkedParents") || [];
-    if (!parents.includes(parentId)) return;
+    if (!parents.includes(parentId)) return false;
     const remaining = parents.filter((p) => p !== parentId);
     tx.update(ref, { linkedParents: remaining, pairingActive: remaining.length === 0 });
+    return remaining.length === 0 && !!snap.get("kid");
   });
+  // A phone nobody supervises any more leaves its child's group of phones.
+  if (orphaned) await require("./kids")._internal.detachFromKid(childId);
   return { ok: true };
 });
 

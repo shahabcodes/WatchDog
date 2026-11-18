@@ -8,6 +8,8 @@ package com.shahaabapps.core.model
  * @param pairingCode short code shown in the child's QR for a parent to scan.
  * @param linkedParents parent uids currently linked to this child.
  * @param device live device state reported by the child app.
+ * @param kid the group this phone belongs to when one child has several phones
+ *   (server-written); null for a phone on its own.
  */
 data class ChildAccount(
     val childId: String = "",
@@ -15,9 +17,24 @@ data class ChildAccount(
     val pairingCode: String = "",
     val linkedParents: List<String> = emptyList(),
     val device: DeviceInfo = DeviceInfo(),
+    val kid: KidLink? = null,
 ) {
     val isLinked: Boolean get() = linkedParents.isNotEmpty()
+
+    /** The group id this phone is shown under: its kid, or the phone itself. */
+    val kidKey: String get() = kid?.id ?: childId
 }
+
+/**
+ * Several phones of one child ("kid"), shown as one child in Watch Dog. Each
+ * phone keeps its own account and keys; Watch Dog writes shared rules to every
+ * phone in [phones]. Written only by the mergeChildren / unmergeChild functions.
+ */
+data class KidLink(
+    val id: String = "",
+    val name: String = "",
+    val phones: List<String> = emptyList(),
+)
 
 /**
  * Child-reported diagnostic of the location pipeline, so the parent can see the

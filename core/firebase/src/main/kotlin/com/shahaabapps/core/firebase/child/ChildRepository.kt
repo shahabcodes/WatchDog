@@ -85,6 +85,12 @@ interface ChildRepository {
 
     /** A linked parent removes (unlinks) themselves from a child (server-side). */
     suspend fun unlinkChild(childId: String): AppResult<Unit>
+
+    /** Joins phones of one child into a kid (server-side); returns the kid's id. */
+    suspend fun mergeChildren(childIds: List<String>, name: String): AppResult<String>
+
+    /** Takes a phone out of its kid; it keeps its rules. */
+    suspend fun unmergeChild(childId: String): AppResult<Unit>
 }
 
 /** A server-issued pairing code and when it stops working. */

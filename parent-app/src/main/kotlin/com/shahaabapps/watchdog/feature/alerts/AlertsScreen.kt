@@ -487,7 +487,12 @@ private fun RequestCard(
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Your child is asking ${request.summary}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+            Column {
+                Text("Your child is asking ${request.summary}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                if (request.phone.isNotEmpty()) {
+                    Text("On ${request.phone}", style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.secondaryLabel)
+                }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Box(
                     modifier = Modifier
@@ -593,7 +598,7 @@ private fun AlertRow(item: AlertItem) {
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                timeLabel(event.timestampMillis),
+                if (item.phone.isNotEmpty()) "${timeLabel(event.timestampMillis)} · ${item.phone}" else timeLabel(event.timestampMillis),
                 style = MaterialTheme.typography.bodySmall,
                 color = AppTheme.colors.secondaryLabel,
             )

@@ -106,6 +106,12 @@ fun RulesContent(s: RulesState, apps: com.shahaabapps.shield.feature.kid.MyAppsS
                     color = AppTheme.colors.secondaryLabel,
                 )
             }
+            if (s.phones > 1) {
+                Note(
+                    if (s.phones == 2) "They're shared with your other phone. Time limits count on each phone."
+                    else "They're shared with your other ${s.phones - 1} phones. Time limits count on each phone.",
+                )
+            }
 
             // ---- Downtime ------------------------------------------------------
             Section("Bedtime & School")

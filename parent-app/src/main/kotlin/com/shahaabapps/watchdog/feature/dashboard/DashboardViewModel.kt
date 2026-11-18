@@ -35,8 +35,15 @@ sealed interface LinkState {
     data object Linking : LinkState
     /** The code was accepted; the child's phone must tap Approve. */
     data class AwaitingApproval(val childId: String) : LinkState
-    data class Success(val childName: String?) : LinkState
+    data class Success(val childName: String?, val childId: String? = null) : LinkState
     data class Error(val message: String) : LinkState
+}
+
+sealed interface MergeState {
+    data object Idle : MergeState
+    data object Working : MergeState
+    data class Done(val name: String) : MergeState
+    data class Error(val message: String) : MergeState
 }
 
 sealed interface VerifyState {
@@ -60,6 +67,7 @@ class DashboardViewModel @Inject constructor(
     private val childRepository: ChildRepository,
     private val e2eeManager: E2eeManager,
     syncStatus: com.shahaabapps.core.firebase.SyncStatus,
+    private val kidSync: com.shahaabapps.watchdog.feature.kids.KidSync,
 ) : ViewModel() {
 
     /** Saved changes not yet sent to the server (e.g. made while offline). */
@@ -133,7 +141,7 @@ class DashboardViewModel @Inject constructor(
                     // link is verified independently of the backend.
                     childPublicKey?.let { runCatching { e2eeManager.pinChildKey(childId, it) } }
                     when (result.data) {
-                        is LinkOutcome.Linked -> LinkState.Success(null)
+                        is LinkOutcome.Linked -> LinkState.Success(null, childId)
                         is LinkOutcome.AwaitingApproval -> {
                             awaitApproval(childId)
                             LinkState.AwaitingApproval(childId)
@@ -159,7 +167,7 @@ class DashboardViewModel @Inject constructor(
             val state = _linkState.value
             if (state is LinkState.AwaitingApproval && state.childId == childId) {
                 _linkState.value = if (approved != null) {
-                    LinkState.Success(null)
+                    LinkState.Success(null, childId)
                 } else {
                     LinkState.Error("The child's phone didn't approve in time. Scan a fresh code to try again.")
                 }
@@ -230,6 +238,55 @@ class DashboardViewModel @Inject constructor(
     /** Signs the parent out; the app returns to the auth flow. */
     fun signOut() {
         viewModelScope.launch { authRepository.signOut() }
+    }
+
+    // ---- One child, several phones ------------------------------------------
+
+    private val _mergePreview = MutableStateFlow<com.shahaabapps.watchdog.feature.kids.MergePreview?>(null)
+    /** What the merge being set up would replace on the other phones (null while counting). */
+    val mergePreview: StateFlow<com.shahaabapps.watchdog.feature.kids.MergePreview?> = _mergePreview.asStateFlow()
+    private var previewJob: kotlinx.coroutines.Job? = null
+
+    fun loadMergePreview(keepFrom: String, others: List<String>) {
+        previewJob?.cancel()
+        _mergePreview.value = null
+        previewJob = viewModelScope.launch {
+            _mergePreview.value = runCatching { kidSync.preview(keepFrom, others) }
+                .getOrDefault(com.shahaabapps.watchdog.feature.kids.MergePreview())
+        }
+    }
+
+    private val _mergeState = MutableStateFlow<MergeState>(MergeState.Idle)
+    val mergeState: StateFlow<MergeState> = _mergeState.asStateFlow()
+
+    /** Joins phones into one child, keeping [keepFrom]'s rules. */
+    fun mergePhones(keepFrom: String, others: List<String>, name: String) {
+        if (_mergeState.value is MergeState.Working) return
+        _mergeState.value = MergeState.Working
+        viewModelScope.launch {
+            _mergeState.value = when (val r = kidSync.merge(keepFrom, others, name)) {
+                is AppResult.Success -> MergeState.Done(name)
+                is AppResult.Failure -> MergeState.Error(r.error.message ?: "Couldn't merge these phones.")
+            }
+        }
+    }
+
+    /** Takes a phone out of its child; it keeps its rules. */
+    fun unmergePhone(childId: String) {
+        viewModelScope.launch {
+            when (val r = childRepository.unmergeChild(childId)) {
+                is AppResult.Failure -> _mergeState.value = MergeState.Error(r.error.message ?: "Couldn't separate this phone.")
+                is AppResult.Success -> Unit
+            }
+        }
+    }
+
+    fun clearMergeState() { _mergeState.value = MergeState.Idle }
+
+    /** Brings a child's phones back in line (at most every 10 minutes). */
+    fun repairKid(kidId: String, phones: List<String>) {
+        if (phones.size < 2) return
+        viewModelScope.launch { kidSync.repair(kidId, phones) }
     }
 
     /** Unlinks (removes) a child from this parent. */

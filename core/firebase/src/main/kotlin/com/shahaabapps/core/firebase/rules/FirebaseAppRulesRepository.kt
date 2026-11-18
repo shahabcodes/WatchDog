@@ -21,6 +21,7 @@ class FirebaseAppRulesRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val e2ee: E2eeManager,
     private val authRepository: AuthRepository,
+    private val kids: com.shahaabapps.core.firebase.child.KidDirectory,
 ) : AppRulesRepository {
 
     override fun observeAppRules(childId: String): Flow<List<AppRule>> = callbackFlow {
@@ -41,7 +42,10 @@ class FirebaseAppRulesRepository @Inject constructor(
         awaitClose { registration.remove() }
     }
 
-    override suspend fun saveAppRule(childId: String, rule: AppRule): AppResult<Unit> =
+    override suspend fun saveAppRule(childId: String, rule: AppRule, shared: Boolean): AppResult<Unit> =
+        kids.fanOut(childId, shared) { saveOne(it, rule) }
+
+    private suspend fun saveOne(childId: String, rule: AppRule): AppResult<Unit> =
         runCatchingResult {
             com.shahaabapps.core.common.Diag.action("rules.saveAppRule", "childId=$childId")
             // The rule's package, label, limits and schedule are sensitive. Seal them
@@ -100,7 +104,10 @@ class FirebaseAppRulesRepository @Inject constructor(
             }
         }
 
-    override suspend fun deleteAppRule(childId: String, packageName: String): AppResult<Unit> =
+    override suspend fun deleteAppRule(childId: String, packageName: String, shared: Boolean): AppResult<Unit> =
+        kids.fanOut(childId, shared) { deleteOne(it, packageName) }
+
+    private suspend fun deleteOne(childId: String, packageName: String): AppResult<Unit> =
         runCatchingResult {
             com.shahaabapps.core.common.Diag.action("rules.deleteAppRule", "childId=$childId")
             // Delete both the hashed and any legacy plaintext-id doc for this package.
@@ -118,7 +125,7 @@ class FirebaseAppRulesRepository @Inject constructor(
                 val rule = doc.toAppRule(childId, viewerUid) ?: return@forEach
                 // Re-save: writes the sealed rule under the hashed id and deletes the
                 // legacy plaintext-id doc.
-                saveAppRule(childId, rule)
+                saveOne(childId, rule)
             }
         }
     }

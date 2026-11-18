@@ -74,6 +74,7 @@ import com.shahaabapps.watchdog.R
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -240,6 +241,18 @@ fun ParentShell(
     val showChrome = Tab.entries.any { it.route == currentTab }
 
     val selectedChild = children.firstOrNull { it.childId == currentChildId } ?: children.first()
+    // Phones of the same child show as one child, with a phone switcher.
+    val kids = remember(children) { com.shahaabapps.watchdog.feature.kids.groupKids(children) }
+    val selectedKid = kids.firstOrNull { currentChildId in it.phoneIds } ?: kids.first()
+    // The phone last open for each child, so picking the child goes back to it.
+    val lastPhone = remember { mutableMapOf<String, String>() }
+    androidx.compose.runtime.SideEffect { lastPhone[selectedKid.key] = selectedChild.childId }
+    fun phoneToOpen(kid: com.shahaabapps.watchdog.feature.kids.KidView): String =
+        lastPhone[kid.key]?.takeIf { it in kid.phoneIds } ?: kid.phoneIds.first()
+    // Bring the child's phones back in line if a save reached only some of them.
+    androidx.compose.runtime.LaunchedEffect(selectedKid.key, selectedKid.phoneIds) {
+        viewModel.repairKid(selectedKid.key, selectedKid.phoneIds)
+    }
 
     // One consistent way to move between tab destinations ("<tab>/<childId>"),
     // so the saved/restored back stack stays coherent however a tab was opened.
@@ -405,8 +418,19 @@ fun ParentShell(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         bottomBar = {
             if (showChrome) {
-                ParentBottomBar(currentTab = currentTab) { tab ->
-                    switchTab("${tab.route}/$currentChildId")
+                Column {
+                    if (selectedKid.merged) {
+                        com.shahaabapps.watchdog.feature.kids.PhoneSwitcherBar(
+                            phones = selectedKid.phones.map {
+                                it.childId to com.shahaabapps.watchdog.feature.kids.phoneLabel(it, selectedKid.phones)
+                            },
+                            selectedId = currentChildId,
+                            onSelect = { id -> if (id != currentChildId) switchTab("$currentTab/$id") },
+                        )
+                    }
+                    ParentBottomBar(currentTab = currentTab) { tab ->
+                        switchTab("${tab.route}/$currentChildId")
+                    }
                 }
             }
         },
@@ -428,7 +452,7 @@ fun ParentShell(
                 OverviewScreen(
                     onOpenMap = { switchTab("${Tab.MAP.route}/$currentChildId") },
                     onOpenAlerts = { navController.navigate("alerts/$currentChildId") { launchSingleTop = true } },
-                    childNames = children.map { it.childId to it.profile.name.ifBlank { "Child" } },
+                    childNames = kids.map { (if (it == selectedKid) currentChildId else phoneToOpen(it)) to it.name },
                     selectedId = currentChildId,
                     onSelectChild = { id ->
                         switchTab("${Tab.OVERVIEW.route}/$id")
@@ -516,7 +540,7 @@ fun ParentShell(
             ) { entry ->
                 AppGuideChapterScreen(
                     startChapterId = entry.arguments?.getString("chapterId").orEmpty(),
-                    childName = selectedChild.profile.name,
+                    childName = selectedKid.name,
                     onBack = { navController.popBackStack() },
                     onExit = exitGuide,
                 )
@@ -545,12 +569,30 @@ fun ParentShell(
                 }
             }
         }
+        // A newly paired phone: a new child, or another phone of one already here?
+        val ls = linkState
+        if (ls is LinkState.Success && ls.childId != null) {
+            val newPhone = children.firstOrNull { it.childId == ls.childId }
+            val others = kids.filter { ls.childId !in it.phoneIds }
+            if (newPhone != null && newPhone.kid == null && others.isNotEmpty()) {
+                com.shahaabapps.watchdog.feature.kids.AnotherPhoneDialog(
+                    kids = others,
+                    onPick = { kid ->
+                        viewModel.clearLinkState()
+                        viewModel.mergePhones(kid.phoneIds.first(), listOf(ls.childId), kid.name)
+                    },
+                    onNewChild = { viewModel.clearLinkState() },
+                )
+            }
+        }
+        val mergeState by viewModel.mergeState.collectAsStateWithLifecycle()
+        com.shahaabapps.watchdog.feature.kids.MergeStateDialog(mergeState, onDismiss = viewModel::clearMergeState)
         val syncPending by viewModel.syncPending.collectAsStateWithLifecycle()
         val online by viewModel.online.collectAsStateWithLifecycle()
         SyncPill(
             pending = syncPending,
             online = online,
-            childName = selectedChild.profile.name,
+            childName = selectedKid.name,
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = Spacing.md),
         )
       }
@@ -1250,6 +1292,36 @@ private fun ManageChildrenScreen(
     val reconnectState by viewModel.reconnectState.collectAsStateWithLifecycle()
     val parentsDialog by viewModel.parentsDialog.collectAsStateWithLifecycle()
     val pendingRestores by viewModel.pendingRestores.collectAsStateWithLifecycle()
+    val kids = remember(children) { com.shahaabapps.watchdog.feature.kids.groupKids(children) }
+    val kidOf = remember(kids) { kids.flatMap { k -> k.phones.map { it.childId to k } }.toMap() }
+    // Phones of one child listed together.
+    val ordered = remember(kids) { kids.flatMap { it.phones } }
+    var merging by remember { mutableStateOf<Set<String>?>(null) }
+    var separate by remember { mutableStateOf<ChildAccount?>(null) }
+    val mergePreview by viewModel.mergePreview.collectAsStateWithLifecycle()
+    merging?.let { pre ->
+        com.shahaabapps.watchdog.feature.kids.MergePhonesDialog(
+            kids = kids,
+            preview = mergePreview,
+            preselected = pre,
+            onPreview = viewModel::loadMergePreview,
+            onMerge = { keep, others, name -> merging = null; viewModel.mergePhones(keep, others, name) },
+            onDismiss = { merging = null },
+        )
+    }
+    separate?.let { phone ->
+        val kid = kidOf[phone.childId]
+        val label = com.shahaabapps.watchdog.feature.kids.phoneLabel(phone, kid?.phones.orEmpty())
+        val kidName = kid?.name ?: "the child"
+        com.shahaabapps.core.ui.components.ConfirmDialog(
+            title = "Separate this phone?",
+            message = "$label shows as its own child again. It keeps the rules it has now, " +
+                "but changes to the rules of $kidName stop reaching it.",
+            confirmText = "Separate",
+            onConfirm = { viewModel.unmergePhone(phone.childId); separate = null },
+            onDismiss = { separate = null },
+        )
+    }
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -1344,7 +1416,22 @@ private fun ManageChildrenScreen(
             contentPadding = PaddingValues(Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
-            items(children, key = { it.childId }) { child ->
+            items(ordered, key = { it.childId }) { child ->
+                val kid = kidOf[child.childId]
+                val merged = kid?.merged == true
+                if (kid != null && merged && kid.phones.first() == child) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = Spacing.sm, bottom = 2.dp),
+                    ) {
+                        Avatar(name = kid.name, photoUrl = kid.photoUrl, size = 32.dp)
+                        Text(
+                            "${kid.name} · ${kid.phones.size} phones",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(start = Spacing.sm),
+                        )
+                    }
+                }
                 val online = child.device.lastSeenMillis > 0 &&
                     System.currentTimeMillis() - child.device.lastSeenMillis < 5 * 60_000L
                 // The tour spotlights the first child's card and its ⋮ menu.
@@ -1354,7 +1441,11 @@ private fun ManageChildrenScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Avatar(name = child.profile.name, photoUrl = child.profile.photoUrl, size = 48.dp)
                         Column(modifier = Modifier.weight(1f).padding(start = Spacing.md)) {
-                            Text(child.profile.name.ifBlank { "Child" }, style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                if (kid != null && merged) com.shahaabapps.watchdog.feature.kids.phoneLabel(child, kid.phones)
+                                else child.profile.name.ifBlank { "Child" },
+                                style = MaterialTheme.typography.titleMedium,
+                            )
                             com.shahaabapps.core.ui.components.StatusChip(
                                 text = if (online) "Online" else "Offline",
                                 color = if (online) AppTheme.colors.success else AppTheme.colors.secondaryLabel,
@@ -1401,6 +1492,19 @@ private fun ManageChildrenScreen(
                                     onClick = { menu = false; launchReconnectFromGallery(child.childId) },
                                     leadingIcon = { androidx.compose.material3.Icon(Icons.Filled.Image, contentDescription = null, tint = AppTheme.colors.accent) },
                                 )
+                                if (kid != null && merged) {
+                                    androidx.compose.material3.DropdownMenuItem(
+                                        text = { Text("Separate from ${kid.name}") },
+                                        onClick = { menu = false; separate = child },
+                                        leadingIcon = { androidx.compose.material3.Icon(Icons.Filled.PhoneAndroid, contentDescription = null, tint = AppTheme.colors.accent) },
+                                    )
+                                } else if (kids.size >= 2) {
+                                    androidx.compose.material3.DropdownMenuItem(
+                                        text = { Text("Same child as another phone…") },
+                                        onClick = { menu = false; merging = setOf(kid?.key ?: child.childId) },
+                                        leadingIcon = { androidx.compose.material3.Icon(Icons.Filled.PhoneAndroid, contentDescription = null, tint = AppTheme.colors.accent) },
+                                    )
+                                }
                                 androidx.compose.material3.DropdownMenuItem(
                                     modifier = Modifier.tour("menu.remove"),
                                     text = { Text("Remove", color = AppTheme.colors.destructive) },
@@ -1424,6 +1528,21 @@ private fun ManageChildrenScreen(
                     onClick = onAdd,
                     modifier = Modifier.padding(top = Spacing.sm).tourTarget("manage.add"),
                 )
+                if (kids.size >= 2) {
+                    Text(
+                        "One child with two phones? Merge them, so they show as one child and share their rules.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AppTheme.colors.secondaryLabel,
+                        modifier = Modifier.padding(top = Spacing.md),
+                    )
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = { merging = emptySet() },
+                        modifier = Modifier.fillMaxWidth().padding(top = Spacing.xs),
+                    ) {
+                        androidx.compose.material3.Icon(Icons.Filled.PhoneAndroid, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Text("  Merge phones")
+                    }
+                }
             }
         }
     }

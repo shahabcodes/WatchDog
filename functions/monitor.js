@@ -98,7 +98,7 @@ exports.watchChildGuard = onDocumentUpdated("children/{childId}", async (event) 
   const parents = Array.isArray(after.linkedParents) ? after.linkedParents : [];
   if (parents.length === 0) return;
   const childId = event.params.childId;
-  const childName = (after.profile && after.profile.name) || "your child";
+  const childName = require("./kids")._internal.displayName(after, "your child");
 
   const beforeDevice = before.device || {};
   const afterDevice = after.device || {};

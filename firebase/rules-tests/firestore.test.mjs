@@ -49,6 +49,12 @@ beforeEach(async () => {
 });
 
 describe("attacks are refused", () => {
+  it("nobody but the server can group phones (the kid field)", async () => {
+    const kid = { id: "k1", name: "Emma", phones: [CHILD, "child2"] };
+    await assertFails(updateDoc(doc(child(), `children/${CHILD}`), { kid }));
+    await assertFails(updateDoc(doc(parent(), `children/${CHILD}`), { kid }));
+    await assertFails(setDoc(doc(as("child3", "anonymous"), "children/child3"), { role: "CHILD", kid }));
+  });
   it("child cannot change its own linkedParents", async () => {
     await assertFails(updateDoc(doc(child(), `children/${CHILD}`), { linkedParents: [] }));
     await assertFails(updateDoc(doc(child(), `children/${CHILD}`), { linkedParents: [PARENT, STRANGER] }));

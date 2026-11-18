@@ -25,13 +25,15 @@ import javax.inject.Inject
  */
 interface InstallGuardRepository {
     fun observe(childId: String): Flow<InstallGuard>
-    suspend fun setGuard(childId: String, guard: InstallGuard): AppResult<Unit>
+    /** Saves the install policy; when [shared], to every phone of the child. */
+    suspend fun setGuard(childId: String, guard: InstallGuard, shared: Boolean = true): AppResult<Unit>
 }
 
 class FirebaseInstallGuardRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val e2ee: E2eeManager,
     private val authRepository: AuthRepository,
+    private val kids: com.shahaabapps.core.firebase.child.KidDirectory,
 ) : InstallGuardRepository {
 
     override fun observe(childId: String): Flow<InstallGuard> = callbackFlow {
@@ -53,7 +55,10 @@ class FirebaseInstallGuardRepository @Inject constructor(
         awaitClose { registration.remove() }
     }
 
-    override suspend fun setGuard(childId: String, guard: InstallGuard): AppResult<Unit> =
+    override suspend fun setGuard(childId: String, guard: InstallGuard, shared: Boolean): AppResult<Unit> =
+        kids.fanOut(childId, shared) { setOne(it, guard) }
+
+    private suspend fun setOne(childId: String, guard: InstallGuard): AppResult<Unit> =
         runCatchingResult {
             com.shahaabapps.core.common.Diag.action("installguard.setGuard", "childId=$childId")
             val uid = authRepository.currentUserIdOrNull()

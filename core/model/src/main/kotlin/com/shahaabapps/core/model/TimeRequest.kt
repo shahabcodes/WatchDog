@@ -34,6 +34,9 @@ data class TimeRequest(
      * "use the default window for this kind".
      */
     val grantUntilMillis: Long = 0L,
+    /** Watch Dog only: which of the child's phones asked, and its label ("" for one phone). */
+    val childId: String = "",
+    val phone: String = "",
 ) {
     /** A short child-facing summary of the ask. */
     val summary: String

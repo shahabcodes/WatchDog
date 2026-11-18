@@ -65,6 +65,7 @@ interface ProtectionRepository {
 
 class FirebaseProtectionRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
+    private val kids: com.shahaabapps.core.firebase.child.KidDirectory,
 ) : ProtectionRepository {
 
     override fun observe(childId: String): Flow<ProtectionSettings> = callbackFlow {
@@ -137,6 +138,20 @@ class FirebaseProtectionRepository @Inject constructor(
             )
             // merge: the PIN fields are server-managed and left untouched here.
             doc(childId).set(base, SetOptions.merge()).await()
+            // The new-app policy is shared by all of the child's phones; the other
+            // protection switches (and the PIN) stay per phone.
+            kids.siblingsOf(childId).forEach { sibling ->
+                runCatching {
+                    doc(sibling).set(
+                        mapOf(
+                            "blockNewApps" to blockNewApps,
+                            "newAppsBlocked" to newAppsBlocked,
+                            "updatedAtMillis" to System.currentTimeMillis(),
+                        ),
+                        SetOptions.merge(),
+                    ).await()
+                }.onFailure { com.shahaabapps.core.common.Diag.warn("kid", "shared new-app policy to $sibling failed", it) }
+            }
             // The PIN is hashed and stored server-side, out of the child's reach.
             if (newPin != null) {
                 functions.getHttpsCallable("setRemovalPin")

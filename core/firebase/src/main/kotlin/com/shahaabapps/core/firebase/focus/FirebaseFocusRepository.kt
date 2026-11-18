@@ -26,13 +26,15 @@ import javax.inject.Inject
  */
 interface FocusRepository {
     fun observe(childId: String): Flow<FocusSettings>
-    suspend fun save(childId: String, settings: FocusSettings): AppResult<Unit>
+    /** Saves bedtime/school; when [shared], to every phone of the child. */
+    suspend fun save(childId: String, settings: FocusSettings, shared: Boolean = true): AppResult<Unit>
 }
 
 class FirebaseFocusRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val e2ee: E2eeManager,
     private val authRepository: AuthRepository,
+    private val kids: com.shahaabapps.core.firebase.child.KidDirectory,
 ) : FocusRepository {
 
     override fun observe(childId: String): Flow<FocusSettings> = callbackFlow {
@@ -48,7 +50,10 @@ class FirebaseFocusRepository @Inject constructor(
         awaitClose { registration.remove() }
     }
 
-    override suspend fun save(childId: String, settings: FocusSettings): AppResult<Unit> =
+    override suspend fun save(childId: String, settings: FocusSettings, shared: Boolean): AppResult<Unit> =
+        kids.fanOut(childId, shared) { saveOne(it, settings) }
+
+    private suspend fun saveOne(childId: String, settings: FocusSettings): AppResult<Unit> =
         runCatchingResult {
             com.shahaabapps.core.common.Diag.action("focus.save", "childId=$childId")
             val uid = authRepository.currentUserIdOrNull()

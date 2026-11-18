@@ -16,9 +16,10 @@ interface GeofenceRepository {
 
     fun observeGeofences(childId: String): Flow<List<Geofence>>
 
-    suspend fun saveGeofence(childId: String, geofence: Geofence): AppResult<Unit>
+    /** Saves [geofence]; when [shared], to every phone of the child under the same id. */
+    suspend fun saveGeofence(childId: String, geofence: Geofence, shared: Boolean = true): AppResult<Unit>
 
-    suspend fun deleteGeofence(childId: String, geofenceId: String): AppResult<Unit>
+    suspend fun deleteGeofence(childId: String, geofenceId: String, shared: Boolean = true): AppResult<Unit>
 
     /** Child reports an enter/exit transition. */
     suspend fun reportEvent(childId: String, event: GeofenceEvent): AppResult<Unit>

@@ -14,6 +14,7 @@ setGlobalOptions({ region: "us-central1", maxInstances: 10 });
 
 const db = getFirestore();
 const pairing = require("./pairing");
+const kids = require("./kids");
 const pairingInternal = pairing._internal;
 const monitorInternal = require("./monitor")._internal;
 
@@ -110,7 +111,7 @@ exports.notifyGeofenceEvent = onDocumentCreated(
     const parents = Array.isArray(child.linkedParents) ? child.linkedParents : [];
     if (parents.length === 0) return;
     const childName =
-      clip(child.profile && child.profile.name, 60, "Your child");
+      clip(kids._internal.displayName(child, "Your child"), 60, "Your child");
 
     // Geofence → honour its trigger (ENTER / EXIT / ENTER_EXIT) and active flag.
     // These stay plaintext; the place name/coordinates are E2E-encrypted, so this
@@ -203,7 +204,7 @@ exports.notifyBlockAttempt = onDocumentCreated(
     const child = childSnap.data() || {};
     const parents = Array.isArray(child.linkedParents) ? child.linkedParents : [];
     if (parents.length === 0) return;
-    const childName = clip(child.profile && child.profile.name, 60, "Your child");
+    const childName = clip(kids._internal.displayName(child, "Your child"), 60, "Your child");
 
     const tokenDocs = [];
     for (const parentId of parents) {
@@ -387,7 +388,7 @@ exports.notifyNewApp = onDocumentCreated(
     const parents = Array.isArray(child.linkedParents) ? child.linkedParents : [];
     if (parents.length === 0) return;
     const childName =
-      clip(child.profile && child.profile.name, 60, "your child");
+      clip(kids._internal.displayName(child, "your child"), 60, "your child");
 
     const title = `New app on ${childName}'s phone`;
     const body = `${label} was just installed. It's supervised (a screenshot a minute) until you decide. Tap to review it.`;
@@ -449,7 +450,7 @@ exports.notifyChildRequest = onDocumentCreated(
     const child = childSnap.data() || {};
     const parents = Array.isArray(child.linkedParents) ? child.linkedParents : [];
     if (parents.length === 0) return;
-    const childName = clip(child.profile && child.profile.name, 60, "Your child");
+    const childName = clip(kids._internal.displayName(child, "Your child"), 60, "Your child");
 
     let title;
     switch (data.kind) {
@@ -492,6 +493,8 @@ exports.notifyChildRequest = onDocumentCreated(
         appLabel,
         appPackage,
         minutes: String(minutes),
+        // The child has several phones: Watch Dog adds which one asked.
+        multiPhone: child.kid && Array.isArray(child.kid.phones) && child.kid.phones.length > 1 ? "1" : "",
       },
       android: { priority: "high" },
     };
@@ -539,6 +542,10 @@ exports.setRemovalPin = pin.setRemovalPin;
 exports.migratePin = pin.migratePin;
 exports.verifyRemovalPin = pin.verifyRemovalPin;
 exports.linkedParentInfo = pairing.linkedParentInfo;
+
+// One child with several phones (kids.js).
+exports.mergeChildren = kids.mergeChildren;
+exports.unmergeChild = kids.unmergeChild;
 exports.requestParentRemoval = pairing.requestParentRemoval;
 exports.respondToParentRemoval = pairing.respondToParentRemoval;
 

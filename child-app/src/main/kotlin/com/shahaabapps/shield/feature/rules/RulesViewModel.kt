@@ -41,6 +41,8 @@ data class RulesState(
     val tracking: TrackingMode = TrackingMode.DEFAULT,
     val appLabels: Map<String, String> = emptyMap(),
     val appIcons: Map<String, String?> = emptyMap(),
+    /** How many phones of this child share these rules (1 = only this one). */
+    val phones: Int = 1,
 )
 
 private data class Part1(val focus: FocusSettings, val zone: String?, val protection: ProtectionSettings, val alerts: AlertSettings)
@@ -55,6 +57,7 @@ class RulesViewModel @Inject constructor(
     geofenceRepository: GeofenceRepository,
     trackingRepository: TrackingRepository,
     appRulesRepository: AppRulesRepository,
+    childRepository: com.shahaabapps.core.firebase.child.ChildRepository,
 ) : ViewModel() {
 
     private val childId: String? = authRepository.currentUserIdOrNull()
@@ -72,7 +75,7 @@ class RulesViewModel @Inject constructor(
                 protectionRepository.observe(childId).safe(ProtectionSettings()),
                 protectionRepository.observeAlerts(childId).safe(AlertSettings()),
             ) { focus, zone, protection, alerts -> Part1(focus, zone, protection, alerts) }
-            combine(
+            val second = combine(
                 first,
                 installGuardRepository.observe(childId).safe(InstallGuard()),
                 geofenceRepository.observeGeofences(childId).safe(emptyList()),
@@ -90,6 +93,9 @@ class RulesViewModel @Inject constructor(
                     appLabels = apps.associate { it.packageName to it.label.ifBlank { it.packageName } },
                     appIcons = apps.associate { it.packageName to it.icon },
                 )
+            }
+            combine(second, childRepository.observeChild(childId).safe(null)) { state, me ->
+                state.copy(phones = me?.kid?.phones?.size ?: 1)
             }
         }
         ).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RulesState())

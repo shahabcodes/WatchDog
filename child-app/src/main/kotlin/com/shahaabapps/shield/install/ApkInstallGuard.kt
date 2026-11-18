@@ -2,7 +2,9 @@ package com.shahaabapps.shield.install
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Environment
@@ -48,6 +50,9 @@ class ApkInstallGuard(
             installGuardRepository.observe(childId).collectLatest { guard ->
                 policy = guard
                 refreshWatchers()
+                // A parent who allowed an app (or turned the guard off) frees the
+                // APKs held back so far.
+                launch(Dispatchers.IO) { releaseAllowed() }
             }
         }
     }
@@ -99,42 +104,115 @@ class ApkInstallGuard(
         // install/update the protection app itself.
         if (pkg == appContext.packageName) return
         if (!policy.blocks(pkg)) return
-        val label = runCatching {
-            info.applicationInfo?.let { ai ->
-                ai.sourceDir = file.absolutePath
-                ai.publicSourceDir = file.absolutePath
-                pm.getApplicationLabel(ai).toString()
-            }
-        }.getOrNull()?.takeIf { it.isNotBlank() } ?: pkg
-        quarantine(file)
-        notifyBlocked(label, pkg)
+        val label = labelOf(info, file) ?: pkg
+        if (quarantine(file)) {
+            appContext.getSharedPreferences(HELD_PREFS, Context.MODE_PRIVATE).edit()
+                .putString(File(file.parentFile, file.name + BLOCKED_SUFFIX).absolutePath, "$pkg\n$label")
+                .apply()
+            notifyBlocked(label, pkg, canAsk = true)
+        } else {
+            notifyBlocked(label, pkg, canAsk = false)
+        }
     }
+
+    /** Gives back the held APKs the policy now allows, and tells the child. */
+    private fun releaseAllowed() {
+        if (!hasStorageAccess()) return
+        // Each held file's package, noted when it was held back (a renamed APK
+        // isn't reliably readable as one).
+        val prefs = appContext.getSharedPreferences(HELD_PREFS, Context.MODE_PRIVATE)
+        prefs.all.forEach { (path, value) ->
+            val held = File(path)
+            val (pkg, label) = (value as? String)?.split('\n', limit = 2)?.takeIf { it.size == 2 }
+                ?: run { prefs.edit().remove(path).apply(); return@forEach }
+            if (!held.exists()) { prefs.edit().remove(path).apply(); return@forEach }
+            if (policy.blocks(pkg)) return@forEach
+            val target = File(held.parentFile, held.name.removeSuffix(BLOCKED_SUFFIX))
+            if (target.exists() || !runCatching { held.renameTo(target) }.getOrDefault(false)) return@forEach
+            prefs.edit().remove(path).apply()
+            notifyAllowed(label, pkg)
+        }
+    }
+
+    private fun labelOf(info: android.content.pm.PackageInfo, file: File): String? = runCatching {
+        info.applicationInfo?.let { ai ->
+            ai.sourceDir = file.absolutePath
+            ai.publicSourceDir = file.absolutePath
+            pm.getApplicationLabel(ai).toString()
+        }
+    }.getOrNull()?.takeIf { it.isNotBlank() }
 
     /** Rename the APK so the installer can't open it; delete as a fallback. */
-    private fun quarantine(file: File) {
+    private fun quarantine(file: File): Boolean {
         val target = File(file.parentFile, file.name + BLOCKED_SUFFIX)
+        runCatching { target.delete() } // an older copy held back under the same name
         val renamed = runCatching { file.renameTo(target) }.getOrDefault(false)
         if (!renamed) runCatching { file.delete() }
+        return renamed
     }
 
-    private fun notifyBlocked(label: String, pkg: String) {
-        if (ContextCompat.checkSelfPermission(appContext, android.Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-        ) {
-            return
+    private fun notifyBlocked(label: String, pkg: String, canAsk: Boolean) {
+        val ask = PendingIntent.getBroadcast(
+            appContext,
+            pkg.hashCode(),
+            Intent(appContext, InstallAskReceiver::class.java)
+                .putExtra(InstallAskReceiver.EXTRA_PACKAGE, pkg)
+                .putExtra(InstallAskReceiver.EXTRA_LABEL, label),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val text = "$label can't be installed from outside the Play Store." +
+            if (canAsk) " Ask your parent to allow it." else ""
+        post(
+            appContext, pkg,
+            NotificationCompat.Builder(appContext, CHANNEL_ID)
+                .setContentTitle("Install blocked")
+                .setContentText(text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                .apply { if (canAsk) addAction(0, "Ask to install", ask) },
+        )
+    }
+
+    private fun notifyAllowed(label: String, pkg: String) {
+        val downloads = PendingIntent.getActivity(
+            appContext,
+            pkg.hashCode(),
+            Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        post(
+            appContext, pkg,
+            NotificationCompat.Builder(appContext, CHANNEL_ID)
+                .setContentTitle("You can install $label")
+                .setContentText("Your parent allowed it. Open it from Downloads to install.")
+                .setContentIntent(downloads),
+        )
+    }
+
+    companion object {
+        private const val CHANNEL_ID = "install_guard"
+        private const val BLOCKED_SUFFIX = ".blocked_by_shield"
+        private const val HELD_PREFS = "install_guard_held"
+
+        /** Posts (or replaces) the install-guard notification for [pkg]. */
+        internal fun post(context: Context, pkg: String, builder: NotificationCompat.Builder) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                return
+            }
+            ensureChannel(context)
+            val n = builder
+                .setSmallIcon(R.drawable.ic_launcher_monochrome)
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .build()
+            runCatching { NotificationManagerCompat.from(context).notify(pkg.hashCode(), n) }
         }
-        ensureChannel()
-        val n = NotificationCompat.Builder(appContext, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_monochrome)
-            .setContentTitle("Install blocked")
-            .setContentText("“$label” can't be installed from an unknown source (blocked by your family).")
-            .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .build()
-        runCatching { NotificationManagerCompat.from(appContext).notify(pkg.hashCode(), n) }
-    }
 
-    private fun ensureChannel() {
+        internal fun builder(context: Context) = NotificationCompat.Builder(context, CHANNEL_ID)
+
+        private fun ensureChannel(appContext: Context) {
         val mgr = appContext.getSystemService(NotificationManager::class.java) ?: return
         if (mgr.getNotificationChannel(CHANNEL_ID) == null) {
             mgr.createNotificationChannel(
@@ -143,15 +221,11 @@ class ApkInstallGuard(
             )
         }
     }
+    }
 
     private fun hasStorageAccess(): Boolean = when {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> Environment.isExternalStorageManager()
         else -> ContextCompat.checkSelfPermission(appContext, android.Manifest.permission.READ_EXTERNAL_STORAGE) ==
             PackageManager.PERMISSION_GRANTED
-    }
-
-    private companion object {
-        const val CHANNEL_ID = "install_guard"
-        const val BLOCKED_SUFFIX = ".blocked_by_shield"
     }
 }

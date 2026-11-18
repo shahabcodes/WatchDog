@@ -293,7 +293,10 @@ class EnforcementService : AccessibilityService() {
         for (r in requests) {
             if (r.status != RequestStatus.APPROVED) continue
             // Approving supervised access changes the app's rule instead (Supervised).
-            if (r.kind == RequestKind.SUPERVISED_ACCESS || r.kind == RequestKind.LIFT_HOURS) continue
+            // Allowing an install changes the install guard instead (no time grant).
+            if (r.kind == RequestKind.SUPERVISED_ACCESS || r.kind == RequestKind.LIFT_HOURS ||
+                r.kind == RequestKind.ALLOW_INSTALL
+            ) continue
             val base = if (r.respondedAtMillis > 0) r.respondedAtMillis else r.createdAtMillis
             if (base <= 0L) continue
             // The parent can set an explicit end when approving; otherwise use the
@@ -320,7 +323,7 @@ class EnforcementService : AccessibilityService() {
         val minutes = when (r.kind) {
             RequestKind.MORE_TIME, RequestKind.EXTEND_BEDTIME -> if (r.minutes > 0) r.minutes else 15
             RequestKind.UNLOCK_APP, RequestKind.USE_IN_SCHOOL, RequestKind.SUPERVISED_ACCESS,
-            RequestKind.LIFT_HOURS -> if (r.minutes > 0) r.minutes else 60
+            RequestKind.LIFT_HOURS, RequestKind.ALLOW_INSTALL -> if (r.minutes > 0) r.minutes else 60
         }
         return minutes * 60_000L
     }
@@ -455,7 +458,7 @@ class EnforcementService : AccessibilityService() {
         if (!installGuard.allowlist && installGuard.blocks(packageName) && isSideloaded(packageName)) {
             return BlockDecision(
                 appLabelFor(packageName),
-                "This app isn't allowed to be installed from outside the Play Store.",
+                INSTALL_GUARD_REASON,
                 BlockAttemptReason.INSTALL_GUARD,
             )
         }
@@ -508,7 +511,7 @@ class EnforcementService : AccessibilityService() {
                 kind = d.kind,
                 dark = variant == BlockVariant.BEDTIME,
                 askLabel = askLabelFor(variant),
-                ask = askRequestFor(variant, pkg, d.label),
+                ask = askRequestFor(variant, pkg, d.label, reason),
             )
         }
         if (!multiWindowBlockedNow()) return null

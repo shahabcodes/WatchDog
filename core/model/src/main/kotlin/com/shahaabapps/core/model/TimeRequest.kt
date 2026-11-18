@@ -4,9 +4,11 @@ package com.shahaabapps.core.model
  * What the child is asking their parent for. SUPERVISED_ACCESS: use a blocked app
  * with supervision; approving makes the app Supervised (a lasting rule change).
  * LIFT_HOURS: remove an app's allowed/blocked hours; approving clears the rule's
- * schedule (a lasting rule change, no time grant).
+ * schedule (a lasting rule change, no time grant). ALLOW_INSTALL: let an app the
+ * install guard stops be installed from outside the Play Store; approving changes
+ * the install guard (a lasting policy change, no time grant).
  */
-enum class RequestKind { MORE_TIME, UNLOCK_APP, EXTEND_BEDTIME, USE_IN_SCHOOL, SUPERVISED_ACCESS, LIFT_HOURS }
+enum class RequestKind { MORE_TIME, UNLOCK_APP, EXTEND_BEDTIME, USE_IN_SCHOOL, SUPERVISED_ACCESS, LIFT_HOURS, ALLOW_INSTALL }
 
 /** Where the request stands. */
 enum class RequestStatus { PENDING, APPROVED, DENIED }
@@ -48,5 +50,6 @@ data class TimeRequest(
             RequestKind.USE_IN_SCHOOL -> "to use ${appLabel.ifBlank { "an app" }} during school"
             RequestKind.SUPERVISED_ACCESS -> "to use ${appLabel.ifBlank { "an app" }} with supervision (you get screenshots)"
             RequestKind.LIFT_HOURS -> "to remove the set hours on ${appLabel.ifBlank { "an app" }}"
+            RequestKind.ALLOW_INSTALL -> "to install ${appLabel.ifBlank { "an app" }} from outside the Play Store"
         }
 }

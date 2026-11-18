@@ -41,6 +41,7 @@ class AlertsViewModel @Inject constructor(
     private val appRulesRepository: com.shahaabapps.core.firebase.rules.AppRulesRepository,
     private val pendingAppsRepository: com.shahaabapps.core.firebase.protection.PendingAppsRepository,
     private val kids: com.shahaabapps.core.firebase.child.KidDirectory,
+    private val installGuardRepository: com.shahaabapps.core.firebase.installguard.InstallGuardRepository,
 ) : ViewModel() {
 
     private val childId: String = checkNotNull(savedStateHandle["childId"])
@@ -132,6 +133,27 @@ class AlertsViewModel @Inject constructor(
                 appRulesRepository.saveAppRule(childId, current.copy(schedule = emptyList(), scheduleBlocks = false))
             } else {
                 com.shahaabapps.core.common.AppResult.Success(Unit)
+            }
+            if (saved is com.shahaabapps.core.common.AppResult.Success) {
+                requestRepository.respond(childId, request.id, true, 0L)
+            }
+        }
+    }
+
+    /**
+     * Approves an ask to install a sideloaded app: the install guard stops blocking
+     * it (added to the allowed list, or taken off the blocked one) on every phone.
+     */
+    fun allowInstall(request: TimeRequest) {
+        val childId = phoneOf(request)
+        val pkg = request.appPackage
+        viewModelScope.launch {
+            val guard = kotlinx.coroutines.withTimeoutOrNull(15_000) { installGuardRepository.observe(childId).first() }
+                ?: return@launch
+            val saved = when {
+                pkg.isBlank() || !guard.blocks(pkg) -> com.shahaabapps.core.common.AppResult.Success(Unit)
+                guard.allowlist -> installGuardRepository.setGuard(childId, guard.copy(packages = guard.packages + pkg))
+                else -> installGuardRepository.setGuard(childId, guard.copy(packages = guard.packages - pkg))
             }
             if (saved is com.shahaabapps.core.common.AppResult.Success) {
                 requestRepository.respond(childId, request.id, true, 0L)

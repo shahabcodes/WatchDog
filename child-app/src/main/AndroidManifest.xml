@@ -143,6 +143,11 @@
             android:name=".location.GeofenceBroadcastReceiver"
             android:exported="false" />
 
+        <!-- "Ask to install" on the install-blocked notification. -->
+        <receiver
+            android:name=".install.InstallAskReceiver"
+            android:exported="false" />
+
         <!-- Restarts geofence syncing after reboot. -->
         <receiver
             android:name=".location.BootReceiver"

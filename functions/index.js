@@ -458,6 +458,7 @@ exports.notifyChildRequest = onDocumentCreated(
       case "USE_IN_SCHOOL": title = `${childName} wants ${appLabel} during school`; break;
       case "SUPERVISED_ACCESS": title = `${childName} asks to use ${appLabel} with supervision`; break;
       case "LIFT_HOURS": title = `${childName} asks to remove the set hours on ${appLabel}`; break;
+      case "ALLOW_INSTALL": title = `${childName} wants to install ${appLabel}`; break;
       case "EXTEND_BEDTIME":
         title = minutes > 0 ? `${childName} wants ${minutes} more min before bedtime` : `${childName} wants to extend bedtime`;
         break;

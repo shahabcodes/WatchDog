@@ -70,9 +70,9 @@ class BlockActivity : ComponentActivity() {
                     variant = variant,
                     label = label,
                     reason = reason,
-                    onAsk = { askParent(variant, pkg, label) },
+                    onAsk = { send(askRequestFor(variant, pkg, label, reason)) },
                     second = when {
-                        pkg.isBlank() -> null
+                        pkg.isBlank() || isInstallBlock(reason) -> null
                         isHoursBlock(reason) -> SecondAsk("Ask to remove the set hours", "So you can use it at any time") {
                             send(TimeRequest(kind = RequestKind.LIFT_HOURS, appPackage = pkg, appLabel = label))
                         }
@@ -113,10 +113,6 @@ class BlockActivity : ComponentActivity() {
             runCatching { startActivity(launch) }
         }
         finishAndRemoveTask()
-    }
-
-    private fun askParent(variant: BlockVariant, pkg: String, label: String) {
-        send(askRequestFor(variant, pkg, label))
     }
 
     private fun send(request: TimeRequest) {
@@ -176,8 +172,19 @@ internal fun askLabelFor(variant: BlockVariant): String = when (variant) {
     BlockVariant.BLOCKED -> "Ask to allow it"
 }
 
+/** Why the install guard stops a sideloaded app (EnforcementService's block reason). */
+internal const val INSTALL_GUARD_REASON = "This app isn't allowed to be installed from outside the Play Store."
+
+internal fun isInstallBlock(reason: String?): Boolean = reason == INSTALL_GUARD_REASON
+
 /** The request the "Ask…" button sends to the parent for this kind of block. */
-internal fun askRequestFor(variant: BlockVariant, pkg: String, label: String): TimeRequest = when (variant) {
+internal fun askRequestFor(variant: BlockVariant, pkg: String, label: String, reason: String? = null): TimeRequest = when {
+    // Stopped by the install guard: a time grant can't lift it, so ask to allow the app.
+    isInstallBlock(reason) -> TimeRequest(kind = RequestKind.ALLOW_INSTALL, appPackage = pkg, appLabel = label)
+    else -> timeAsk(variant, pkg, label)
+}
+
+private fun timeAsk(variant: BlockVariant, pkg: String, label: String): TimeRequest = when (variant) {
     BlockVariant.TIMESUP -> TimeRequest(kind = RequestKind.MORE_TIME, appPackage = pkg, appLabel = label, minutes = 15)
     BlockVariant.BEDTIME -> TimeRequest(kind = RequestKind.EXTEND_BEDTIME, minutes = 15)
     BlockVariant.SCHOOL -> TimeRequest(kind = RequestKind.USE_IN_SCHOOL, appPackage = pkg, appLabel = label)

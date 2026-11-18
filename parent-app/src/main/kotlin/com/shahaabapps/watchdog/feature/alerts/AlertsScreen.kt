@@ -113,9 +113,22 @@ fun AlertsScreen(
             onDismiss = { approveReq = null },
         )
     }
+    approveReq?.takeIf { it.kind == com.shahaabapps.core.model.RequestKind.ALLOW_INSTALL }?.let { req ->
+        com.shahaabapps.core.ui.components.ConfirmDialog(
+            title = "Allow this install?",
+            message = "${req.appLabel.ifBlank { "The app" }} can then be installed from outside the Play Store" +
+                (if (req.phone.isNotBlank()) " on ${req.phone}" else "") +
+                ". Only allow apps you trust." +
+                (if (req.appPackage.isNotBlank()) "\n\n${req.appPackage}" else ""),
+            confirmText = "Allow",
+            onConfirm = { viewModel.allowInstall(req); approveReq = null; approvedTick = true },
+            onDismiss = { approveReq = null },
+        )
+    }
     approveReq?.takeIf {
         it.kind != com.shahaabapps.core.model.RequestKind.SUPERVISED_ACCESS &&
-            it.kind != com.shahaabapps.core.model.RequestKind.LIFT_HOURS
+            it.kind != com.shahaabapps.core.model.RequestKind.LIFT_HOURS &&
+            it.kind != com.shahaabapps.core.model.RequestKind.ALLOW_INSTALL
     }?.let { req ->
         ApproveRequestDialog(
             request = req,
